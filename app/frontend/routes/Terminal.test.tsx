@@ -1,3 +1,4 @@
+import { jsonResponse } from "../testSupport"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -125,7 +126,7 @@ describe("TerminalRoute", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
       if (path === "/api/v1/app/terminal_sessions" && init?.method === "POST") {
-        return Promise.resolve(jsonResponse({ session: terminalSession({ id: 3, name: "WF-100 - Follow-up" }) }, { status: 201 }))
+        return Promise.resolve(jsonResponse({ session: terminalSession({ id: 3, name: "WF-100 - Follow-up" }) }, 201))
       }
 
       return Promise.resolve(jsonResponse(terminalSessionsPayload()))
@@ -408,9 +409,3 @@ function bootstrapPayload(overrides: Partial<BootstrapPayload> = {}): BootstrapP
   }
 }
 
-function jsonResponse(payload: unknown, options: { status?: number } = {}) {
-  return new Response(JSON.stringify(payload), {
-    status: options.status ?? 200,
-    headers: { "Content-Type": "application/json" }
-  })
-}

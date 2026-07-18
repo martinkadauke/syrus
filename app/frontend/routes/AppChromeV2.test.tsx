@@ -1,3 +1,4 @@
+import { jsonResponse } from "../testSupport"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ReactElement } from "react"
@@ -728,8 +729,3 @@ function bootstrapPayload(overrides: Partial<BootstrapPayload> = {}): BootstrapP
   } as unknown as BootstrapPayload
 }
 
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), {
-    headers: { "Content-Type": "application/json" }
-  })
-}

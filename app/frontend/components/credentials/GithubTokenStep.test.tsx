@@ -1,3 +1,4 @@
+import { jsonResponse } from "../../testSupport"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -11,10 +12,6 @@ function renderStep(props: { onSaved?: () => void; saveLabel?: string } = {}) {
       <GithubTokenStep onSaved={props.onSaved ?? (() => {})} saveLabel={props.saveLabel} />
     </QueryClientProvider>
   )
-}
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
 }
 
 // Route fetch by the path the api client hits.

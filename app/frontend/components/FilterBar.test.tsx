@@ -1,3 +1,4 @@
+import { jsonResponse } from "../testSupport"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter, useLocation } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -556,9 +557,3 @@ describe("FilterBar", () => {
   })
 })
 
-function jsonResponse(payload: unknown) {
-  return new Response(JSON.stringify(payload), {
-    status: 200,
-    headers: { "Content-Type": "application/json" }
-  })
-}

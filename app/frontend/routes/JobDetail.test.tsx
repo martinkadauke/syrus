@@ -1,3 +1,4 @@
+import { jsonResponse } from "../testSupport"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { MemoryRouter, useLocation } from "react-router-dom"
@@ -189,7 +190,7 @@ describe("JobDetailView", () => {
   })
 
   it("submits feedback, collapses the panel, and shows a success notice", async () => {
-    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({ workflow: { id: 2, trigger_kind: "chat_feedback" } }, { status: 201 }))
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({ workflow: { id: 2, trigger_kind: "chat_feedback" } }, 201))
     renderJobDetail(jobPayload({
       job: { ...baseJob(), state: "implemented", summary_state: "implemented" }
     }))
@@ -214,7 +215,7 @@ describe("JobDetailView", () => {
   })
 
   it("shows an inline error when feedback submission fails", async () => {
-    vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({ error: { message: "Job already has active feedback." } }, { status: 422 }))
+    vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({ error: { message: "Job already has active feedback." } }, 422))
     renderJobDetail(jobPayload({
       job: { ...baseJob(), state: "failed", summary_state: "failed" }
     }))
@@ -954,9 +955,3 @@ function run(overrides: Partial<JobRun>): JobRun {
   }
 }
 
-function jsonResponse(payload: unknown, init: ResponseInit = {}) {
-  return new Response(JSON.stringify(payload), {
-    status: init.status ?? 200,
-    headers: { "Content-Type": "application/json", ...init.headers }
-  })
-}

@@ -1,3 +1,4 @@
+import { jsonResponse } from "../testSupport"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -11,10 +12,6 @@ function renderModal(props: { onClose?: () => void; onSaved?: () => void } = {})
       <ConfigureAgentModal onClose={props.onClose ?? (() => {})} onSaved={props.onSaved} />
     </QueryClientProvider>
   )
-}
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
 }
 
 const notReady = { credential: "claude_oauth_token", ok: false, message: "Claude is not authenticated on this machine yet.", details: {} }

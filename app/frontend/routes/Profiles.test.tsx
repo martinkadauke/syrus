@@ -1,3 +1,4 @@
+import { jsonResponse } from "../testSupport"
 import { render, screen, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, expect, it, vi } from "vitest"
@@ -129,10 +130,6 @@ function renderRoute(children: ReactNode, path: string) {
       </MemoryRouter>
     </QueryClientProvider>
   )
-}
-
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } })
 }
 
 function teamProfilePayload(overrides: Record<string, unknown> = {}) {

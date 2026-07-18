@@ -1,3 +1,4 @@
+import { jsonResponse } from "../../testSupport"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -65,10 +66,6 @@ function renderCard(ui: ReactElement, { bootstrap }: { bootstrap?: unknown } = {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   if (bootstrap) client.setQueryData(["bootstrap"], bootstrap)
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
-}
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
 }
 
 // Route fetch by path + method, mirroring the app's API layer.

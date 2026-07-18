@@ -1,3 +1,4 @@
+import { jsonResponse } from "../testSupport"
 import { render, screen } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -10,13 +11,6 @@ function renderSparkline(repositoryId = 42) {
       <CoverageSparkline repositoryId={repositoryId} />
     </QueryClientProvider>
   )
-}
-
-function jsonResponse(payload: unknown, status = 200) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "Content-Type": "application/json" }
-  })
 }
 
 describe("CoverageSparkline", () => {

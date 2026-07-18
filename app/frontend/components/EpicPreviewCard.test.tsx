@@ -1,3 +1,4 @@
+import { jsonResponse } from "../testSupport"
 import { render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { MemoryRouter } from "react-router-dom"
@@ -7,10 +8,6 @@ import { EpicPreviewCard, EpicPreviewSkeleton } from "./EpicPreviewCard"
 
 function client() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } })
-}
-
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } })
 }
 
 function job(state: string, title = "A job"): EpicDetailJob {
