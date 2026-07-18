@@ -343,18 +343,6 @@ module App
       )
     end
 
-    def epic_owned_by_scope(scope, owner_id)
-      scope.where(owner_user_id: owner_id).or(scope.where(owner_id: owner_id))
-    end
-
-    def epic_claimable_scope(scope)
-      scope.where(owner_user_id: nil, owner_id: nil, state: %w[backlog ready])
-    end
-
-    def epic_unclaimed_scope(scope)
-      scope.where(owner_user_id: nil, owner_id: nil)
-    end
-
     def job_user_fallback_scope?
       return true if user_scope?
       return false unless mine_scope?
