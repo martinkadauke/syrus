@@ -38,7 +38,12 @@
     "queue_unreachable": "queue tables unreachable",
     "stale_workers": "{{count}} stale",
     "unavailable": "unavailable",
-    "stuck_section": "Stuck things"
+    "stuck_section": "Stuck things",
+    "aria_overview": "Admin overview",
+    "aria_metrics": "System metrics",
+    "aria_stuck": "Stuck things",
+    "capture_of": "{{captured}} of {{total}}",
+    "disk_free": "{{free}} free at {{path}}"
   },
   "users": {
     "heading": "Users",
@@ -84,7 +89,10 @@
     "info_codex_auth_mode": "Codex auth mode",
     "info_max_turns": "Max turns",
     "info_tokens": "Tokens",
-    "info_gh_rate": "GH rate"
+    "info_gh_rate": "GH rate",
+    "aria_index": "Admin users",
+    "aria_detail": "Admin user detail",
+    "aria_role": "User role"
   },
   "features": {
     "heading": "Features",
@@ -338,7 +346,10 @@
     "detail_run": "Run",
     "detail_workflow": "Workflow",
     "detail_kill_requested": "Kill requested",
-    "host_metrics": "Host metrics"
+    "host_metrics": "Host metrics",
+    "aria_index": "Admin processes",
+    "aria_detail": "Admin process detail",
+    "detail_heading": "Process"
   },
   "transcript": {
     "loading": "Loading transcript...",
@@ -354,6 +365,11 @@
     "showing_events": "Showing {{count}} events.",
     "page_of": "Page {{page}} of {{total}} · {{events}} events",
     "previous": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "aria_index": "Admin transcript",
+    "aria_events": "Transcript events",
+    "aria_summary": "Transcript summary",
+    "aria_pagination": "Transcript pagination",
+    "other_event": "Other event"
   }
 }

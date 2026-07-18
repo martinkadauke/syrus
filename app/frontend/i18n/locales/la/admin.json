@@ -38,7 +38,12 @@
     "queue_unreachable": "tabulae agminis non attinguntur",
     "stale_workers": "{{count}} obsoleti",
     "unavailable": "non praesto",
-    "stuck_section": "Res Haerentes"
+    "stuck_section": "Res Haerentes",
+    "aria_overview": "Conspectus administratoris",
+    "aria_metrics": "Metrica systematis",
+    "aria_stuck": "Res haerentes",
+    "capture_of": "{{captured}} ex {{total}}",
+    "disk_free": "{{free}} liberi apud {{path}}"
   },
   "users": {
     "heading": "Utentes",
@@ -84,7 +89,10 @@
     "info_codex_auth_mode": "Modus Authenticationis Codicis",
     "info_max_turns": "Vices Maximae",
     "info_tokens": "Tesserae",
-    "info_gh_rate": "Ratio GH"
+    "info_gh_rate": "Ratio GH",
+    "aria_index": "Usores administratoris",
+    "aria_detail": "Usoris detalium",
+    "aria_role": "Munus usoris"
   },
   "features": {
     "heading": "Proprietates",
@@ -338,7 +346,10 @@
     "detail_run": "Cursus",
     "detail_workflow": "Processus",
     "detail_kill_requested": "Nex Rogata",
-    "host_metrics": "Metrices Hospitis"
+    "host_metrics": "Metrices Hospitis",
+    "aria_index": "Processus administratoris",
+    "aria_detail": "Processus detalium",
+    "detail_heading": "Processus"
   },
   "transcript": {
     "loading": "Transcriptum onerans...",
@@ -354,6 +365,11 @@
     "showing_events": "{{count}} eventus ostensa.",
     "page_of": "Pagina {{page}} ex {{total}} · {{events}} eventus",
     "previous": "Prior",
-    "next": "Posterior"
+    "next": "Posterior",
+    "aria_index": "Transcriptio administratoris",
+    "aria_events": "Eventus transcriptionis",
+    "aria_summary": "Summarium transcriptionis",
+    "aria_pagination": "Paginatio transcriptionis",
+    "other_event": "Eventus alius"
   }
 }

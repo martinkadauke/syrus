@@ -28,7 +28,7 @@ export function AdminProcessesIndex() {
   const activeUserFolderId = processes.data?.smart_folders.find((folder) => folder.id === processes.data.active_smart_folder_id && folder.kind === "user_defined")?.id
 
   return (
-    <main aria-label="Admin processes" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("processes.aria_index")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       <header className="border-b border-gray-200 dark:border-gray-700 pb-4">
         <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{t("section_label")}</p>
         <h1 className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{t("processes.heading")}</h1>
@@ -94,10 +94,10 @@ export function AdminProcessDetail() {
   })
 
   return (
-    <main aria-label="Admin process detail" className="mx-auto max-w-5xl space-y-6 p-6">
+    <main aria-label={t("processes.aria_detail")} className="mx-auto max-w-5xl space-y-6 p-6">
       <header className="border-b border-gray-200 dark:border-gray-700 pb-4">
         <Link className="text-sm text-blue-600 dark:text-blue-300 underline hover:no-underline" to={basePath}>{t("processes.heading")}</Link>
-        <h1 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">Process {id ? `#${id}` : ""}</h1>
+        <h1 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{t("processes.detail_heading")}{id ? ` #${id}` : ""}</h1>
       </header>
 
       <section className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">

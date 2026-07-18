@@ -27,7 +27,7 @@ export function AdminTranscript() {
   })
 
   return (
-    <main aria-label="Admin transcript" className="mx-auto flex h-[calc(100vh-4rem)] max-w-6xl flex-col gap-6 overflow-hidden p-6">
+    <main aria-label={t("transcript.aria_index")} className="mx-auto flex h-[calc(100vh-4rem)] max-w-6xl flex-col gap-6 overflow-hidden p-6">
       {transcript.isPending ? <PanelMessage>{t("transcript.loading")}</PanelMessage> : null}
       {transcript.isError ? <TranscriptError error={transcript.error} /> : null}
       {transcript.isSuccess ? <TranscriptView payload={transcript.data} prefix={prefix} /> : null}
@@ -69,6 +69,7 @@ function TranscriptView({ payload, prefix }: { payload: TranscriptPayload; prefi
 }
 
 function TranscriptEventStream({ payload }: { payload: TranscriptPayload }) {
+  const { t } = useT("admin")
   const streamRef = useRef<HTMLDivElement | null>(null)
   const atBottomRef = useRef(true)
   const totalEventsRef = useRef(payload.pagination.total_events)
@@ -112,7 +113,7 @@ function TranscriptEventStream({ payload }: { payload: TranscriptPayload }) {
   return (
     <div className="relative min-h-0 flex-1">
       <section
-        aria-label="Transcript events"
+        aria-label={t("transcript.aria_events")}
         className="h-full min-h-0 space-y-3 overflow-y-auto pr-2"
         data-testid="transcript-event-stream"
         onScroll={handleScroll}
@@ -148,7 +149,7 @@ function SummaryGrid({ payload }: { payload: TranscriptPayload }) {
   const summary = payload.summary
 
   return (
-    <section aria-label="Transcript summary" className="grid gap-4 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+    <section aria-label={t("transcript.aria_summary")} className="grid gap-4 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
       <SummaryItem label={t("transcript.turns")} value={summary.total_turns ?? "-"} />
       <SummaryItem label={t("transcript.tool_calls")} value={summary.total_tool_calls} />
       <SummaryItem label={t("transcript.cost")} value={summary.total_cost_usd == null ? "-" : `$${summary.total_cost_usd.toFixed(4)}`} />
@@ -189,7 +190,7 @@ function Pagination({ payload }: { payload: TranscriptPayload }) {
   }
 
   return (
-    <nav aria-label="Transcript pagination" className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
+    <nav aria-label={t("transcript.aria_pagination")} className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
       <span>{t("transcript.page_of", { page, total: totalPages, events: totalEvents })}</span>
       <div className="flex gap-2">
         {page > 1 ? (
@@ -208,6 +209,7 @@ function Pagination({ payload }: { payload: TranscriptPayload }) {
 }
 
 function TranscriptEventCard({ event }: { event: TranscriptEvent }) {
+  const { t } = useT("admin")
   const data = event.data
 
   switch (event.kind) {
@@ -224,7 +226,7 @@ function TranscriptEventCard({ event }: { event: TranscriptEvent }) {
     case "result":
       return <ResultEvent data={data} />
     default:
-      return <DetailsEvent badge={event.kind} title="Other event" data={data} />
+      return <DetailsEvent badge={event.kind} title={t("transcript.other_event")} data={data} />
   }
 }
 

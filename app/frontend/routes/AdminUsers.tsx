@@ -30,7 +30,7 @@ export function AdminUsersIndex() {
   const activeUserFolderId = users.data?.smart_folders.find((folder) => folder.id === users.data.active_smart_folder_id && folder.kind === "user_defined")?.id
 
   return (
-    <main aria-label="Admin users" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("users.aria_index")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       <header className="border-b border-gray-200 dark:border-gray-700 pb-4">
         <div>
           <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{t("section_label")}</p>
@@ -95,7 +95,7 @@ export function AdminUserDetailRoute() {
   })
 
   return (
-    <main aria-label="Admin user detail" className="mx-auto max-w-6xl space-y-6 p-6">
+    <main aria-label={t("users.aria_detail")} className="mx-auto max-w-6xl space-y-6 p-6">
       <header className="border-b border-gray-200 dark:border-gray-700 pb-4">
         <Link className="text-sm text-blue-600 dark:text-blue-300 underline hover:no-underline" to={basePath}>{t("users.heading")}</Link>
         <h1 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{user.data?.display_name || `User #${id}`}</h1>
@@ -188,6 +188,7 @@ function UserDetail({ user }: { user: AdminUserDetail }) {
 }
 
 function RoleOverride({ user }: { user: AdminUserDetail }) {
+  const { t } = useT("admin")
   const queryClient = useQueryClient()
   const mutation = useMutation({
     mutationFn: (role: string) => updateAdminUserRole(user.id, role),
@@ -199,7 +200,7 @@ function RoleOverride({ user }: { user: AdminUserDetail }) {
 
   return (
     <select
-      aria-label="User role"
+      aria-label={t("users.aria_role")}
       className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100"
       disabled={mutation.isPending}
       onChange={(event) => mutation.mutate(event.target.value)}

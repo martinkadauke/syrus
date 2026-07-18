@@ -38,7 +38,12 @@
     "queue_unreachable": "Warteschlangen-Tabellen nicht erreichbar",
     "stale_workers": "{{count}} veraltet",
     "unavailable": "nicht verfügbar",
-    "stuck_section": "Hängende Elemente"
+    "stuck_section": "Hängende Elemente",
+    "aria_overview": "Admin-Übersicht",
+    "aria_metrics": "Systemmetriken",
+    "aria_stuck": "Hängende Elemente",
+    "capture_of": "{{captured}} von {{total}}",
+    "disk_free": "{{free}} frei bei {{path}}"
   },
   "users": {
     "heading": "Benutzer",
@@ -84,7 +89,10 @@
     "info_codex_auth_mode": "Codex-Authentifizierungsmodus",
     "info_max_turns": "Maximale Züge",
     "info_tokens": "Token",
-    "info_gh_rate": "GH-Rate"
+    "info_gh_rate": "GH-Rate",
+    "aria_index": "Admin-Benutzer",
+    "aria_detail": "Admin-Benutzerdetail",
+    "aria_role": "Benutzerrolle"
   },
   "features": {
     "heading": "Funktionen",
@@ -338,7 +346,10 @@
     "detail_run": "Ausführung",
     "detail_workflow": "Arbeitsablauf",
     "detail_kill_requested": "Beendigung angefordert",
-    "host_metrics": "Host-Metriken"
+    "host_metrics": "Host-Metriken",
+    "aria_index": "Admin-Prozesse",
+    "aria_detail": "Admin-Prozessdetail",
+    "detail_heading": "Prozess"
   },
   "transcript": {
     "loading": "Transkript wird geladen...",
@@ -354,6 +365,11 @@
     "showing_events": "{{count}} Ereignisse angezeigt.",
     "page_of": "Seite {{page}} von {{total}} · {{events}} Ereignisse",
     "previous": "Zurück",
-    "next": "Weiter"
+    "next": "Weiter",
+    "aria_index": "Admin-Transkript",
+    "aria_events": "Transkript-Ereignisse",
+    "aria_summary": "Transkript-Zusammenfassung",
+    "aria_pagination": "Transkript-Paginierung",
+    "other_event": "Anderes Ereignis"
   }
 }
