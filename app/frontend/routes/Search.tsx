@@ -46,13 +46,13 @@ export function SearchRoute() {
   })
 
   return (
-    <main aria-label="Search" className="mx-auto max-w-[72rem] space-y-6 p-6">
+    <main aria-label={t("search_aria")} className="mx-auto max-w-[72rem] space-y-6 p-6">
       <header className="space-y-4">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('search.heading')}</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{query ? `Results for "${query}"` : "Search jobs, epics, and chats."}</p>
         </div>
-        <nav aria-label="Search type filters" className="flex flex-wrap gap-2">
+        <nav aria-label={t("search_type_filters_aria")} className="flex flex-wrap gap-2">
           {filters.map((filter) => (
             <Link className={filterChipClass(activeFilter === filter.key)} key={filter.key} to={filterPath(location.pathname, location.search, filter.key)}>
               {filter.label}
@@ -158,7 +158,7 @@ function Snippet({ html }: { html: string }) {
 function SearchSkeleton() {
   const { t } = useT("common")
   return (
-    <section aria-label="Loading search results" className="space-y-3">
+    <section aria-label={t("loading_search_aria")} className="space-y-3">
       {[0, 1, 2, 3].map((index) => (
         <div className="animate-pulse rounded border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950" key={index}>
           <div className="h-4 w-20 rounded bg-gray-200 dark:bg-gray-800" />

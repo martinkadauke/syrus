@@ -33,7 +33,7 @@ export function ChatSearchRoute() {
   const filterSchema = useMemo(() => chatSearchFilterSchema(filterOptions.data), [filterOptions.data])
 
   return (
-    <main aria-label="Chat search" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("aria_chat_search")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('search.heading')}</h1>
       </header>

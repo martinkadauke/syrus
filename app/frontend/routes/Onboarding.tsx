@@ -32,7 +32,7 @@ export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | n
 
   if (!user || !setup) {
     return (
-      <main aria-label="Onboarding" className="mx-auto max-w-5xl p-6">
+      <main aria-label={t("onboarding_aria")} className="mx-auto max-w-5xl p-6">
         <p className="text-sm text-gray-600 dark:text-gray-400">{t('onboarding.loading')}</p>
       </main>
     )
@@ -64,7 +64,7 @@ export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | n
   const complete = !activeStep
 
   return (
-    <main aria-label="Onboarding" className="mx-auto max-w-5xl space-y-6 p-6">
+    <main aria-label={t("onboarding_aria")} className="mx-auto max-w-5xl space-y-6 p-6">
       <header className="border-b border-gray-200 dark:border-gray-700 pb-5">
         <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{t('onboarding.setup_label')}</p>
         <h1 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('onboarding.heading')}</h1>

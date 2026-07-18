@@ -623,5 +623,17 @@
     "claude_set_up": "Connect Claude",
     "codex_code_label": "ChatGPT authorization code",
     "codex_auth_json_label": "Codex ChatGPT auth.json"
-  }
+  },
+  "aria_user_profile": "User profile",
+  "aria_profile_details": "Profile details",
+  "aria_work_summary": "Work summary",
+  "aria_memories": "Memories",
+  "aria_cron_templates": "Cron templates",
+  "aria_cron_template_detail": "Cron template detail",
+  "aria_tags": "Tags",
+  "aria_repo_scheduled_tasks": "Repository scheduled tasks",
+  "aria_repo_documents": "Repository documents",
+  "aria_repositories": "Repositories",
+  "aria_personal_documents": "Personal documents",
+  "aria_notification_settings": "Notification settings"
 }

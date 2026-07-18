@@ -48,7 +48,7 @@ export function MemoriesRoute() {
   })
 
   return (
-    <main aria-label="Memories" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("aria_memories")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('memories.heading')}</h1>
         <p className="mt-1 max-w-2xl text-sm text-gray-600 dark:text-gray-400">{t('memories.description')}</p>
@@ -215,7 +215,7 @@ function MemoryContentModal({ memory, onClose }: { memory: MemoryRow; onClose: (
           <div className="flex items-start justify-between gap-4">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" id={`memory-content-modal-title-${memory.id}`}>{t('memories.modal_content')}</h2>
             <button
-              aria-label="Close"
+              aria-label={t("common:close")}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300"
               onClick={onClose}
               type="button"
@@ -301,7 +301,7 @@ function MemoryModal({ memory, mode, payload, onClose, onNotice }: { memory?: Me
           <div className="flex items-start justify-between gap-4">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" id="memory-modal-title">{title}</h2>
             <button
-              aria-label="Close"
+              aria-label={t("common:close")}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300"
               onClick={onClose}
               type="button"

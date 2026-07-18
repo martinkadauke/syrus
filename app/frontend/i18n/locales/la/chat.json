@@ -240,5 +240,7 @@
   "aria_close_settings": "Optiones colloquii claudere",
   "provider": "Praebitor",
   "attachments": "Adnexa",
-  "none": "Nulla"
+  "none": "Nulla",
+  "aria_hidden_chats": "Colloquia occulta",
+  "aria_chat_search": "Quaestio colloquii"
 }

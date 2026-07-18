@@ -17,13 +17,13 @@ export function ProfileRoute() {
   })
 
   if (profile.isPending) {
-    return <main aria-label="User profile" className="mx-auto max-w-5xl p-6 text-sm text-gray-600 dark:text-gray-400">{t("profile.loading")}</main>
+    return <main aria-label={t("aria_user_profile")} className="mx-auto max-w-5xl p-6 text-sm text-gray-600 dark:text-gray-400">{t("profile.loading")}</main>
   }
 
   if (profile.isError) {
     const message = profile.error instanceof ApiError ? profile.error.message : t("profile.error_load")
     return (
-      <main aria-label="User profile" className="mx-auto max-w-5xl p-6">
+      <main aria-label={t("aria_user_profile")} className="mx-auto max-w-5xl p-6">
         <p className="rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-3 py-2 text-sm text-red-700 dark:text-red-300">{message}</p>
       </main>
     )
@@ -32,7 +32,7 @@ export function ProfileRoute() {
   const user = profile.data.profile
 
   return (
-    <main aria-label="User profile" className="mx-auto max-w-5xl space-y-6 p-6">
+    <main aria-label={t("aria_user_profile")} className="mx-auto max-w-5xl space-y-6 p-6">
       <header className="border-b border-gray-200 dark:border-gray-700 pb-5">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{user.role_label}</p>
@@ -44,13 +44,13 @@ export function ProfileRoute() {
         <p className="mt-4 max-w-3xl text-sm leading-6 text-gray-700 dark:text-gray-300">{user.profile_bio || t("profile.no_bio")}</p>
       </header>
 
-      <section aria-label="Profile details" className="grid gap-3 sm:grid-cols-3">
+      <section aria-label={t("aria_profile_details")} className="grid gap-3 sm:grid-cols-3">
         <ProfileDetail label={t("profile.company")} value={user.profile_company} empty={t("profile.no_company")} />
         <ProfileDetail label={t("profile.location")} value={user.profile_location} empty={t("profile.no_location")} />
         <ProfileWebsite value={user.profile_website} noWebsiteLabel={t("profile.no_website")} websiteLabel={t("profile.website")} />
       </section>
 
-      <section aria-label="Work summary" className="grid gap-3 sm:grid-cols-4">
+      <section aria-label={t("aria_work_summary")} className="grid gap-3 sm:grid-cols-4">
         <SummaryStat label={t("profile.repositories")} value={user.counts.repositories} />
         <SummaryStat label={t("profile.epics")} value={user.counts.epics} />
         <SummaryStat label={t("profile.open_jobs")} value={user.counts.open_jobs} />

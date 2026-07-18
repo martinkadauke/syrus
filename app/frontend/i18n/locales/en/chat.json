@@ -240,5 +240,7 @@
   "aria_close_settings": "Close chat settings",
   "provider": "Provider",
   "attachments": "Attachments",
-  "none": "None"
+  "none": "None",
+  "aria_hidden_chats": "Hidden chats",
+  "aria_chat_search": "Chat search"
 }

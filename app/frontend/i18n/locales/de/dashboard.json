@@ -121,5 +121,6 @@
   "broken_main_repair_start": "Reparatur-Aufgabe starten",
   "broken_main_repair_starting": "Startet...",
   "broken_main_repair_start_failed": "Reparatur konnte nicht gestartet werden.",
-  "broken_main_dismiss": "Ausblenden"
+  "broken_main_dismiss": "Ausblenden",
+  "needs_attention_aria": "Benötigt Aufmerksamkeit"
 }

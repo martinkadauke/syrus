@@ -30,7 +30,7 @@ export function RepositoriesIndex() {
   const prefix = routePrefix(location.pathname)
 
   return (
-    <main aria-label="Repositories" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("aria_repositories")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       {repositories.isPending ? (
         <PanelMessage>
           {t('repositories.loading')}

@@ -23,7 +23,7 @@ export function PersonalDocumentsRoute() {
   })
 
   return (
-    <main aria-label="Personal documents" className="mx-auto max-w-4xl space-y-6 p-6">
+    <main aria-label={t("aria_personal_documents")} className="mx-auto max-w-4xl space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
           {t('personal_documents.heading')}

@@ -11,7 +11,7 @@ export function HiddenChatsRoute() {
   const { t } = useT("chat")
 
   return (
-    <main aria-label="Hidden chats" className="mx-auto max-w-4xl space-y-6 p-6">
+    <main aria-label={t("aria_hidden_chats")} className="mx-auto max-w-4xl space-y-6 p-6">
       <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       <header>
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('hidden.heading')}</h1>

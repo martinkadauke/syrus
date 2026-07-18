@@ -322,11 +322,12 @@ function FlashBanner({ flash }: { flash?: BootstrapPayload["flash"] }) {
 }
 
 function SystemAlertsBanner({ alerts, prefix }: { alerts?: BootstrapPayload["system_alerts"]; prefix: string }) {
+  const { t } = useTranslation("nav")
   const active = alerts || []
   if (active.length === 0) return null
 
   return (
-    <section aria-label="System alerts" className="mx-auto max-w-[96rem] space-y-3 px-6 pt-4">
+    <section aria-label={t("nav:system_alerts_aria")} className="mx-auto max-w-[96rem] space-y-3 px-6 pt-4">
       {active.map((alert) => <SystemAlertItem alert={alert} key={alert.id} prefix={prefix} />)}
     </section>
   )
@@ -385,7 +386,7 @@ function AdminSubnav({ featureFlags, normalizedPath, prefix }: { featureFlags: R
 
   return (
     <div className="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
-      <nav aria-label="Admin" title="Curia — The Roman Senate house" className="flex gap-2 overflow-x-auto px-4 py-3 text-sm">
+      <nav aria-label={t("nav:admin_nav_aria")} title="Curia — The Roman Senate house" className="flex gap-2 overflow-x-auto px-4 py-3 text-sm">
         {items.map((item) => {
           const active = item.paths.some((path) => adminNavItemActive(normalizedPath, path))
 
@@ -487,7 +488,7 @@ function SidebarContent({
           <SidebarSearchForm onCloseDrawer={onCloseDrawer} prefix={prefix} />
         </div>
         <div className="px-3 pb-4">
-          <nav aria-label="Primary" className="flex flex-col gap-1 text-sm">
+          <nav aria-label={t("nav:primary_nav_aria")} className="flex flex-col gap-1 text-sm">
             {navItems.map((item) => {
               const link = (
                 <Link className={sidebarLinkClass(item.active)} key={item.id} onClick={(event) => handlePrimaryNavClick(item, event)} to={item.to}>
@@ -654,7 +655,7 @@ function SidebarDashboardSubjects({ onCloseDrawer, payload, prefix }: { onCloseD
   ]
 
   return (
-    <nav aria-label="Dashboard sections" className="inline-flex max-w-full flex-wrap overflow-hidden rounded border border-gray-300 bg-white text-xs dark:border-gray-700 dark:bg-gray-900">
+    <nav aria-label={t("nav:dashboard_sections_aria")} className="inline-flex max-w-full flex-wrap overflow-hidden rounded border border-gray-300 bg-white text-xs dark:border-gray-700 dark:bg-gray-900">
       {subjects.map((subject) => (
         <Link
           className={`whitespace-nowrap px-1.5 py-1.5 text-center font-medium ${payload.subject === subject.key ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600 dark:bg-blue-950 dark:text-blue-200 dark:ring-blue-500" : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"}`}
@@ -823,7 +824,7 @@ function RecentChatsSidebar({ onCloseDrawer, onNotice, prefix, userPresent }: { 
 
   return (
     <div className="px-3 pb-4">
-      <nav aria-label="Recent chats" className="space-y-4">
+      <nav aria-label={t("nav:recent_chats_aria")} className="space-y-4">
         {sections.map((section) => {
           const collapsed = collapsedSections.has(section.key)
           const loaded = loadedSections[section.key]

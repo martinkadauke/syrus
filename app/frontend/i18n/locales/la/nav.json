@@ -111,5 +111,14 @@
     "hours_ago": "ante {{count}}h",
     "days_ago": "ante {{count}}d"
   },
-  "account_aria": "Ratio"
+  "account_aria": "Ratio",
+  "system_alerts_aria": "Monita systematis",
+  "admin_nav_aria": "Administrator",
+  "primary_nav_aria": "Primaria",
+  "dashboard_sections_aria": "Sectiones tabulae",
+  "recent_chats_aria": "Colloquia recentia",
+  "smart_folders_panel_aria": "Tabula loculorum sapientium",
+  "smart_folders_aria": "Loculi sapientes tabulae",
+  "saved_folders_aria": "Loculi sapientes servati",
+  "repository_tabs_aria": "Tabulae repositorii"
 }

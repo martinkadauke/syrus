@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { useT } from "../hooks/useT"
 import { useQueryClient } from "@tanstack/react-query"
 import { testGeminiKey, updateCredentials } from "../api/credentials"
 import { openInNewTab } from "../lib/desktopShell"
@@ -53,6 +54,7 @@ export function GeminiSetupSheet({
     keyHelp: string
   }
 }) {
+  const { t } = useT("common")
   const queryClient = useQueryClient()
   const [key, setKey] = useState("")
   const [stages, setStages] = useState<ValidationStage[]>(INITIAL_STAGES)
@@ -151,7 +153,7 @@ export function GeminiSetupSheet({
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100" id="gemini-setup-title">
             {labels.title}
           </h2>
-          <button aria-label="Close" className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800" onClick={onClose} type="button">
+          <button aria-label={t("close")} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800" onClick={onClose} type="button">
             <CloseIcon className="h-4 w-4" />
           </button>
         </div>

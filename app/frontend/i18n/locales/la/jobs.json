@@ -410,5 +410,8 @@
   "attention_upstream_pr_changes_requested": "Recognitor mutationes in PR superiore poposcit. Automerge intermissa est donec recognitio solvatur (probata aut dimissa).",
   "grace_expired": "Tempus gratiae exiit.",
   "replacement_feedback_aria": "Textus responsi substituti",
-  "replacement_feedback_placeholder": "Textum responsi substituti inscribe…"
+  "replacement_feedback_placeholder": "Textum responsi substituti inscribe…",
+  "aria_job": "Opus",
+  "aria_workflow_pagination": "Paginatio fluxus operis",
+  "aria_new_direct_job": "Novum opus directum"
 }

@@ -28,7 +28,7 @@ export function RepositoryDocumentsRoute() {
   })
 
   return (
-    <main aria-label="Repository documents" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("aria_repo_documents")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       {documents.isPending ? <PanelMessage>
         {t('repository_documents.loading')}
       </PanelMessage> : null}

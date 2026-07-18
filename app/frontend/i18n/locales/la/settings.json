@@ -623,5 +623,17 @@
     "claude_set_up": "Claude conecte",
     "codex_code_label": "Codex auctoritatis ChatGPT",
     "codex_auth_json_label": "Codex ChatGPT auth.json"
-  }
+  },
+  "aria_user_profile": "Persona usoris",
+  "aria_profile_details": "Detalia personae",
+  "aria_work_summary": "Summarium operis",
+  "aria_memories": "Memoriae",
+  "aria_cron_templates": "Exemplaria cron",
+  "aria_cron_template_detail": "Exemplar cron in detalio",
+  "aria_tags": "Notae",
+  "aria_repo_scheduled_tasks": "Munera constituta repositorii",
+  "aria_repo_documents": "Documenta repositorii",
+  "aria_repositories": "Repositoria",
+  "aria_personal_documents": "Documenta personalia",
+  "aria_notification_settings": "Optiones nuntiorum"
 }

@@ -34,7 +34,7 @@ export function CronTemplatesIndex() {
   })
 
   return (
-    <main aria-label="Cron templates" className="mx-auto max-w-6xl space-y-6 p-6">
+    <main aria-label={t("aria_cron_templates")} className="mx-auto max-w-6xl space-y-6 p-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t("cron_templates.heading")}</h1>
@@ -64,7 +64,7 @@ export function CronTemplateDetailRoute() {
   })
 
   return (
-    <main aria-label="Cron template detail" className="mx-auto max-w-6xl space-y-6 p-6">
+    <main aria-label={t("aria_cron_template_detail")} className="mx-auto max-w-6xl space-y-6 p-6">
       {detail.isPending ? <PanelMessage>{t("cron_templates.loading_template")}</PanelMessage> : null}
       {detail.isError ? <CronTemplatesError error={detail.error} /> : null}
       {detail.isSuccess ? <TemplateDetail basePath={basePath} payload={detail.data} prefix={prefix} /> : null}

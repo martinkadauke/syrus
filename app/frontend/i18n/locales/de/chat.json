@@ -240,5 +240,7 @@
   "aria_close_settings": "Chat-Einstellungen schließen",
   "provider": "Anbieter",
   "attachments": "Anhänge",
-  "none": "Keine"
+  "none": "Keine",
+  "aria_hidden_chats": "Ausgeblendete Chats",
+  "aria_chat_search": "Chat-Suche"
 }

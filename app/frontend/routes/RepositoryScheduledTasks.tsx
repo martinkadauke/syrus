@@ -27,7 +27,7 @@ export function RepositoryScheduledTasksRoute() {
   })
 
   return (
-    <main aria-label="Repository scheduled tasks" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("aria_repo_scheduled_tasks")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       {tasks.isPending ? <PanelMessage>{t("scheduled_tasks.loading")}</PanelMessage> : null}
       {tasks.isError ? <RepositoryScheduledTasksError error={tasks.error} /> : null}
       {tasks.isSuccess ? <RepositoryScheduledTasksView payload={tasks.data} prefix={routePrefix(location.pathname)} /> : null}

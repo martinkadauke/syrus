@@ -227,5 +227,11 @@
     "revision": "Recensio",
     "view_commit": "Commissum videre",
     "load_error_instance": "Haec instantia Syrus onerari non potest."
-  }
+  },
+  "close": "Claudere",
+  "search_aria": "Quaerere",
+  "search_type_filters_aria": "Filtra generis quaerendi",
+  "loading_search_aria": "Eventus quaerendi onerantur",
+  "onboarding_aria": "Introductio",
+  "terminal_aria": "Terminale"
 }

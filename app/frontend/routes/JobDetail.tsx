@@ -131,7 +131,7 @@ export function JobDetailRoute() {
   }
 
   return (
-    <main aria-label="Job" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("aria_job")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       {detail.isPending ? <PanelMessage>{t("loading")}</PanelMessage> : null}
       {detail.isError ? <PanelMessage tone="error">{errorMessage(detail.error, t("load_error"))}</PanelMessage> : null}
       {payload ? <JobDetailView activeTab={activeTab} onSelectTab={selectTab} payload={payload} prefix={prefix} queryKey={queryKey} workflowsQueryKey={workflowsQueryKey} /> : null}
@@ -1372,7 +1372,7 @@ function WorkflowsPagination({ payload, prefix }: { payload: JobDetailPayload; p
   if (pagination.total_pages <= 1) return null
 
   return (
-    <nav aria-label="Workflow pagination" className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+    <nav aria-label={t("aria_workflow_pagination")} className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
       <span>{t("workflows_showing", { first: pagination.first_item, last: pagination.last_item, total: pagination.total_workflows })}</span>
       <div className="flex gap-2">
         {pagination.previous_path ? <Link className={paginationLinkClass()} to={withRoutePrefix(pagination.previous_path, prefix)}>{t("workflows_previous")}</Link> : <span className={disabledPaginationClass()}>{t("workflows_previous")}</span>}

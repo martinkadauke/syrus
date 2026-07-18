@@ -410,5 +410,8 @@
   "attention_upstream_pr_changes_requested": "A reviewer has requested changes on the upstream PR. Auto-merge is paused until the review is resolved (approved or dismissed).",
   "grace_expired": "Grace period has expired.",
   "replacement_feedback_aria": "Replacement feedback text",
-  "replacement_feedback_placeholder": "Enter your replacement feedback text…"
+  "replacement_feedback_placeholder": "Enter your replacement feedback text…",
+  "aria_job": "Job",
+  "aria_workflow_pagination": "Workflow pagination",
+  "aria_new_direct_job": "New direct job"
 }

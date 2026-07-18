@@ -227,5 +227,11 @@
     "revision": "Revision",
     "view_commit": "View commit",
     "load_error_instance": "Unable to load this Syrus instance."
-  }
+  },
+  "close": "Close",
+  "search_aria": "Search",
+  "search_type_filters_aria": "Search type filters",
+  "loading_search_aria": "Loading search results",
+  "onboarding_aria": "Onboarding",
+  "terminal_aria": "Terminal"
 }

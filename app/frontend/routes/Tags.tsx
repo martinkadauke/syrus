@@ -26,7 +26,7 @@ export function Tags() {
   })
 
   return (
-    <main aria-label="Tags" className="mx-auto max-w-6xl space-y-6 p-6">
+    <main aria-label={t("aria_tags")} className="mx-auto max-w-6xl space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('tags.heading')}</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t('tags.description')}</p>

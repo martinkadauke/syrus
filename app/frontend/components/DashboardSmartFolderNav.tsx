@@ -137,8 +137,8 @@ export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: 
   }
 
   return (
-    <aside aria-label="Dashboard smart folders panel" className="space-y-2">
-      <nav aria-label="Dashboard smart folders" className="space-y-1">
+    <aside aria-label={t("smart_folders_panel_aria")} className="space-y-2">
+      <nav aria-label={t("smart_folders_aria")} className="space-y-1">
         {payload.subject === "job" ? null : allJobsLink}
         {primaryFolders.map((folder) => <SmartFolderLink folder={folder} key={folder.id} onSelect={() => updatePreferences.mutate({ subject: payload.subject, smart_folder_id: folder.id })} prefix={prefix} />)}
         {moreFolders.length > 0 || payload.subject === "job" ? (
@@ -154,7 +154,7 @@ export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: 
       <div className="space-y-1 pt-3">
         <h3 className="px-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{t("smart_folder.saved")}</h3>
         {savedFolders.length > 0 ? (
-          <nav aria-label="Saved smart folders" className="space-y-1">
+          <nav aria-label={t("saved_folders_aria")} className="space-y-1">
             {orderedSavedFolders.map((folder, index) => (
               <SmartFolderLink
                 draggable={!isReordering}
