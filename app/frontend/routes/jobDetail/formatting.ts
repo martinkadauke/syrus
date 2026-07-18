@@ -31,3 +31,41 @@ export function disabledPaginationClass() {
 export function shortSha(sha: string | null) {
   return sha ? sha.slice(0, 7) : "unknown"
 }
+
+export function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
+}
+
+export function jobSlug(id: number) {
+  return `JOB-${id}`
+}
+
+export function formatDate(value: string | null) {
+  if (!value) return "-"
+  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+}
+
+export function formatDuration(startedAt: string | null, finishedAt: string | null): string {
+  if (!startedAt || !finishedAt) return "-"
+  const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime()
+  if (ms < 0) return "-"
+  const totalSeconds = Math.floor(ms / 1000)
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours >= 1) return `${hours}h ${minutes}m`
+  return `${minutes}m ${seconds}s`
+}
+
+export function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
+}
+
+export function plural(count: number, singular: string) {
+  if (count !== 1 && singular.endsWith("y")) return `${singular.slice(0, -1)}ies`
+  return count === 1 ? singular : `${singular}s`
+}

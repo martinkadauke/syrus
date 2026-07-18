@@ -71,7 +71,7 @@ import {
   type PrepareFailure, type WorkflowStepItem
 } from "./jobDetail/stepModel"
 import { jobDetailQueryKey, jobDetailSearch, jobWorkflowsQueryKey, mergeJobWorkflowsPayload, tabFromLocation } from "./jobDetail/queryKeys"
-import { artifactPanelClass, disabledPaginationClass, menuButtonClass, paginationLinkClass, shortSha } from "./jobDetail/formatting"
+import { artifactPanelClass, disabledPaginationClass, formatCurrency, formatDate, formatDuration, jobSlug, menuButtonClass, paginationLinkClass, plural, shortSha, withRoutePrefix } from "./jobDetail/formatting"
 import type { SourceFile, SourceTreeFile, SourceTreeNode } from "./jobDetail/sourceTree"
 import { buildSourceTree, sortSourceTree, sourceLanguage } from "./jobDetail/sourceTree"
 import { stepArtifactAdversarialReview, stepArtifactTestPlan } from "./jobDetail/stepArtifacts"
@@ -2406,13 +2406,6 @@ function SourceTreeRow({
   )
 }
 
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
-}
-
 
 function MergeablePill({ value }: { value: boolean | null }) {
   if (value === true) return <StatusPill state="mergeable" />
@@ -2521,37 +2514,6 @@ function DependencyLink({ dependency, prefix }: { dependency: JobDependency; pre
   )
 }
 
-function jobSlug(id: number) {
-  return `JOB-${id}`
-}
-
-function formatDate(value: string | null) {
-  if (!value) return "-"
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
-}
-
-function formatDuration(startedAt: string | null, finishedAt: string | null): string {
-  if (!startedAt || !finishedAt) return "-"
-  const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime()
-  if (ms < 0) return "-"
-  const totalSeconds = Math.floor(ms / 1000)
-  if (totalSeconds < 60) return `${totalSeconds}s`
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-  if (hours >= 1) return `${hours}h ${minutes}m`
-  return `${minutes}m ${seconds}s`
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
-}
-
-
-function plural(count: number, singular: string) {
-  if (count !== 1 && singular.endsWith("y")) return `${singular.slice(0, -1)}ies`
-  return count === 1 ? singular : `${singular}s`
-}
 
 // Live wall-clock, ticking every second while `active`. Used so a
 // queued/running Run's elapsed time updates in place.
