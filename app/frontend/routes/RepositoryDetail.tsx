@@ -1,6 +1,7 @@
+import { PanelMessage, StatusPill, formatRelative, stateFilterClass } from "./repositoryDetail/shared"
 import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { FormEvent, ReactNode } from "react"
+import type { FormEvent } from "react"
 import { useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { useT } from "../hooks/useT"
@@ -10,28 +11,7 @@ import { RepositoryTabs } from "../components/RepositoryTabs"
 import { StatusPill as StateStatusPill, TonePill } from "../components/StatusPill"
 import { CoverageSparkline } from "../components/CoverageSparkline"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
-import {
-  archiveRepositoryFromPath,
-  bulkRepositoryIssues,
-  closeRepositoryIssue,
-  commentRepositoryIssue,
-  delegateRepositoryIssue,
-  fetchRepositoryDetail,
-  fetchRepositoryIssues,
-  pollRepositoryDetail,
-  releaseNeedsTriageRepositoryJob,
-  resumeRepositoryLanding,
-  retryFailedRepositoryJobs,
-  runMainBranchGraders,
-  repairMainBranch,
-  checkCiNow,
-  type RepositoryDetailJob,
-  type RepositoryDetailPayload,
-  type RepositoryHealthCheckRecord,
-  type RepositoryHealthHistory,
-  type RepositoryIssue,
-  type RepositoryIssuesPayload
-} from "../api/repositories"
+import { archiveRepositoryFromPath, bulkRepositoryIssues, closeRepositoryIssue, commentRepositoryIssue, delegateRepositoryIssue, fetchRepositoryDetail, fetchRepositoryIssues, pollRepositoryDetail, releaseNeedsTriageRepositoryJob, resumeRepositoryLanding, retryFailedRepositoryJobs, runMainBranchGraders, repairMainBranch, checkCiNow, type RepositoryDetailJob, type RepositoryDetailPayload, type RepositoryHealthCheckRecord, type RepositoryHealthHistory, type RepositoryIssue, type RepositoryIssuesPayload } from "../api/repositories"
 import { errorMessage } from "../lib/errorMessage"
 
 type IssueCommand =
@@ -1069,21 +1049,6 @@ function Pagination({ payload, prefix }: { payload: RepositoryDetailPayload; pre
   )
 }
 
-function StatusPill({ children, tone }: { children: ReactNode; tone: "green" | "gray" | "blue" | "red" | "amber" }) {
-  const { t } = useT("settings")
-  return <TonePill tone={tone}>{children}</TonePill>
-}
-
-function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" | "warning" }) {
-  const { t } = useT("settings")
-  const colors = {
-    error: "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300",
-    muted: "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400",
-    warning: "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200"
-  }
-  return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
-}
-
 function buttonClass(tone: "green" | "blue" | "amber" | "gray", extra = "") {
   const colors = {
     amber: "bg-amber-600 text-white hover:bg-amber-500 dark:hover:bg-amber-500",
@@ -1102,10 +1067,6 @@ function disabledPaginationClass() {
   return "rounded border border-gray-200 dark:border-gray-700 px-3 py-1 text-gray-300 dark:text-gray-600"
 }
 
-function stateFilterClass(active: boolean) {
-  return `rounded border px-3 py-1.5 text-sm font-medium ${active ? "border-blue-600 bg-blue-600 text-white" : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`
-}
-
 function pageSearch(search: string) {
   const params = new URLSearchParams(search)
   const page = params.get("page")
@@ -1114,16 +1075,5 @@ function pageSearch(search: string) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
-}
-
-function formatRelative(value: string) {
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
-  if (seconds < 60) return "just now"
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
 }
 
