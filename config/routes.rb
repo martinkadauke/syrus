@@ -216,6 +216,7 @@ Rails.application.routes.draw do
             post :release_needs_triage_job
             post :resume_landing
             post :run_main_branch_graders
+            post :repair_main_branch
             post :sync_fork
             post :check_ci_now
             get :coverage_trend

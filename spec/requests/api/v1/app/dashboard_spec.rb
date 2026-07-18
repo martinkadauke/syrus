@@ -382,7 +382,16 @@ RSpec.describe "App API dashboard commands", type: :request do
 
       expect(response).to have_http_status(:ok)
       entries = parse_body["health_blocked_repositories"]
-      expect(entries.find { |r| r["id"] == repo.id }).to include("landing_paused" => true)
+      expect(entries.find { |r| r["id"] == repo.id }).to include(
+        "landing_paused" => true,
+        "repair_path" => "/api/v1/app/repositories/#{repo.id}/repair_main_branch",
+        "main_branch_repair" => include(
+          "can_request" => true,
+          "can_spawn" => false,
+          "blocked_reason" => "waiting_for_health_signals",
+          "failed_jobs" => []
+        )
+      )
       expect(entries.find { |r| r["id"] == other.id }).to include("landing_paused" => false)
     end
 

@@ -23,6 +23,7 @@ import {
   resumeRepositoryLanding,
   retryFailedRepositoryJobs,
   runMainBranchGraders,
+  repairMainBranch,
   checkCiNow,
   type RepositoryDetailJob,
   type RepositoryDetailPayload,
@@ -680,6 +681,13 @@ function MainBranchHealthSection({ history, payload, prefix, queryKey, onNotice 
       onNotice(updated.message || null)
     }
   })
+  const repair = useMutation({
+    mutationFn: () => repairMainBranch(appendSearch(payload.paths.app_repair_main_branch_repository_path, search), payload.pagination.page),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      onNotice(updated.message || null)
+    }
+  })
   const resumeWork = useMutation({
     mutationFn: () => resumeRepositoryLanding(payload.paths.app_resume_landing_repository_path, payload.pagination.page),
     onSuccess: (updated) => {
@@ -730,6 +738,16 @@ function MainBranchHealthSection({ history, payload, prefix, queryKey, onNotice 
               {t("repository.check_ci_now")}
             </button>
           ) : null}
+          {history.main_branch_repair.can_request ? (
+            <button
+              className={buttonClass("gray")}
+              disabled={repair.isPending}
+              onClick={() => { onNotice(null); repair.mutate() }}
+              type="button"
+            >
+              {repair.isPending ? t("repository.health_repair_starting") : t("repository.health_repair_start")}
+            </button>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
           {repository.main_branch_health_enabled ? null : <span>{t("repository.health_enforcement_disabled")}</span>}
@@ -737,11 +755,21 @@ function MainBranchHealthSection({ history, payload, prefix, queryKey, onNotice 
           {repository.main_branch_repair_auto_approve ? <span>{t("repository.health_auto_repair_approval_enabled")}</span> : null}
         </div>
         {history.main_branch_repair.blocked_reason === "failed_open_cap" ? (
-          <div className="rounded border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-900 dark:text-amber-100">
+          <div className="space-y-2 rounded border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-900 dark:text-amber-100">
             {t("repository.health_repair_failed_cap", {
               count: history.main_branch_repair.failed_open_jobs_count,
               max: history.main_branch_repair.max_open_failed_jobs
             })}
+            {history.main_branch_repair.failed_jobs.length > 0 ? (
+              <div className="flex flex-wrap gap-x-2 gap-y-1">
+                <span>{t("repository.health_repair_failed_jobs")}</span>
+                {history.main_branch_repair.failed_jobs.map((job) => (
+                  <a className="font-medium text-blue-600 dark:text-blue-400 hover:underline" href={job.job_path} key={job.id}>
+                    {job.slug}
+                  </a>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : history.main_branch_repair.blocking_job ? (
           <div className="rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 text-sm text-gray-600 dark:text-gray-300">
@@ -752,6 +780,10 @@ function MainBranchHealthSection({ history, payload, prefix, queryKey, onNotice 
             <a className="font-medium text-blue-600 dark:text-blue-400 hover:underline" href={history.main_branch_repair.blocking_job.job_path}>
               {history.main_branch_repair.blocking_job.title}
             </a>
+          </div>
+        ) : history.main_branch_repair.blocked_reason === "waiting_for_health_signals" ? (
+          <div className="rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 text-sm text-gray-600 dark:text-gray-300">
+            {t("repository.health_repair_waiting_for_signals")}
           </div>
         ) : null}
         {canResume ? (
@@ -778,6 +810,7 @@ function MainBranchHealthSection({ history, payload, prefix, queryKey, onNotice 
         <HealthHistoryTable records={history.records} prefix={prefix} t={t} />
         {graders.isError ? <PanelMessage tone="error">{errorMessage(graders.error, "Run graders command failed.")}</PanelMessage> : null}
         {ciCheck.isError ? <PanelMessage tone="error">{errorMessage(ciCheck.error, "Check CI command failed.")}</PanelMessage> : null}
+        {repair.isError ? <PanelMessage tone="error">{errorMessage(repair.error, "Repair command failed.")}</PanelMessage> : null}
       </div>
     </section>
   )

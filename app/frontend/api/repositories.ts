@@ -196,6 +196,7 @@ export type RepositoryDetailPayload = {
     app_release_needs_triage_job_repository_path: string
     app_resume_landing_repository_path: string
     app_run_main_branch_graders_repository_path: string
+    app_repair_main_branch_repository_path: string
     app_check_ci_now_repository_path: string
     repositories_path: string
     repository_documents_path: string
@@ -272,6 +273,7 @@ export type RepositoryMainBranchRepairStatus = {
   failed_open_jobs_count: number
   max_open_failed_jobs: number
   blocked_reason: string | null
+  can_request: boolean
   can_spawn: boolean
   blocking_job: {
     id: number
@@ -280,6 +282,13 @@ export type RepositoryMainBranchRepairStatus = {
     title: string
     job_path: string
   } | null
+  failed_jobs: Array<{
+    id: number
+    slug: string
+    state: string
+    title: string
+    job_path: string
+  }>
 }
 
 export type RepositoryOwnerUser = {
@@ -446,6 +455,10 @@ export function resumeRepositoryLanding(path: string, page: number) {
 }
 
 export function runMainBranchGraders(path: string, page: number) {
+  return postJson<RepositoryDetailPayload>(path, { return_to: "detail", page })
+}
+
+export function repairMainBranch(path: string, page: number) {
   return postJson<RepositoryDetailPayload>(path, { return_to: "detail", page })
 }
 

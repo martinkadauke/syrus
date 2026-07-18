@@ -317,6 +317,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       "app_retry_failed_jobs_repository_path" => "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs",
       "app_resume_landing_repository_path" => "/api/v1/app/repositories/#{repository.id}/resume_landing",
       "app_run_main_branch_graders_repository_path" => "/api/v1/app/repositories/#{repository.id}/run_main_branch_graders",
+      "app_repair_main_branch_repository_path" => "/api/v1/app/repositories/#{repository.id}/repair_main_branch",
       "app_check_ci_now_repository_path" => "/api/v1/app/repositories/#{repository.id}/check_ci_now"
     )
     expect(body["paths"].keys).not_to include("poll_repository_path", "archive_repository_path", "retry_failed_jobs_repository_path")
@@ -990,6 +991,61 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(parse_body.dig("paths", "app_run_main_branch_graders_repository_path")).to eq(
       "/api/v1/app/repositories/#{repository.id}/run_main_branch_graders"
     )
+  end
+
+  it "creates a main branch repair job on operator request before health signals settle" do
+    sign_in_as(user)
+    repository = Factories.repository(
+      user: user,
+      owner: "acme",
+      name: "widgets",
+      last_health_checked_sha: "abc1234def5678",
+      last_ci_evaluated_sha: "abc1234def5678",
+      ci_health: "broken",
+      grader_health: "unknown"
+    )
+    MainBranchHealthCheck.record_ci_poll(
+      repository: repository,
+      sha: "abc1234def5678",
+      ci_health: "broken",
+      ci_failed_checks: [
+        { name: "RSpec", url: "https://github.com/acme/widgets/actions/runs/42" }
+      ]
+    )
+
+    expect {
+      post "/api/v1/app/repositories/#{repository.id}/repair_main_branch", params: { return_to: "detail", page: 1 }
+    }.to change { repository.jobs.where(system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR).count }.by(1)
+
+    expect(response).to have_http_status(:ok)
+    fix_job = repository.jobs.where(system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR).last
+    expect(parse_body["message"]).to eq("Repair job #{fix_job.slug} started.")
+    expect(parse_body.dig("health_history", "main_branch_repair")).to include(
+      "blocked_reason" => "active",
+      "blocking_job" => include("slug" => fix_job.slug, "job_path" => job_path(fix_job))
+    )
+  end
+
+  it "returns the existing repair job when operator repair is already blocked" do
+    sign_in_as(user)
+    repository = Factories.repository(user: user, owner: "acme", name: "widgets", ci_health: "broken", grader_health: "healthy")
+    repair_job = repository.jobs.create!(
+      user: user,
+      kind: "direct",
+      system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
+      issue_title: "repair in flight",
+      issue_body: "fixing main",
+      agent_provider: "claude",
+      priority: "high",
+      state: "running"
+    )
+
+    expect {
+      post "/api/v1/app/repositories/#{repository.id}/repair_main_branch", params: { return_to: "detail", page: 1 }
+    }.not_to change { repository.jobs.count }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["message"]).to eq("Repair job #{repair_job.slug} is already active.")
   end
 
   it "enqueues a CI check poll for check_ci_now" do

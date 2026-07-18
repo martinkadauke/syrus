@@ -132,5 +132,13 @@
   "main_health_inconclusive_banner": "Main branch health is inconclusive — queued jobs are held for review.",
   "main_health_inconclusive_banner_not_held": "Main branch health is inconclusive.",
   "broken_main_view_details": "View details",
+  "broken_main_repair_active": "Repair running:",
+  "broken_main_repair_waiting": "Repair waiting:",
+  "broken_main_repair_failed_jobs": "Failed repairs:",
+  "broken_main_repair_waiting_for_signals": "Waiting for CI and grader signals.",
+  "broken_main_repair_cap": "Repair cap reached.",
+  "broken_main_repair_start": "Start repair job",
+  "broken_main_repair_starting": "Starting...",
+  "broken_main_repair_start_failed": "Repair could not be started.",
   "broken_main_dismiss": "Dismiss"
 }

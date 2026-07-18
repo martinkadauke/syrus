@@ -17,8 +17,8 @@ class MainHealthChangedService
     new(repository).recovered!
   end
 
-  def self.ensure_repair_job!(repository)
-    new(repository).ensure_repair_job!
+  def self.ensure_repair_job!(repository, force: false)
+    new(repository).ensure_repair_job!(force: force)
   end
 
   def self.fix_main_job?(job)
@@ -63,13 +63,13 @@ class MainHealthChangedService
     emit_recovery_notification!(retried_count)
   end
 
-  def ensure_repair_job!
+  def ensure_repair_job!(force: false)
     return unless @repository.main_branch_health_enabled?
     return unless @repository.main_branch_repair_enabled?
     return unless @repository.main_health_broken?
     return if blocking_fix_job
 
-    unless repair_signals_ready?
+    unless force || repair_signals_ready?
       Rails.logger.info(
         "[MainHealthChangedService] #{@repository.slug} not spawning main repair job; " \
         "waiting for settled CI and grader signals for #{checked_sha}"
@@ -91,22 +91,28 @@ class MainHealthChangedService
 
   def repair_status
     blocking = blocking_fix_job
+    failed_jobs = recent_open_failed_fix_jobs.to_a
     failed_count = open_failed_fix_jobs.count
+    eligible = @repository.main_branch_health_enabled? && @repository.main_branch_repair_enabled? && @repository.main_health_broken?
+    below_failed_cap = failed_count < MAX_OPEN_FAILED_FIX_JOBS
     blocked_reason = if blocking
       blocking_fix_job_reason(blocking)
-    elsif @repository.main_health_broken? && !repair_signals_ready?
+    elsif eligible && !repair_signals_ready?
       "waiting_for_health_signals"
-    elsif failed_count >= MAX_OPEN_FAILED_FIX_JOBS
+    elsif eligible && !below_failed_cap
       "failed_open_cap"
     end
+    can_request = eligible && blocking.blank? && below_failed_cap
 
     {
       enabled: @repository.main_branch_repair_enabled?,
       max_open_failed_jobs: MAX_OPEN_FAILED_FIX_JOBS,
       failed_open_jobs_count: failed_count,
+      failed_jobs: failed_jobs,
       blocked_reason: blocked_reason,
       blocking_job: blocking,
-      can_spawn: blocked_reason.blank? && @repository.main_branch_health_enabled? && @repository.main_branch_repair_enabled? && @repository.main_health_broken? && repair_signals_ready?
+      can_request: can_request,
+      can_spawn: can_request && repair_signals_ready?
     }
   end
 
@@ -201,6 +207,7 @@ class MainHealthChangedService
     )
     attach_repair_context!(job)
     job.advance_after_triage! if job.may_advance_after_triage?
+    job
   end
 
   def repair_jobs
@@ -215,6 +222,10 @@ class MainHealthChangedService
 
   def open_failed_fix_jobs
     repair_jobs.where(state: "failed")
+  end
+
+  def recent_open_failed_fix_jobs
+    open_failed_fix_jobs.order(updated_at: :desc, id: :desc).limit(MAX_OPEN_FAILED_FIX_JOBS)
   end
 
   def blocking_fix_job

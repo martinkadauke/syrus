@@ -1125,6 +1125,7 @@ module App
 
     def health_blocked_repositories_json
       @health_blocked_repositories_json ||= user.repositories.active.select { |repo| repo.main_health_broken? || repo.main_health_inconclusive? }.map do |repo|
+        repair_status = MainHealthChangedService.new(repo).repair_status
         {
           id: repo.id,
           slug: repo.slug,
@@ -1132,9 +1133,36 @@ module App
           ci_health: repo.ci_health,
           grader_health: repo.grader_health,
           landing_paused: repo.landing_paused,
-          repository_path: repository_path(repo)
+          repository_path: repository_path(repo),
+          repair_path: "/api/v1/app/repositories/#{repo.id}/repair_main_branch",
+          main_branch_repair: main_branch_repair_json(repair_status)
         }
       end
+    end
+
+    def main_branch_repair_json(status)
+      {
+        enabled: status[:enabled],
+        failed_open_jobs_count: status[:failed_open_jobs_count],
+        max_open_failed_jobs: status[:max_open_failed_jobs],
+        blocked_reason: status[:blocked_reason],
+        can_request: status[:can_request],
+        can_spawn: status[:can_spawn],
+        blocking_job: repair_job_json(status[:blocking_job]),
+        failed_jobs: status[:failed_jobs].map { |job| repair_job_json(job) }
+      }
+    end
+
+    def repair_job_json(job)
+      return nil unless job
+
+      {
+        id: job.id,
+        slug: job.slug,
+        state: job.state,
+        title: job.title,
+        job_path: job_path(job)
+      }
     end
 
     def landing_queue_visible?

@@ -16,7 +16,7 @@ import { StatusPill, TonePill } from "../components/StatusPill"
 import { FilterBar } from "../components/FilterBar"
 import { workflowSlug } from "../lib/slugs"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
-import { bulkDashboardEpics, bulkDashboardJobs, dashboardApiSearch, fetchDashboardChrome, fetchDashboardRows, mergeDashboardPayload, recordDashboardFilterUsage, updateDashboardEpicState, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardBulkEpicAction, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLandingQueueEntry, type DashboardLane, type DashboardPayload, type DashboardRepository, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { bulkDashboardEpics, bulkDashboardJobs, dashboardApiSearch, fetchDashboardChrome, fetchDashboardRows, mergeDashboardPayload, recordDashboardFilterUsage, requestDashboardMainBranchRepair, updateDashboardEpicState, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardBulkEpicAction, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLandingQueueEntry, type DashboardLane, type DashboardPayload, type DashboardRepository, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 import type { LandingQueueBlockerJob } from "../api/jobs"
 
 const KANBAN_CARDS_PER_PAGE = 20
@@ -133,40 +133,97 @@ export function ReadinessPanel({ prefix, readiness }: { prefix: string; readines
 
 function RepositoryHealthBanners({ prefix, repositories }: { prefix: string; repositories: DashboardHealthBlockedRepository[] }) {
   const { t } = useT("dashboard")
+  const queryClient = useQueryClient()
   const [dismissed, setDismissed] = useState<Set<number>>(() => new Set())
+  const requestRepair = useMutation({
+    mutationFn: requestDashboardMainBranchRepair,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    }
+  })
   const visible = repositories.filter((repo) => !dismissed.has(repo.id))
 
   if (visible.length === 0) return null
 
   return (
     <div className="space-y-2">
-      {visible.map((repo) => (
-        <div className="flex items-center justify-between gap-3 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm dark:border-red-900 dark:bg-red-950/40" key={repo.id} role="alert">
-          <span className="text-red-800 dark:text-red-200">
-            <span className="font-mono font-medium">{repo.slug}</span>
-            {" — "}{t(repo.main_health === "inconclusive"
-              ? (repo.landing_paused ? "main_health_inconclusive_banner" : "main_health_inconclusive_banner_not_held")
-              : (repo.landing_paused ? "broken_main_banner" : "broken_main_banner_not_held")
-            )}
-          </span>
-          <div className="flex shrink-0 items-center gap-2">
-            <Link
-              className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-50 dark:border-red-800 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900"
-              to={withRoutePrefix(repo.repository_path, prefix)}
-            >
-              {t("broken_main_view_details")}
-            </Link>
-            <button
-              aria-label={t("broken_main_dismiss")}
-              className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200"
-              onClick={() => setDismissed((prev) => new Set([...prev, repo.id]))}
-              type="button"
-            >
-              <CloseIcon />
-            </button>
+      {visible.map((repo) => {
+        const repair = repo.main_branch_repair
+        const blockingJob = repair?.blocking_job
+        const failedJobs = repair?.failed_jobs ?? []
+        const isStartingRepair = requestRepair.isPending && requestRepair.variables === repo.repair_path
+        const repairError = requestRepair.isError && requestRepair.variables === repo.repair_path
+          ? (requestRepair.error instanceof Error ? requestRepair.error.message : t("broken_main_repair_start_failed"))
+          : null
+
+        return (
+          <div className="flex flex-col gap-2 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm dark:border-red-900 dark:bg-red-950/40 sm:flex-row sm:items-center sm:justify-between" key={repo.id} role="alert">
+            <div className="min-w-0">
+              <span className="text-red-800 dark:text-red-200">
+                <span className="font-mono font-medium">{repo.slug}</span>
+                {" — "}{t(repo.main_health === "inconclusive"
+                  ? (repo.landing_paused ? "main_health_inconclusive_banner" : "main_health_inconclusive_banner_not_held")
+                  : (repo.landing_paused ? "broken_main_banner" : "broken_main_banner_not_held")
+                )}
+              </span>
+              {repair ? (
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-red-700 dark:text-red-200">
+                  {blockingJob ? (
+                    <span>
+                      {t(repair.blocked_reason === "active" ? "broken_main_repair_active" : "broken_main_repair_waiting")}{" "}
+                      <Link className="font-medium underline underline-offset-2" to={withRoutePrefix(blockingJob.job_path, prefix)}>
+                        {blockingJob.slug}
+                      </Link>
+                    </span>
+                  ) : null}
+                  {failedJobs.length > 0 ? (
+                    <span>
+                      {t("broken_main_repair_failed_jobs")}{" "}
+                      {failedJobs.map((job, index) => (
+                        <span key={job.id}>
+                          {index > 0 ? ", " : null}
+                          <Link className="font-medium underline underline-offset-2" to={withRoutePrefix(job.job_path, prefix)}>
+                            {job.slug}
+                          </Link>
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
+                  {repair.blocked_reason === "waiting_for_health_signals" ? <span>{t("broken_main_repair_waiting_for_signals")}</span> : null}
+                  {repair.blocked_reason === "failed_open_cap" ? <span>{t("broken_main_repair_cap")}</span> : null}
+                  {repairError ? <span className="font-medium">{repairError}</span> : null}
+                </div>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {repair?.can_request ? (
+                <button
+                  className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-800 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900"
+                  disabled={isStartingRepair}
+                  onClick={() => requestRepair.mutate(repo.repair_path)}
+                  type="button"
+                >
+                  {isStartingRepair ? t("broken_main_repair_starting") : t("broken_main_repair_start")}
+                </button>
+              ) : null}
+              <Link
+                className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-50 dark:border-red-800 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900"
+                to={withRoutePrefix(repo.repository_path, prefix)}
+              >
+                {t("broken_main_view_details")}
+              </Link>
+              <button
+                aria-label={t("broken_main_dismiss")}
+                className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200"
+                onClick={() => setDismissed((prev) => new Set([...prev, repo.id]))}
+                type="button"
+              >
+                <CloseIcon />
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

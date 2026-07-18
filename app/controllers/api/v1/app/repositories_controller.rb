@@ -235,6 +235,35 @@ module Api
           render json: repository_command_payload(repository, message: message)
         end
 
+        def repair_main_branch
+          repository = find_repository
+          if repository.archived?
+            render_error("validation_failed", I18n.t("api.repositories.archived_first", slug: repository.slug), status: :unprocessable_content)
+            return
+          end
+
+          service = MainHealthChangedService.new(repository)
+          status = service.repair_status
+          if status[:blocking_job]
+            message = I18n.t("api.repositories.main_branch_repair_existing", slug: status[:blocking_job].slug)
+            render json: repository_command_payload(repository, message: message)
+            return
+          end
+
+          unless status[:can_request]
+            render_error("validation_failed", main_branch_repair_blocked_message(status, repository), status: :unprocessable_content)
+            return
+          end
+
+          job = service.ensure_repair_job!(force: true)
+          if job
+            message = I18n.t("api.repositories.main_branch_repair_enqueued", slug: job.slug)
+            render json: repository_command_payload(repository, message: message)
+          else
+            render_error("validation_failed", I18n.t("api.repositories.main_branch_repair_not_created", slug: repository.slug), status: :unprocessable_content)
+          end
+        end
+
         def sync_fork
           repository = find_repository
           unless repository.fork_syncable?
@@ -385,6 +414,7 @@ module Api
               app_release_needs_triage_job_repository_path: "/api/v1/app/repositories/#{repository.id}/release_needs_triage_job",
               app_resume_landing_repository_path: "/api/v1/app/repositories/#{repository.id}/resume_landing",
               app_run_main_branch_graders_repository_path: "/api/v1/app/repositories/#{repository.id}/run_main_branch_graders",
+              app_repair_main_branch_repository_path: "/api/v1/app/repositories/#{repository.id}/repair_main_branch",
               app_check_ci_now_repository_path: "/api/v1/app/repositories/#{repository.id}/check_ci_now",
               repositories_path: repositories_path,
               repository_documents_path: repository_documents_path(repository),
@@ -816,8 +846,10 @@ module Api
             failed_open_jobs_count: status[:failed_open_jobs_count],
             max_open_failed_jobs: status[:max_open_failed_jobs],
             blocked_reason: status[:blocked_reason],
+            can_request: status[:can_request],
             can_spawn: status[:can_spawn],
-            blocking_job: repair_job_json(status[:blocking_job])
+            blocking_job: repair_job_json(status[:blocking_job]),
+            failed_jobs: status[:failed_jobs].map { |job| repair_job_json(job) }
           }
         end
 
@@ -858,6 +890,24 @@ module Api
             repository_detail_payload(repository.reload, page: detail_page, message: message)
           else
             repositories_payload(message: message)
+          end
+        end
+
+        def main_branch_repair_blocked_message(status, repository)
+          case status[:blocked_reason]
+          when "failed_open_cap"
+            I18n.t(
+              "api.repositories.main_branch_repair_failed_cap",
+              count: status[:failed_open_jobs_count],
+              max: status[:max_open_failed_jobs],
+              slug: repository.slug
+            )
+          when "waiting"
+            I18n.t("api.repositories.main_branch_repair_waiting", slug: repository.slug)
+          when "active"
+            I18n.t("api.repositories.main_branch_repair_active", slug: repository.slug)
+          else
+            I18n.t("api.repositories.main_branch_repair_unavailable", slug: repository.slug)
           end
         end
 

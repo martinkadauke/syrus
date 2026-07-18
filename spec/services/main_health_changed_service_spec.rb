@@ -134,7 +134,35 @@ RSpec.describe MainHealthChangedService do
         }.not_to change { repository.jobs.where(kind: "direct").count }
 
         status = MainHealthChangedService.new(repository.reload).repair_status
-        expect(status).to include(blocked_reason: "waiting_for_health_signals", can_spawn: false)
+        expect(status).to include(blocked_reason: "waiting_for_health_signals", can_request: true, can_spawn: false)
+      end
+
+      it "allows a manual fix Job while waiting for settled health signals" do
+        repository.update!(
+          last_health_checked_sha: "wait123def456",
+          last_ci_evaluated_sha: "wait123def456",
+          ci_health: "broken",
+          grader_health: "unknown"
+        )
+        MainBranchHealthCheck.record_ci_poll(
+          repository: repository,
+          sha: "wait123def456",
+          ci_health: "broken",
+          ci_failed_checks: [
+            { name: "RSpec", url: "https://github.com/tkadauke/syrus/actions/runs/42" }
+          ]
+        )
+
+        expect {
+          described_class.ensure_repair_job!(repository, force: true)
+        }.to change { repository.jobs.where(kind: "direct").count }.by(1)
+
+        fix_job = repository.jobs.where(kind: "direct").last
+        expect(fix_job).to have_attributes(
+          issue_title: MainHealthChangedService::FIX_MAIN_TITLE,
+          system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
+          state: "queued"
+        )
       end
 
       it "attaches captured CI failure details to the fix Job" do
@@ -322,8 +350,10 @@ RSpec.describe MainHealthChangedService do
         status = MainHealthChangedService.new(repository).repair_status
         expect(status).to include(
           failed_open_jobs_count: MainHealthChangedService::MAX_OPEN_FAILED_FIX_JOBS,
-          blocked_reason: "failed_open_cap"
+          blocked_reason: "failed_open_cap",
+          can_request: false
         )
+        expect(status[:failed_jobs].map(&:issue_title)).to contain_exactly("failed repair 0", "failed repair 1", "failed repair 2")
       end
 
       it "spawns a new fix Job when the previous one is closed" do

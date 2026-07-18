@@ -19,6 +19,27 @@ export type DashboardHealthBlockedRepository = {
   grader_health: string
   landing_paused: boolean
   repository_path: string
+  repair_path: string
+  main_branch_repair: DashboardMainBranchRepairStatus
+}
+
+export type DashboardRepairJob = {
+  id: number
+  slug: string
+  state: string
+  title: string
+  job_path: string
+}
+
+export type DashboardMainBranchRepairStatus = {
+  enabled: boolean
+  failed_open_jobs_count: number
+  max_open_failed_jobs: number
+  blocked_reason: string | null
+  can_request: boolean
+  can_spawn: boolean
+  blocking_job: DashboardRepairJob | null
+  failed_jobs: DashboardRepairJob[]
 }
 
 export type DashboardOwner = {
@@ -483,6 +504,10 @@ export function updateDashboardEpicState(path: string, targetState: string) {
 
 export function toggleDashboardLandingPause(path: string) {
   return postJson<DashboardLandingPausePayload>(path, {})
+}
+
+export function requestDashboardMainBranchRepair(path: string) {
+  return postJson<{ message?: string }>(path, {})
 }
 
 export function recordDashboardFilterUsage(input: DashboardFilterUsageInput) {
