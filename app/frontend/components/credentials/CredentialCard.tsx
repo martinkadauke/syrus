@@ -1,3 +1,4 @@
+import { inputClass } from "../../lib/formClasses"
 import { useEffect, useRef, useState, type ReactNode, type Ref } from "react"
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { createConsumer } from "@rails/actioncable"
@@ -205,10 +206,6 @@ function secondaryButtonClass() {
 
 function primaryButtonClass() {
   return "rounded bg-terracotta-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-terracotta-700 disabled:cursor-not-allowed disabled:opacity-60"
-}
-
-function inputClass() {
-  return "block w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 shadow-sm focus:outline-terracotta-600"
 }
 
 
