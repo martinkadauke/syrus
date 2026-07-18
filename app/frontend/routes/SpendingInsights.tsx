@@ -1,4 +1,5 @@
 import { withRoutePrefix } from "../lib/routing"
+import { formatCurrency } from "../lib/format"
 import { useQuery } from "@tanstack/react-query"
 import { useMemo, useState, type FormEvent } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
@@ -324,10 +325,6 @@ function sortValue(row: SpendingBreakdownRow | SpendingTriggerRow, key: SortKey)
   if (key === "average_usd") return "average_usd" in row ? row.average_usd : 0
   if (key === "last_30_days_usd") return "last_30_days_usd" in row ? row.last_30_days_usd || 0 : 0
   return "average_job_usd" in row ? row.average_job_usd : 0
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: value >= 10 ? 2 : 4 }).format(value)
 }
 
 function humanize(value: string) {

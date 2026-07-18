@@ -92,32 +92,30 @@ remaining four forms into `lib/formClasses`.
 
 ---
 
-## 3. `formatCurrency` — precision differs
+## 3. `formatCurrency` — **RESOLVED: 4 decimals everywhere**
 
-`routes/jobDetail/formatting.ts` — **2 decimals**:
+There were four definitions with different precision (jobDetail 2dp;
+SpendingInsights 2dp-if-≥10-else-4dp; chat/utils + dashboard/helpers a
+`digits = 4` param) and two call sites passing `, 2`. Consolidated to one
+canonical helper in `lib/format.ts`, always **4 decimals** — agent costs are
+frequently fractions of a cent, so 2 decimals collapsed distinct runs to the
+same `$0.00`:
+
 ```ts
-export function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
+// app/frontend/lib/format.ts
+export function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency", currency: "USD",
+    minimumFractionDigits: 4, maximumFractionDigits: 4
+  }).format(value)
 }
-// $1.20
+// $1.2000, $0.0034
 ```
 
-`routes/chat/utils.ts`, `routes/dashboard/helpers.ts` — **4 decimals** (default):
-```ts
-export function formatCurrency(value: number, digits = 4) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
-}
-// $1.2000  (or $0.0034 for a small agent/token cost)
-```
-
-The 4-decimal form shows fine-grained agent/token costs (`$0.0034`); the
-2-decimal form is for coarser dollar totals. Merging naively would either drop
-precision on token costs or render `$1.2000` on a summary. This looks
-intentional.
-
-**Question:** keep two, but rename for intent (e.g. `formatCost` for the
-4-decimal fine-grained one, `formatCurrency` for the 2-decimal total)? Or
-standardize on one precision?
+`chat/utils.ts`, `dashboard/helpers.ts`, and `jobDetail/formatting.ts` now
+re-export it (`export { formatCurrency } from "../../lib/format"`), so their
+importers are unchanged; `SpendingInsights.tsx` imports it directly. The
+`digits` param and both `, 2` call-site overrides are gone.
 
 ---
 

@@ -18,9 +18,7 @@ export function compactText(value: string) {
   return value.replace(/\s+/g, " ").trim()
 }
 
-export function formatCurrency(value: number, digits = 4) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
-}
+export { formatCurrency } from "../../lib/format"
 
 export function pluralize(count: number, singular: string) {
   return count === 1 ? singular : `${singular}s`

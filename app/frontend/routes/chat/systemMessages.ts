@@ -97,7 +97,7 @@ export function systemResultMessage(fields: Record<string, string>): ChatSystemM
   const body = [systemResultTitle(error, subtype)]
   if (fields.turns) body.push(`${Number.parseInt(fields.turns, 10)} ${Number.parseInt(fields.turns, 10) === 1 ? "turn" : "turns"}`)
   if (fields.duration_ms) body.push(systemDurationLabel(fields.duration_ms))
-  if (fields.total_cost_usd) body.push(formatCurrency(Number.parseFloat(fields.total_cost_usd), 2))
+  if (fields.total_cost_usd) body.push(formatCurrency(Number.parseFloat(fields.total_cost_usd)))
 
   return { tone: error ? "error" : "success", label: error ? "Failed" : "Done", body: body.join(" · ") }
 }

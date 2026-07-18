@@ -3545,7 +3545,7 @@ describe("App", () => {
       expect(within(row).getByLabelText("Select Repair aqueduct")).toBeInTheDocument()
       expect(within(row).getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
       expect(within(row).getByText("implemented")).toBeInTheDocument()
-      expect(within(row).getByText("$0.12")).toBeInTheDocument()
+      expect(within(row).getByText("$0.1234")).toBeInTheDocument()
       expect(within(row).getByText("acme/widgets")).toBeInTheDocument()
       expect(within(row).getByRole("link", { name: "#12" })).toHaveAttribute("href", "https://github.com/acme/widgets/issues/12")
       expect(within(row).getByRole("link", { name: "PR #34" })).toHaveAttribute("href", "https://github.com/acme/widgets/pull/34")

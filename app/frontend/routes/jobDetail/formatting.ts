@@ -50,9 +50,7 @@ export function formatDuration(startedAt: string | null, finishedAt: string | nu
   return `${minutes}m ${seconds}s`
 }
 
-export function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
-}
+export { formatCurrency } from "../../lib/format"
 
 export function plural(count: number, singular: string) {
   if (count !== 1 && singular.endsWith("y")) return `${singular.slice(0, -1)}ies`

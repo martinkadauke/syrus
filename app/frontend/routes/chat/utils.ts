@@ -41,9 +41,7 @@ export function errorAsError(error: unknown) {
   return error instanceof Error ? error : new Error(String(error))
 }
 
-export function formatCurrency(value: number, digits = 4) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
-}
+export { formatCurrency } from "../../lib/format"
 
 export function formatTokenCount(value: number) {
   if (value < 1000) return new Intl.NumberFormat("en-US").format(value)

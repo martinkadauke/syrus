@@ -438,7 +438,7 @@ function MobileJobRow({ job, selected, onToggleOne, prefix, topSeparator = false
       <div className="min-w-0 text-gray-700 dark:text-gray-200">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <WorkflowBadges state={job.summary_state} triggerAriaPrefix="Active workflow trigger" triggerKind={job.active_workflow_trigger_kind} />
-          {job.total_cost_usd == null ? null : <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{formatCurrency(job.total_cost_usd, 2)}</span>}
+          {job.total_cost_usd == null ? null : <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{formatCurrency(job.total_cost_usd)}</span>}
           <RepositorySlugLink prefix={prefix} repository={job.repository} />
           <OwnerBadge badge={job.owner_badge} />
         </div>
