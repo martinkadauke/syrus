@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
-import { ApiError } from "../api/client"
 import {
   createCronTemplate,
   deleteCronTemplate,
@@ -14,6 +13,7 @@ import {
   type CronTemplateRow
 } from "../api/cronTemplates"
 import { useT } from "../hooks/useT"
+import { errorMessage } from "../lib/errorMessage"
 
 const defaultPolicies = ["skip", "pile", "replace"]
 const emptyTemplate: CronTemplateInput = {
@@ -413,6 +413,3 @@ function inputFromTemplate(template: CronTemplateDetail): CronTemplateInput {
   }
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { buttonClass } from "../lib/buttonClasses"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
-import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import { CloseIcon } from "../components/CloseIcon"
 import { useT } from "../hooks/useT"
@@ -29,6 +28,7 @@ import {
 } from "../api/epics"
 import { Markdown } from "../lib/Markdown"
 import { CopyableSlug } from "../components/CopyableSlug"
+import { errorMessage } from "../lib/errorMessage"
 
 let mermaidInitialized = false
 let mermaidInitializedTheme: "base" | "dark" | null = null
@@ -804,6 +804,3 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

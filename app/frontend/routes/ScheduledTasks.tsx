@@ -3,7 +3,6 @@ import type { UseMutationResult } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
-import { ApiError } from "../api/client"
 import { buttonClass } from "../lib/buttonClasses"
 import { NoticeToast } from "../components/NoticeToast"
 import { useT } from "../hooks/useT"
@@ -24,6 +23,7 @@ import {
   type ScheduledTasksIndexPayload,
   type ScheduledTaskRow
 } from "../api/scheduledTasks"
+import { errorMessage } from "../lib/errorMessage"
 
 const fallbackOptions: ScheduledTaskOptions = {
   kinds: ["cron", "one_shot"],
@@ -508,6 +508,3 @@ function toDatetimeLocal(value: string | null) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

@@ -18,6 +18,7 @@ import { workflowSlug } from "../lib/slugs"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { bulkDashboardEpics, bulkDashboardJobs, dashboardApiSearch, fetchDashboardChrome, fetchDashboardRows, mergeDashboardPayload, recordDashboardFilterUsage, requestDashboardMainBranchRepair, updateDashboardEpicState, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardBulkEpicAction, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLandingQueueEntry, type DashboardLane, type DashboardPayload, type DashboardRepository, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 import type { LandingQueueBlockerJob } from "../api/jobs"
+import { errorMessage } from "../lib/errorMessage"
 
 const KANBAN_CARDS_PER_PAGE = 20
 
@@ -2144,9 +2145,6 @@ function humanizeOption(value: string) {
   return value.replace(/_/g, " ").replace(/^\w/, (match) => match.toUpperCase())
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}
 
 function formatDate(value: string | null) {
   if (!value) return "-"

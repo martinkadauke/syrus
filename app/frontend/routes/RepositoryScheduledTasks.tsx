@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
-import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import {
   deleteRepositoryScheduledTask,
@@ -14,6 +13,7 @@ import {
 import { RepositoryTabs } from "../components/RepositoryTabs"
 import { toRomanDate } from "../lib/romanCalendar"
 import { useT } from "../hooks/useT"
+import { errorMessage } from "../lib/errorMessage"
 
 export function RepositoryScheduledTasksRoute() {
   const { t } = useT("settings")
@@ -170,6 +170,3 @@ function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString() : null
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

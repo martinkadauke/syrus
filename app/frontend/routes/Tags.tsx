@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { ApiError } from "../api/client"
 import { useT } from "../hooks/useT"
 import { NoticeToast } from "../components/NoticeToast"
 import {
@@ -14,6 +13,7 @@ import {
   type TagRow,
   type TagsPayload
 } from "../api/tags"
+import { errorMessage } from "../lib/errorMessage"
 
 const queryKey = ["tags"] as const
 
@@ -255,6 +255,3 @@ function readableTextColor(hex: string) {
   return luminance > 0.62 ? "#111827" : "#ffffff"
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

@@ -2,7 +2,6 @@ import { useMutation, useQuery } from "@tanstack/react-query"
 import type { FormEvent, MouseEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
-import { ApiError } from "../api/client"
 import {
   createEpic,
   fetchEditEpicForm,
@@ -12,6 +11,7 @@ import {
   updateEpic
 } from "../api/epics"
 import { useT } from "../hooks/useT"
+import { errorMessage } from "../lib/errorMessage"
 
 export function EpicFormRoute({ mode }: { mode: "new" | "edit" }) {
   const { t } = useT("epics")
@@ -187,6 +187,3 @@ function inputClass() {
   return "block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-blue-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:placeholder:text-gray-500"
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

@@ -8,10 +8,10 @@ import {
   type AdminInvitation,
   type AdminInvitationsPayload
 } from "../api/adminInvitations"
-import { ApiError } from "../api/client"
 import { CopyIcon } from "../components/CopyableSlug"
 import { NoticeToast } from "../components/NoticeToast"
 import { useT } from "../hooks/useT"
+import { errorMessage } from "../lib/errorMessage"
 
 const queryKey = ["admin", "invitations"] as const
 
@@ -212,9 +212,6 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
   return <div className={`p-4 text-sm ${tone === "error" ? "text-red-700 dark:text-red-300" : "text-gray-600 dark:text-gray-300"}`}>{children}</div>
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString()

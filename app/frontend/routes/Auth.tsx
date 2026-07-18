@@ -2,7 +2,6 @@ import { useMutation, useQuery } from "@tanstack/react-query"
 import type { FormEvent, KeyboardEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
-import { ApiError } from "../api/client"
 import { authPrimaryButtonClass } from "../lib/buttonStyles"
 import { NoticeToast } from "../components/NoticeToast"
 import { CapsLockHint, EmailValidityHint, PasswordMatchHint, PasswordStrengthMeter } from "../components/PasswordFeedback"
@@ -14,6 +13,7 @@ import {
   signUp,
   type SignupPayload
 } from "../api/auth"
+import { errorMessage } from "../lib/errorMessage"
 
 export function SignInRoute() {
   const location = useLocation()
@@ -351,6 +351,3 @@ function assignWithPrefix(prefix: string, path: string) {
   window.location.assign(authRedirectTarget(prefix, path))
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

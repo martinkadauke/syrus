@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useState } from "react"
-import { ApiError } from "../api/client"
 import { fetchHiddenChats, unhideChat, type HiddenChatRecord } from "../api/chats"
 import { NoticeToast } from "../components/NoticeToast"
 import { useT } from "../hooks/useT"
+import { errorMessage } from "../lib/errorMessage"
 
 export function HiddenChatsRoute() {
   const [notice, setNotice] = useState<string | null>(null)
@@ -125,7 +125,3 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
   return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
 }
 
-function errorMessage(error: Error, fallback: string) {
-  if (error instanceof ApiError) return error.message
-  return fallback
-}

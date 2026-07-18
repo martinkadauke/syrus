@@ -2,7 +2,6 @@ import { useMutation, useQuery } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
-import { ApiError } from "../api/client"
 import {
   createRepository,
   fetchEditRepositoryForm,
@@ -17,6 +16,7 @@ import {
   updateRepository
 } from "../api/repositories"
 import { useT } from "../hooks/useT"
+import { errorMessage } from "../lib/errorMessage"
 
 type OwnerOption = {
   login: string
@@ -641,6 +641,3 @@ function repoErrorMessage(error: string) {
   return "Unable to load repositories. Enter the name manually."
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

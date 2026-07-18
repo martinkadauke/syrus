@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
-import { ApiError } from "../api/client"
 import { useT } from "../hooks/useT"
 import { NoticeToast } from "../components/NoticeToast"
 import { OnboardingEmptyState, useSetupStatus } from "../components/OnboardingEmptyState"
@@ -32,6 +31,7 @@ import {
   type RepositoryIssue,
   type RepositoryIssuesPayload
 } from "../api/repositories"
+import { errorMessage } from "../lib/errorMessage"
 
 type IssueCommand =
   | { kind: "close"; issueNumber: number }
@@ -1137,6 +1137,3 @@ function formatRelative(value: string) {
   return `${days}d ago`
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

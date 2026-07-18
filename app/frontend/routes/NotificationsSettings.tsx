@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState, type ReactNode } from "react"
-import { ApiError } from "../api/client"
 import {
   fetchNotificationPreferences,
   updateNotificationPreferences,
@@ -9,6 +8,7 @@ import {
 } from "../api/notifications"
 import { NoticeToast } from "../components/NoticeToast"
 import { useT } from "../hooks/useT"
+import { errorMessage } from "../lib/errorMessage"
 
 const queryKey = ["notification_preferences"] as const
 
@@ -153,6 +153,3 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
   return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

@@ -6,8 +6,8 @@ import {
   type AdminFeature,
   type AdminFeaturesPayload
 } from "../api/adminFeatures"
-import { ApiError } from "../api/client"
 import { useT } from "../hooks/useT"
+import { errorMessage } from "../lib/errorMessage"
 
 const queryKey = ["admin", "features"] as const
 
@@ -120,6 +120,3 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
   return <div className={`p-4 text-sm ${tone === "error" ? "text-red-700 dark:text-red-300" : "text-gray-600 dark:text-gray-300"}`}>{children}</div>
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

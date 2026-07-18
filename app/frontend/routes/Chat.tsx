@@ -128,6 +128,7 @@ import {
 import { createReportIssue } from "../api/reportIssues"
 import { useT } from "../hooks/useT"
 import { ChatJobStatusPanel } from "./ChatJobStatusPanel"
+import { errorMessage } from "../lib/errorMessage"
 
 const WHITEBOARD_SAVE_DEBOUNCE_MS = 500
 const CHAT_ENTER_SUBMIT_MIN_WIDTH = 1024
@@ -6371,9 +6372,6 @@ function maxMessageId(messages: ChatMessageItem[]) {
   return ids.length > 0 ? Math.max(...ids) : null
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}
 
 function errorAsError(error: unknown) {
   return error instanceof Error ? error : new Error(String(error))

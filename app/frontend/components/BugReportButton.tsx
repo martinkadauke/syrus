@@ -1,11 +1,11 @@
 import { useMutation } from "@tanstack/react-query"
 import type { FormEvent, KeyboardEvent } from "react"
 import { useEffect, useState } from "react"
-import { ApiError } from "../api/client"
 import { createBugReport } from "../api/bugReports"
 import { useT } from "../hooks/useT"
 import { CloseIcon } from "./CloseIcon"
 import { NoticeToast } from "./NoticeToast"
+import { errorMessage } from "../lib/errorMessage"
 
 type Html2Canvas = typeof import("html2canvas-pro").default
 type ScreenshotChoice = "viewport" | "fullPage" | "none"
@@ -266,9 +266,6 @@ function BugIcon() {
   )
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}
 
 function selectedScreenshot(captures: ScreenshotCaptures, choice: ScreenshotChoice) {
   if (choice === "none") return null

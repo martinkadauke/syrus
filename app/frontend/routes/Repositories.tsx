@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
-import { ApiError } from "../api/client"
 import { useT } from "../hooks/useT"
 import { NoticeToast } from "../components/NoticeToast"
 import { OnboardingEmptyState, useSetupStatus } from "../components/OnboardingEmptyState"
@@ -14,6 +13,7 @@ import {
   type RepositoryRow,
   unarchiveRepository
 } from "../api/repositories"
+import { errorMessage } from "../lib/errorMessage"
 
 type RepositoryAction = {
   id: number
@@ -311,6 +311,3 @@ function withRoutePrefix(path: string, prefix: string) {
   return `${prefix}${path}`
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

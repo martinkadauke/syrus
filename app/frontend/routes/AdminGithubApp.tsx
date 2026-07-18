@@ -7,9 +7,9 @@ import {
   type AdminGithubAppRegisterPayload,
   type AdminGithubAppStatus
 } from "../api/adminGithubApp"
-import { ApiError } from "../api/client"
 import { openInNewTab } from "../lib/desktopShell"
 import { useT } from "../hooks/useT"
+import { errorMessage } from "../lib/errorMessage"
 
 export function AdminGithubAppRegister() {
   const { t } = useT("admin")
@@ -148,10 +148,6 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
   return <section className={`rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 text-sm ${tone === "error" ? "text-red-700 dark:text-red-300" : "text-gray-600 dark:text-gray-300"}`}>{children}</section>
 }
 
-function errorMessage(error: Error, fallback: string) {
-  if (error instanceof ApiError) return error.message
-  return fallback
-}
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString()

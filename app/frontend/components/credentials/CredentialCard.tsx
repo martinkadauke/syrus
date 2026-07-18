@@ -10,7 +10,6 @@ import {
   type CredentialTestResult,
   type CredentialsPayload
 } from "../../api/credentials"
-import { ApiError } from "../../api/client"
 import { openInNewTab } from "../../lib/desktopShell"
 import { useT } from "../../hooks/useT"
 import { useSetupStatus } from "../OnboardingEmptyState"
@@ -18,6 +17,7 @@ import { GithubAppPanel } from "../GithubAppPanel"
 import { GeminiSetupSheet } from "../GeminiSetupSheet"
 import { GithubTokenStep, CheckIcon, WarnIcon } from "./GithubTokenStep"
 import { ClaudeConnect } from "./ClaudeConnect"
+import { errorMessage } from "../../lib/errorMessage"
 
 // Per-provider credential cards for the /credentials page, rebuilt around
 // the setup flow's components so first-run and day-two share one experience:
@@ -211,9 +211,6 @@ function inputClass() {
   return "block w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 shadow-sm focus:outline-terracotta-600"
 }
 
-function errorMessage(error: unknown, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}
 
 // ---------- GitHub ----------
 

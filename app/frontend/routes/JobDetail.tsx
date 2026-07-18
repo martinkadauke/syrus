@@ -3,7 +3,6 @@ import type { Dispatch, FormEvent, ReactNode, SetStateAction, UIEvent } from "re
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { useT } from "../hooks/useT"
-import { ApiError } from "../api/client"
 import { createTerminalSession } from "../api/terminal"
 import { AnsiText } from "../components/AnsiText"
 import { CloseIcon } from "../components/CloseIcon"
@@ -51,6 +50,7 @@ import {
   type PendingFeedbackComment
 } from "../api/jobs"
 import { CoverageCard } from "../components/CoverageCard"
+import { errorMessage } from "../lib/errorMessage"
 
 type JobTab = "summary" | "workflows" | "attachments" | "source"
 type JobDetailQueryKey = readonly ["jobs", string, "detail", string]
@@ -3284,6 +3284,3 @@ function booleanValue(value: unknown) {
   return typeof value === "boolean" ? value : null
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

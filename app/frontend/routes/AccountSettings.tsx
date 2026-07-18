@@ -3,7 +3,6 @@ import type { FormEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { useLocation } from "react-router-dom"
 import i18n from "../i18n"
-import { ApiError } from "../api/client"
 import { useT } from "../hooks/useT"
 import { NoticeToast } from "../components/NoticeToast"
 import { OnboardingEmptyState, useSetupStatus } from "../components/OnboardingEmptyState"
@@ -23,6 +22,7 @@ import {
   type CredentialsInput,
   type CredentialsPayload
 } from "../api/credentials"
+import { errorMessage } from "../lib/errorMessage"
 
 const queryKey = ["credentials"] as const
 type AccountSettingsSection = "profile" | "credentials" | "agent" | "preferences"
@@ -437,9 +437,6 @@ function titleize(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (match) => match.toUpperCase())
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}
 
 function routePrefix(pathname: string) {
   return pathname.startsWith("/app-shell") ? "/app-shell" : ""

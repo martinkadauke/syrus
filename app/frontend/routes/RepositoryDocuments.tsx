@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
-import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import {
   createRepositoryDocument,
@@ -14,6 +13,7 @@ import {
 } from "../api/repositoryDocuments"
 import { RepositoryTabs } from "../components/RepositoryTabs"
 import { useT } from "../hooks/useT"
+import { errorMessage } from "../lib/errorMessage"
 
 export function RepositoryDocumentsRoute() {
   const { t } = useT("settings")
@@ -286,6 +286,3 @@ function formatBytes(value: number) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}

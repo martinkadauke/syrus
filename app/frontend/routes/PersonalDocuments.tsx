@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
-import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import {
   addCredentialDocuments,
@@ -11,6 +10,7 @@ import {
   type PersonalDocumentsPayload
 } from "../api/credentials"
 import { useT } from "../hooks/useT"
+import { errorMessage } from "../lib/errorMessage"
 
 const queryKey = ["personal-documents"] as const
 
@@ -210,6 +210,3 @@ function formatBytes(value: number | null) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function errorMessage(error: Error, fallback: string) {
-  return error instanceof ApiError ? error.message : fallback
-}
