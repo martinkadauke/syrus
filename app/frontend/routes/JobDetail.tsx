@@ -56,6 +56,8 @@ import type { DiffLine, DiffLineKind, LineAnnotation } from "./jobDetail/diffRen
 import { diffCoverageBorderClass, diffGutterClass, diffLine, diffLineClass, diffMarkerClass, parseUnifiedDiff } from "./jobDetail/diffRendering"
 import type { DisplayTranscriptLog, TranscriptLog } from "./jobDetail/transcript"
 import { coalesceTranscriptLogs, commandMarkerSource, isRunTranscriptAtBottom, joinTranscriptChunks, scrollRunTranscriptToBottom, shouldCoalesceTranscriptLogs, transcriptLogSourceKey } from "./jobDetail/transcript"
+import type { SourceRefPayload } from "./jobDetail/sourceRefs"
+import { refOptionsFor, sourceDiffSearch, sourceSearch } from "./jobDetail/sourceRefs"
 
 type JobTab = "summary" | "workflows" | "attachments" | "source"
 type JobDetailQueryKey = readonly ["jobs", string, "detail", string]
@@ -2617,35 +2619,6 @@ function SourceTreeRow({
       )) : null}
     </>
   )
-}
-
-type SourceRefPayload = Pick<JobSourcePayload, "merge_base_sha" | "default_ref" | "branch_commits">
-
-function refOptionsFor(payload: SourceRefPayload, activeRefs: Array<string | null | undefined> = []) {
-  const options = new Map<string, string>()
-  options.set(payload.merge_base_sha || payload.default_ref, `Merge base (${(payload.merge_base_sha || payload.default_ref).slice(0, 7)})`)
-  payload.branch_commits.forEach((commit) => options.set(commit.sha, `${commit.short_sha} ${commit.message}`))
-  activeRefs.forEach((ref) => {
-    if (ref && !options.has(ref)) options.set(ref, ref.slice(0, 12))
-  })
-
-  return Array.from(options, ([value, label]) => ({ value, label }))
-}
-
-function sourceSearch(ref: string | null, path: string | null) {
-  const params = new URLSearchParams()
-  if (ref) params.set("ref", ref)
-  if (path) params.set("path", path)
-  const value = params.toString()
-  return value ? `?${value}` : ""
-}
-
-function sourceDiffSearch(baseRef: string | null, headRef: string | null) {
-  const params = new URLSearchParams()
-  if (baseRef) params.set("base", baseRef)
-  if (headRef) params.set("head", headRef)
-  const value = params.toString()
-  return value ? `?${value}` : ""
 }
 
 function withRoutePrefix(path: string, prefix: string) {
