@@ -56,7 +56,7 @@ function AdminQueue({ tab }: { tab: QueueTab }) {
   const prefix = routePrefix(location.pathname)
 
   return (
-    <main aria-label="Admin queue" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("aria_queue")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       <header className="flex items-end justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-4">
         <div>
           <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{t("section_label")}</p>
@@ -72,7 +72,7 @@ function AdminQueue({ tab }: { tab: QueueTab }) {
         </button>
       </header>
 
-      <nav aria-label="Queue tabs" className="flex flex-wrap gap-2">
+      <nav aria-label={t("aria_queue_tabs")} className="flex flex-wrap gap-2">
         {queueTabs.map((candidate) => (
           <Link
             className={`rounded border px-3 py-1.5 text-sm ${

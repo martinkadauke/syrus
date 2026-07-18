@@ -18,7 +18,7 @@ export function AdminStuck() {
   })
 
   return (
-    <main aria-label="Admin stuck items" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("aria_stuck")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       <header className="flex items-end justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-4">
         <div>
           <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{t("section_label")}</p>

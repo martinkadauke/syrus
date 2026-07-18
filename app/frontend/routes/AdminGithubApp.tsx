@@ -19,7 +19,7 @@ export function AdminGithubAppRegister() {
   })
 
   return (
-    <main aria-label="GitHub App registration" className="mx-auto max-w-6xl space-y-6 p-6">
+    <main aria-label={t("aria_github_registration")} className="mx-auto max-w-6xl space-y-6 p-6">
       <PageHeader
         title={t("github_app.register_title")}
         description={t("github_app.register_description")}
@@ -40,7 +40,7 @@ export function AdminGithubAppConfirm() {
   })
 
   return (
-    <main aria-label="GitHub App registered" className="mx-auto max-w-6xl space-y-6 p-6">
+    <main aria-label={t("aria_github_registered")} className="mx-auto max-w-6xl space-y-6 p-6">
       <PageHeader
         title={t("github_app.confirm_title")}
         description={t("github_app.confirm_description")}

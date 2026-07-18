@@ -371,5 +371,15 @@
     "aria_summary": "Transcript summary",
     "aria_pagination": "Transcript pagination",
     "other_event": "Other event"
-  }
+  },
+  "aria_queue": "Admin queue",
+  "aria_queue_tabs": "Queue tabs",
+  "aria_stuck": "Admin stuck items",
+  "aria_settings": "Admin settings",
+  "aria_invitations": "Admin invitations",
+  "aria_installations": "Admin installations",
+  "aria_features": "Admin features",
+  "aria_console": "Admin console",
+  "aria_github_registration": "GitHub App registration",
+  "aria_github_registered": "GitHub App registered"
 }

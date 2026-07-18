@@ -371,5 +371,15 @@
     "aria_summary": "Summarium transcriptionis",
     "aria_pagination": "Paginatio transcriptionis",
     "other_event": "Eventus alius"
-  }
+  },
+  "aria_queue": "Ordo administratoris",
+  "aria_queue_tabs": "Tabulae ordinis",
+  "aria_stuck": "Res haerentes administratoris",
+  "aria_settings": "Optiones administratoris",
+  "aria_invitations": "Invitationes administratoris",
+  "aria_installations": "Institutiones administratoris",
+  "aria_features": "Facultates administratoris",
+  "aria_console": "Consolium administratoris",
+  "aria_github_registration": "Inscriptio App GitHub",
+  "aria_github_registered": "App GitHub inscripta"
 }
