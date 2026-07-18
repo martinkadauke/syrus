@@ -187,17 +187,10 @@ import {
   stringValue
 } from "./chat/utils"
 import { structuredTool, systemMessage } from "./chat/systemMessages"
+import type { ChatDayDividerItem, ChatPendingActionStreamItem, ChatStreamItem, ChatTimestampItem } from "./chat/streamTypes"
 import { fullResultBody, shortenWorkspacePaths, toolDetail, toolLabel, toolResultSummary } from "./chat/toolRendering"
 
 
-type ChatPendingActionStreamItem = {
-  type: "pending_action"
-  pendingAction: ChatPendingAction
-}
-
-type ChatTimestampItem = { type: "timestamp"; time: string; fullDatetime: string }
-type ChatDayDividerItem = { type: "day_divider"; date: string; label: string }
-type ChatStreamItem = ChatRenderItem | ChatPendingActionStreamItem | ChatTimestampItem | ChatDayDividerItem
 
 type ExcalidrawComponent = typeof import("@excalidraw/excalidraw")["Excalidraw"]
 type ExcalidrawApi = Pick<ExcalidrawImperativeAPI, "addFiles" | "updateScene">
