@@ -32,12 +32,7 @@ export function shortSha(sha: string | null) {
   return sha ? sha.slice(0, 7) : "unknown"
 }
 
-export function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
-}
+export { withRoutePrefix } from "../../lib/routing"
 
 export function jobSlug(id: number) {
   return `JOB-${id}`

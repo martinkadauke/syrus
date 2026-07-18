@@ -53,12 +53,7 @@ export function adminNavItemActive(pathname: string, navPath: string) {
   return pathname === navPath || pathname.startsWith(`${navPath}/`)
 }
 
-export function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
-}
+export { withRoutePrefix } from "../../lib/routing"
 
 export function dashboardLink(path: string, params: Record<string, string | number | null | undefined>) {
   const search = new URLSearchParams()

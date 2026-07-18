@@ -50,12 +50,7 @@ export function dashboardLinkFromSearch(path: string, search: string, updates: R
   return query ? `${path}?${query}` : path
 }
 
-export function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
-}
+export { withRoutePrefix } from "../../lib/routing"
 
 export function pageLink(pathname: string, search: string, page: number) {
   const params = new URLSearchParams(search)
