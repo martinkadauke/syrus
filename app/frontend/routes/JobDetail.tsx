@@ -876,10 +876,10 @@ function PendingFeedbackPanel({ jobId, comments = [], queryKey }: { jobId: numbe
             {replaceId === comment.id ? (
               <div className="mt-3 space-y-2">
                 <textarea
-                  aria-label="Replacement feedback text"
+                  aria-label={t("replacement_feedback_aria")}
                   className="block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-blue-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
                   onChange={(e) => setReplaceBody(e.target.value)}
-                  placeholder="Enter your replacement feedback text…"
+                  placeholder={t("replacement_feedback_placeholder")}
                   rows={3}
                   value={replaceBody}
                 />

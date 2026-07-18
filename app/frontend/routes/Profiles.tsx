@@ -16,7 +16,7 @@ export function TeamDirectoryRoute() {
   })
 
   return (
-    <main aria-label="Team directory" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("profiles.aria_directory")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('profiles.team_directory')}</h1>
       </header>
@@ -45,7 +45,7 @@ export function TeamProfileRoute() {
   })
 
   return (
-    <main aria-label="Team profile" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("profiles.aria_profile")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       <header>
         <Link className="text-sm text-blue-600 dark:text-blue-400 underline hover:no-underline" to={`${prefix}/profiles`}>{t('profiles.team_directory')}</Link>
       </header>
@@ -96,10 +96,10 @@ function ProfileDetail({ profile, prefix }: { profile: TeamProfileDetail; prefix
       </section>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <SummaryList title="Owned epics" empty="No active epics." items={profile.epics} prefix={prefix} renderItem={(epic) => <EpicRow epic={epic} prefix={prefix} />} />
-        <SummaryList title="Owned jobs" empty="No jobs." items={profile.jobs} prefix={prefix} renderItem={(job) => <JobRow job={job} prefix={prefix} />} />
-        <SummaryList title="Repositories" empty="No active repositories." items={profile.repositories} prefix={prefix} renderItem={(repository) => <RepositoryRow prefix={prefix} repository={repository} />} />
-        <SummaryList title="Recent activity" empty="No activity yet." items={profile.recent_activity} prefix={prefix} renderItem={(activity) => <ActivityRow activity={activity} prefix={prefix} />} />
+        <SummaryList title={t("profiles.owned_epics")} empty={t("profiles.empty_epics")} items={profile.epics} prefix={prefix} renderItem={(epic) => <EpicRow epic={epic} prefix={prefix} />} />
+        <SummaryList title={t("profiles.owned_jobs")} empty={t("profiles.empty_jobs")} items={profile.jobs} prefix={prefix} renderItem={(job) => <JobRow job={job} prefix={prefix} />} />
+        <SummaryList title={t("profiles.repositories")} empty={t("profiles.empty_repositories")} items={profile.repositories} prefix={prefix} renderItem={(repository) => <RepositoryRow prefix={prefix} repository={repository} />} />
+        <SummaryList title={t("profiles.recent_activity")} empty={t("profiles.empty_activity")} items={profile.recent_activity} prefix={prefix} renderItem={(activity) => <ActivityRow activity={activity} prefix={prefix} />} />
       </div>
     </>
   )
@@ -109,10 +109,10 @@ function Counts({ counts }: { counts: TeamProfileCounts }) {
   const { t } = useT("settings")
   return (
     <dl className="mt-4 grid grid-cols-4 gap-2 text-center text-xs">
-      <Count label="Repos" value={counts.repositories} />
-      <Count label="Epics" value={counts.epics} />
-      <Count label="Jobs" value={counts.jobs} />
-      <Count label="Open" value={counts.open_jobs} />
+      <Count label={t("profiles.count_repos")} value={counts.repositories} />
+      <Count label={t("profiles.count_epics")} value={counts.epics} />
+      <Count label={t("profiles.count_jobs")} value={counts.jobs} />
+      <Count label={t("profiles.count_open")} value={counts.open_jobs} />
     </dl>
   )
 }

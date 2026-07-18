@@ -408,5 +408,7 @@
   "attention_fork_pr_changes_requested": "Ein Reviewer hat Änderungen am Fork-Review-PR angefordert. Der Upstream-PR wird erst erstellt, wenn alle offenen Review-Anfragen aufgelöst sind (genehmigt oder verworfen).",
   "attention_upstream_pr_closed": "Der Upstream-PR wurde geschlossen, ohne zusammengeführt zu werden.",
   "attention_upstream_pr_changes_requested": "Ein Reviewer hat Änderungen am Upstream-PR angefordert. Auto-Merge ist pausiert, bis das Review aufgelöst ist (genehmigt oder verworfen).",
-  "grace_expired": "Die Nachfrist ist abgelaufen."
+  "grace_expired": "Die Nachfrist ist abgelaufen.",
+  "replacement_feedback_aria": "Ersatz-Feedback-Text",
+  "replacement_feedback_placeholder": "Geben Sie Ihren Ersatz-Feedback-Text ein…"
 }
