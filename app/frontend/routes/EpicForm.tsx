@@ -1,4 +1,5 @@
 import { routePrefix, withRoutePrefix } from "../lib/routing"
+import { inputClass } from "../lib/formClasses"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { FormEvent, MouseEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
@@ -171,9 +172,5 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
     muted: "border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
   }
   return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
-}
-
-function inputClass() {
-  return "block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-blue-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:placeholder:text-gray-500"
 }
 

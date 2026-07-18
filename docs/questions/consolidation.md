@@ -48,47 +48,25 @@ switch it. Non-timestamp `Intl`/`toLocaleString` uses were left alone on purpose
 
 ---
 
-## 2. `inputClass` — form-input styling drift
+## 2. `inputClass` — **RESOLVED: one shared helper, DirectJobNew look**
 
-The visually-identical copies (blue vs terracotta outline, which render the same
-via the `blue → terracotta` remap in `config/tailwind.config.js`) were already
-merged into `app/frontend/lib/formClasses.ts`:
+There were three visually-distinct variants; we standardized on the darker
+`DirectJobNew`/`EpicForm` look (near-black `gray-950` dark field, `gray-700`
+dark border, muted `gray-500` placeholder) as the single canonical
+`app/frontend/lib/formClasses.ts#inputClass()`:
 
 ```ts
-// canonical — 6 files now import this
 export function inputClass() {
-  return "block w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 shadow-sm focus:outline-terracotta-600"
+  return "block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-terracotta-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:placeholder:text-gray-500"
 }
 ```
 
-Two other groups differ in ways you'd actually see. Diff against the canonical:
-
-`routes/RepositoryForm.tsx`, `routes/ScheduledTasks.tsx` — **darker border**
-(`gray-700` vs canonical `gray-600`) and an extra placeholder color:
-```ts
-function inputClass() {
-  return "block w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500 shadow-sm focus:outline-blue-600"
-}
-//                                       ^^^^^^^^^^^^^^^^ gray-700            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ + placeholder color
-```
-
-`routes/DirectJobNew.tsx`, `routes/EpicForm.tsx` — **darker background**
-(`dark:bg-gray-950` vs canonical `gray-900`), `gray-700` border, placeholder:
-```ts
-function inputClass() {
-  return "block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-blue-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:placeholder:text-gray-500"
-}
-//                                                                                                                              ^^^^^^^^^^^^^^ gray-700  ^^^^^^^^^^^^^ gray-950 (near-black)
-```
-
-So in dark mode: canonical inputs have a slightly lighter border and a
-`gray-900` background with no styled placeholder; these two groups use a darker
-border, and `DirectJobNew`/`EpicForm` sit on a near-black `gray-950` field.
-
-**Question:** which is the canonical form-input look — the lighter
-`gray-600`/`gray-900` (current shared helper) or the darker
-`gray-700`/`gray-950` with the muted placeholder? Pick one and I'll migrate the
-remaining four forms into `lib/formClasses`.
+The four hold-out forms (`RepositoryForm`, `ScheduledTasks`, `DirectJobNew`,
+`EpicForm`) dropped their local copies and import the shared helper, so every
+form input across the SPA now renders identically. The focus outline is named
+`terracotta-600` (the old `focus:outline-blue-600` rendered the same via the
+`blue → terracotta` remap in `config/tailwind.config.js`, but new code names
+terracotta).
 
 ---
 
