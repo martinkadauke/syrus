@@ -59,6 +59,7 @@ import { coalesceTranscriptLogs, commandMarkerSource, isRunTranscriptAtBottom, j
 import type { SourceRefPayload } from "./jobDetail/sourceRefs"
 import { refOptionsFor, sourceDiffSearch, sourceSearch } from "./jobDetail/sourceRefs"
 import type { JobDetailQueryKey, JobTab, JobWorkflowsQueryKey } from "./jobDetail/queryKeys"
+import { CommandButton, useJobCommand, type CommandInput } from "./jobDetail/command"
 import { jobDetailQueryKey, jobDetailSearch, jobWorkflowsQueryKey, mergeJobWorkflowsPayload, tabFromLocation } from "./jobDetail/queryKeys"
 import { artifactPanelClass, disabledPaginationClass, menuButtonClass, paginationLinkClass, shortSha } from "./jobDetail/formatting"
 import type { SourceFile, SourceTreeFile, SourceTreeNode } from "./jobDetail/sourceTree"
@@ -68,10 +69,6 @@ import type { BranchDivergence, BranchDivergenceRecoveryStatus } from "./jobDeta
 import { workflowBranchDivergence, workflowBranchRecoveryStatus } from "./jobDetail/branchDivergence"
 import { latestWorkflowCoverage, workflowCreatedAtTime } from "./jobDetail/workflowArtifacts"
 
-type CommandInput =
-  | { method: "post"; path: string; body?: unknown; confirm?: string }
-  | { method: "patch"; path: string; body?: unknown; confirm?: string }
-  | { method: "delete"; path: string; confirm?: string }
 type HeaderAction = {
   key: string
   label: string
@@ -255,27 +252,6 @@ function ChatBubbleIcon() {
       <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 17 0Z" />
     </svg>
   )
-}
-
-function useJobCommand(jobId: number, queryKey: JobDetailQueryKey, workflowsQueryKey: JobWorkflowsQueryKey | undefined, onNotice: (message: string | null) => void) {
-  const queryClient = useQueryClient()
-  const navigate = useNavigate()
-
-  return useMutation({
-    mutationFn: (input: CommandInput) => {
-      if (input.confirm && !window.confirm(input.confirm)) return Promise.resolve({ message: null })
-      if (input.method === "delete") return deleteJobCommand(input.path)
-      if (input.method === "patch") return patchJobCommand(input.path, input.body)
-      return postJobCommand(input.path, input.body)
-    },
-    onSuccess: (payload) => {
-      if (payload.redirect_to) navigate(payload.redirect_to)
-      onNotice(payload.message || null)
-      void queryClient.invalidateQueries({ queryKey })
-      if (workflowsQueryKey) void queryClient.invalidateQueries({ queryKey: workflowsQueryKey })
-      void queryClient.invalidateQueries({ queryKey: ["jobs"], exact: true })
-    }
-  })
 }
 
 function HeaderActions({ payload, command, feedbackPanelOpen, onToggleFeedbackPanel }: { payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; feedbackPanelOpen: boolean; onToggleFeedbackPanel: () => void }) {
@@ -520,14 +496,6 @@ function RetryFeedbackDialog({ command, path, onClose }: { command: ReturnType<t
         </form>
       </section>
     </div>
-  )
-}
-
-function CommandButton({ children, command, input, tone = "primary" }: { children: ReactNode; command: ReturnType<typeof useJobCommand>; input: CommandInput; tone?: ButtonTone }) {
-  return (
-    <button className={buttonClass(tone)} disabled={command.isPending} onClick={() => command.mutate(input)} type="button">
-      {children}
-    </button>
   )
 }
 
