@@ -394,5 +394,19 @@
   "transcript_kind_tool": "Werkzeug",
   "transcript_kind_system": "System",
   "main_branch_health_waiting": "Diese Aufgabe wartet darauf, dass die Repository-Gesundheit wiederhergestellt ist.",
-  "main_branch_health_view": "Repository-Gesundheit ansehen"
+  "main_branch_health_view": "Repository-Gesundheit ansehen",
+  "action_needed": "Handlung erforderlich",
+  "pending_feedback_title": "Ausstehendes Feedback",
+  "pending_feedback_description": "Diese PR-Kommentare erfordern Ihre Entscheidung, bevor Syrus darauf reagiert.",
+  "dismiss": "Verwerfen",
+  "grace_cleanup_days": "Branch-Bereinigung in {{days}} T {{hours}} Std, sofern der PR nicht erneut geöffnet wird.",
+  "grace_cleanup_hours": "Branch-Bereinigung in {{hours}} Std {{minutes}} Min, sofern der PR nicht erneut geöffnet wird.",
+  "grace_cleanup_minutes": "Branch-Bereinigung in {{minutes}} Min, sofern der PR nicht erneut geöffnet wird.",
+  "attention_generic": "Dieser Job erfordert Aufmerksamkeit.",
+  "attention_reason_fallback": "Erfordert Aufmerksamkeit: {{reason}}",
+  "attention_fork_pr_closed": "Der Fork-Review-PR wurde geschlossen, ohne zusammengeführt zu werden.",
+  "attention_fork_pr_changes_requested": "Ein Reviewer hat Änderungen am Fork-Review-PR angefordert. Der Upstream-PR wird erst erstellt, wenn alle offenen Review-Anfragen aufgelöst sind (genehmigt oder verworfen).",
+  "attention_upstream_pr_closed": "Der Upstream-PR wurde geschlossen, ohne zusammengeführt zu werden.",
+  "attention_upstream_pr_changes_requested": "Ein Reviewer hat Änderungen am Upstream-PR angefordert. Auto-Merge ist pausiert, bis das Review aufgelöst ist (genehmigt oder verworfen).",
+  "grace_expired": "Die Nachfrist ist abgelaufen."
 }

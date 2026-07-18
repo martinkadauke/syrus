@@ -667,34 +667,39 @@ function TabNav({ active, workflowsCount, attachmentsCount, onSelect }: { active
 }
 
 function NeedsAttentionBanner({ job }: { job: JobDetailPayload["job"] }) {
+  const { t } = useT("jobs")
   if (!job.needs_attention) return null
 
-  const messages: Record<string, string> = {
-    fork_pr_closed: "The fork review PR was closed without being merged.",
-    fork_pr_changes_requested: "A reviewer has requested changes on the fork review PR. The upstream PR will not be created until all outstanding review requests are resolved (approved or dismissed).",
-    upstream_pr_closed: "The upstream PR was closed without being merged.",
-    upstream_pr_changes_requested: "A reviewer has requested changes on the upstream PR. Auto-merge is paused until the review is resolved (approved or dismissed)."
+  const reasonKeys: Record<string, string> = {
+    fork_pr_closed: "attention_fork_pr_closed",
+    fork_pr_changes_requested: "attention_fork_pr_changes_requested",
+    upstream_pr_closed: "attention_upstream_pr_closed",
+    upstream_pr_changes_requested: "attention_upstream_pr_changes_requested"
   }
 
-  const message = job.needs_attention_reason ? messages[job.needs_attention_reason] ?? `Needs attention: ${job.needs_attention_reason}` : "This job needs attention."
+  const message = job.needs_attention_reason
+    ? (reasonKeys[job.needs_attention_reason]
+        ? t(reasonKeys[job.needs_attention_reason])
+        : t("attention_reason_fallback", { reason: job.needs_attention_reason }))
+    : t("attention_generic")
 
   const gracePeriodText = job.grace_period_expires_at ? (() => {
     const expires = new Date(job.grace_period_expires_at)
     const now = new Date()
     const ms = expires.getTime() - now.getTime()
-    if (ms <= 0) return "Grace period has expired."
+    if (ms <= 0) return t("grace_expired")
     const totalSeconds = Math.floor(ms / 1000)
     const days = Math.floor(totalSeconds / 86400)
     const hours = Math.floor((totalSeconds % 86400) / 3600)
     const minutes = Math.floor((totalSeconds % 3600) / 60)
-    if (days > 0) return `Branch cleanup in ${days}d ${hours}h unless the PR is reopened.`
-    if (hours > 0) return `Branch cleanup in ${hours}h ${minutes}m unless the PR is reopened.`
-    return `Branch cleanup in ${minutes}m unless the PR is reopened.`
+    if (days > 0) return t("grace_cleanup_days", { days, hours })
+    if (hours > 0) return t("grace_cleanup_hours", { hours, minutes })
+    return t("grace_cleanup_minutes", { minutes })
   })() : null
 
   return (
     <div className="rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-      <p className="font-medium">Action needed</p>
+      <p className="font-medium">{t("action_needed")}</p>
       <p className="mt-1">{message}</p>
       {gracePeriodText ? <p className="mt-1 text-amber-700 dark:text-amber-300">{gracePeriodText}</p> : null}
     </div>
@@ -805,6 +810,7 @@ export function TestPlanPanel({ testPlan }: { testPlan: JobTestPlan | null }) {
 }
 
 function PendingFeedbackPanel({ jobId, comments = [], queryKey }: { jobId: number; comments?: PendingFeedbackComment[]; queryKey: JobDetailQueryKey }) {
+  const { t } = useT("jobs")
   const queryClient = useQueryClient()
   const [replaceId, setReplaceId] = useState<number | null>(null)
   const [replaceBody, setReplaceBody] = useState("")
@@ -841,14 +847,14 @@ function PendingFeedbackPanel({ jobId, comments = [], queryKey }: { jobId: numbe
 
   return (
     <section className="rounded border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/60 dark:bg-amber-950/30">
-      <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-200">Pending feedback</h2>
+      <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-200">{t("pending_feedback_title")}</h2>
       <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-        These PR comments require your decision before Syrus acts on them.
+        {t("pending_feedback_description")}
       </p>
       {notice ? (
         <div className="mt-2 flex items-center justify-between gap-2 rounded bg-amber-100 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
           <span>{notice}</span>
-          <button className="ml-2 hover:underline" onClick={() => setNotice(null)} type="button">Dismiss</button>
+          <button className="ml-2 hover:underline" onClick={() => setNotice(null)} type="button">{t("dismiss")}</button>
         </div>
       ) : null}
       {(apply.isError || ignore.isError || replace.isError) ? (

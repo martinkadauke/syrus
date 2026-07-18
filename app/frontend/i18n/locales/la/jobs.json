@@ -394,5 +394,19 @@
   "transcript_kind_tool": "Instrumentum",
   "transcript_kind_system": "Systema",
   "main_branch_health_waiting": "Hoc opus manet dum sanitas receptaculi recuperatur.",
-  "main_branch_health_view": "Vide sanitatem receptaculi"
+  "main_branch_health_view": "Vide sanitatem receptaculi",
+  "action_needed": "Actio necessaria",
+  "pending_feedback_title": "Responsum pendens",
+  "pending_feedback_description": "Haec commenta PR decisionem tuam requirunt priusquam Syrus agat.",
+  "dismiss": "Dimitte",
+  "grace_cleanup_days": "Purgatio rami post {{days}}d {{hours}}h nisi PR reseratur.",
+  "grace_cleanup_hours": "Purgatio rami post {{hours}}h {{minutes}}m nisi PR reseratur.",
+  "grace_cleanup_minutes": "Purgatio rami post {{minutes}}m nisi PR reseratur.",
+  "attention_generic": "Hoc opus attentionem requirit.",
+  "attention_reason_fallback": "Attentionem requirit: {{reason}}",
+  "attention_fork_pr_closed": "PR recognitionis furcae clausus est neque confusus.",
+  "attention_fork_pr_changes_requested": "Recognitor mutationes in PR furcae poposcit. PR superior non creabitur donec omnes petitiones recognitionis solvantur (probatae aut dimissae).",
+  "attention_upstream_pr_closed": "PR superior clausus est neque confusus.",
+  "attention_upstream_pr_changes_requested": "Recognitor mutationes in PR superiore poposcit. Automerge intermissa est donec recognitio solvatur (probata aut dimissa).",
+  "grace_expired": "Tempus gratiae exiit."
 }
