@@ -51,6 +51,7 @@ import {
 } from "../api/jobs"
 import { CoverageCard } from "../components/CoverageCard"
 import { errorMessage } from "../lib/errorMessage"
+import { formatBytes } from "../lib/format"
 
 type JobTab = "summary" | "workflows" | "attachments" | "source"
 type JobDetailQueryKey = readonly ["jobs", string, "detail", string]
@@ -2948,11 +2949,6 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
 }
 
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} B`
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
-  return `${(value / 1024 / 1024).toFixed(1)} MB`
-}
 
 function plural(count: number, singular: string) {
   if (count !== 1 && singular.endsWith("y")) return `${singular.slice(0, -1)}ies`

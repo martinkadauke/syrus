@@ -14,6 +14,7 @@ import {
 import { RepositoryTabs } from "../components/RepositoryTabs"
 import { useT } from "../hooks/useT"
 import { errorMessage } from "../lib/errorMessage"
+import { formatBytes } from "../lib/format"
 
 export function RepositoryDocumentsRoute() {
   const { t } = useT("settings")
@@ -280,9 +281,4 @@ function routePrefix(pathname: string) {
   return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
 
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} B`
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`
-}
 

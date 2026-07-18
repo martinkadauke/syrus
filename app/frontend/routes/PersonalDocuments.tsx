@@ -11,6 +11,7 @@ import {
 } from "../api/credentials"
 import { useT } from "../hooks/useT"
 import { errorMessage } from "../lib/errorMessage"
+import { formatBytes } from "../lib/format"
 
 const queryKey = ["personal-documents"] as const
 
@@ -203,10 +204,4 @@ function inputClass() {
   return "block w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 shadow-sm focus:outline-blue-600"
 }
 
-function formatBytes(value: number | null) {
-  if (!value) return "unknown size"
-  if (value < 1024) return `${value} B`
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`
-}
 
