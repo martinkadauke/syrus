@@ -132,21 +132,6 @@ class PollPullRequestJob < ApplicationJob
     end
   end
 
-  def react_to_approval(reviews)
-    latest_approval = reviews
-                       .select { |review| review.state == "APPROVED" }
-                       .max_by { |review| review_submitted_at(review) || Time.at(0) }
-    return unless latest_approval
-
-    submitted_at = review_submitted_at(latest_approval) || Time.current
-    return if @job.approved_at && @job.approved_at >= submitted_at
-
-    @job.record_github_review_approval!(
-      approved_at: submitted_at,
-      review_url: latest_approval.respond_to?(:html_url) ? latest_approval.html_url : nil
-    )
-  end
-
   # Returns true if any reviewer's *latest* review is CHANGES_REQUESTED.
   def changes_requested?(reviews)
     latest_per_reviewer(reviews).any? { |review| review.state == "CHANGES_REQUESTED" }
