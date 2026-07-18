@@ -64,6 +64,8 @@ import { artifactPanelClass, disabledPaginationClass, menuButtonClass, paginatio
 import type { SourceFile, SourceTreeFile, SourceTreeNode } from "./jobDetail/sourceTree"
 import { buildSourceTree, sortSourceTree, sourceLanguage } from "./jobDetail/sourceTree"
 import { stepArtifactAdversarialReview, stepArtifactTestPlan } from "./jobDetail/stepArtifacts"
+import type { BranchDivergence, BranchDivergenceRecoveryStatus } from "./jobDetail/branchDivergence"
+import { workflowBranchDivergence, workflowBranchRecoveryStatus } from "./jobDetail/branchDivergence"
 
 type CommandInput =
   | { method: "post"; path: string; body?: unknown; confirm?: string }
@@ -74,20 +76,6 @@ type HeaderAction = {
   label: string
   input: CommandInput
   tone: ButtonTone
-}
-type BranchDivergence = {
-  branch: string
-  remote_sha: string | null
-  local_sha: string | null
-  detected_at: string | null
-  message: string | null
-  recovery_pending: BranchDivergenceRecoveryStatus | null
-  recovery_error: BranchDivergenceRecoveryStatus | null
-}
-type BranchDivergenceRecoveryStatus = {
-  message?: string
-  action?: string
-  at?: string
 }
 type PrepareFailure = {
   command?: string
@@ -1404,35 +1392,6 @@ function WorkflowCard({ workflow, payload, command, prefix }: { workflow: JobWor
       </div>
     </section>
   )
-}
-
-function workflowBranchDivergence(workflow: JobWorkflow): BranchDivergence | null {
-  const artifacts = workflow.artifacts || {}
-  if (artifacts.branch_divergence_recovery) return null
-  const raw = artifacts.branch_divergence
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
-
-  const row = raw as Record<string, unknown>
-  return {
-    branch: typeof row.branch === "string" ? row.branch : "",
-    remote_sha: typeof row.remote_sha === "string" ? row.remote_sha : null,
-    local_sha: typeof row.local_sha === "string" ? row.local_sha : null,
-    detected_at: typeof row.detected_at === "string" ? row.detected_at : null,
-    message: typeof row.message === "string" ? row.message : null,
-    recovery_pending: workflowBranchRecoveryStatus(artifacts.branch_divergence_recovery_pending),
-    recovery_error: workflowBranchRecoveryStatus(artifacts.branch_divergence_recovery_error)
-  }
-}
-
-function workflowBranchRecoveryStatus(raw: unknown): BranchDivergenceRecoveryStatus | null {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
-
-  const row = raw as Record<string, unknown>
-  const status: BranchDivergenceRecoveryStatus = {}
-  if (typeof row.message === "string") status.message = row.message
-  if (typeof row.action === "string") status.action = row.action
-  if (typeof row.at === "string") status.at = row.at
-  return Object.keys(status).length > 0 ? status : null
 }
 
 function BranchDivergencePanel({
