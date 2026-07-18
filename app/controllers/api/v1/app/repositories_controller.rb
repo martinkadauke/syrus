@@ -728,16 +728,6 @@ module Api
           }
         end
 
-        def note_json(repository, note)
-          {
-            id: note.id,
-            body: note.body,
-            author: note.author,
-            created_at: note.created_at.iso8601,
-            app_delete_path: "/api/v1/app/repositories/#{repository.id}/notes/#{note.id}"
-          }
-        end
-
         def job_json(job)
           {
             id: job.id,
