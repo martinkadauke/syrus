@@ -169,6 +169,7 @@ function AppShell({ initialBootstrap }: { initialBootstrap: BootstrapPayload | n
 }
 
 function RootRoute({ initialBootstrap }: { initialBootstrap: BootstrapPayload | null }) {
+  const { t } = useT("common")
   const bootstrap = useQuery({
     queryKey: ["bootstrap"],
     queryFn: fetchBootstrap,
@@ -177,13 +178,13 @@ function RootRoute({ initialBootstrap }: { initialBootstrap: BootstrapPayload | 
   })
 
   if (bootstrap.isPending) {
-    return <main aria-label="Syrus" className="p-6 text-sm text-gray-600">Loading...</main>
+    return <main aria-label={t("app_name")} className="p-6 text-sm text-gray-600">{t("loading")}</main>
   }
 
   if (bootstrap.isError) {
     return (
-      <main aria-label="Syrus" className="p-6">
-        <p className="text-sm text-red-700">Unable to load this Syrus instance.</p>
+      <main aria-label={t("app_name")} className="p-6">
+        <p className="text-sm text-red-700">{t("shell.load_error_instance")}</p>
       </main>
     )
   }
@@ -462,6 +463,7 @@ function OnboardingShell({ initialBootstrap }: { initialBootstrap: BootstrapPayl
 }
 
 function SettingsSectionRoute({ children }: { children: ReactNode }) {
+  const { t } = useT("common")
   const location = useLocation()
   const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
   const normalizedPath = normalizedAppPath(location.pathname)
@@ -469,7 +471,7 @@ function SettingsSectionRoute({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-full flex-col bg-gray-50 dark:bg-gray-900 lg:flex-row">
       <aside className="shrink-0 border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950 lg:w-56 lg:border-b-0 lg:border-r">
-        <nav aria-label="Settings navigation" className="flex gap-2 overflow-x-auto px-4 py-3 text-sm lg:flex-col lg:gap-1 lg:overflow-visible lg:p-4">
+        <nav aria-label={t("shell.settings_nav_aria")} className="flex gap-2 overflow-x-auto px-4 py-3 text-sm lg:flex-col lg:gap-1 lg:overflow-visible lg:p-4">
           {settingsNavigationItems().map((item) => (
             <Link className={settingsSideNavLinkClass(item.active(normalizedPath))} key={item.label} to={withRoutePrefix(item.path, prefix)}>
               {item.label}
@@ -504,6 +506,7 @@ function normalizedAppPath(pathname: string) {
 }
 
 function BootstrapShell({ initialBootstrap }: { initialBootstrap: BootstrapPayload | null }) {
+  const { t } = useT("common")
   const bootstrap = useQuery({
     queryKey: ["bootstrap"],
     queryFn: fetchBootstrap,
@@ -512,13 +515,13 @@ function BootstrapShell({ initialBootstrap }: { initialBootstrap: BootstrapPaylo
   })
 
   if (bootstrap.isPending) {
-    return <main aria-label="Syrus SPA" className="p-6 text-sm text-gray-600">Loading...</main>
+    return <main aria-label={t("shell.spa_aria")} className="p-6 text-sm text-gray-600">{t("loading")}</main>
   }
 
   if (bootstrap.isError) {
     return (
-      <main aria-label="Syrus SPA" className="p-6">
-        <p className="text-sm text-red-700">Unable to load the app shell.</p>
+      <main aria-label={t("shell.spa_aria")} className="p-6">
+        <p className="text-sm text-red-700">{t("shell.load_error")}</p>
       </main>
     )
   }
@@ -526,25 +529,25 @@ function BootstrapShell({ initialBootstrap }: { initialBootstrap: BootstrapPaylo
   const { current_user: user, app } = bootstrap.data
 
   return (
-    <main aria-label="Syrus SPA" className="mx-auto max-w-5xl space-y-6 p-6">
+    <main aria-label={t("shell.spa_aria")} className="mx-auto max-w-5xl space-y-6 p-6">
       <header className="border-b border-gray-200 pb-4">
-        <p className="text-xs font-medium uppercase text-gray-500">React shell</p>
-        <h1 className="mt-1 text-2xl font-semibold text-gray-900">Syrus</h1>
+        <p className="text-xs font-medium uppercase text-gray-500">{t("shell.react_shell")}</p>
+        <h1 className="mt-1 text-2xl font-semibold text-gray-900">{t("app_name")}</h1>
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2">
         <div className="rounded border border-gray-200 bg-white p-4">
-          <h2 className="text-sm font-medium text-gray-900">Signed in</h2>
-          <p className="mt-2 text-sm text-gray-700">{user?.display_name || "Not signed in"}</p>
+          <h2 className="text-sm font-medium text-gray-900">{t("shell.signed_in")}</h2>
+          <p className="mt-2 text-sm text-gray-700">{user?.display_name || t("shell.not_signed_in")}</p>
           {user ? <p className="text-xs text-gray-500">{user.email_address}</p> : null}
         </div>
 
         <div className="rounded border border-gray-200 bg-white p-4">
-          <h2 className="text-sm font-medium text-gray-900">Revision</h2>
+          <h2 className="text-sm font-medium text-gray-900">{t("shell.revision")}</h2>
           <p className="mt-2 font-mono text-sm text-gray-700">{app.revision}</p>
           {app.revision_url ? (
             <a className="text-xs text-blue-600 underline hover:no-underline" href={app.revision_url}>
-              View commit
+              {t("shell.view_commit")}
             </a>
           ) : null}
         </div>

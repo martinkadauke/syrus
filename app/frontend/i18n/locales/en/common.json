@@ -216,5 +216,16 @@
     "entity_user": "User",
     "entity_repository": "Repository",
     "scope_range": "{{scope}} / {{start}} to {{end}}"
+  },
+  "shell": {
+    "spa_aria": "Syrus SPA",
+    "settings_nav_aria": "Settings navigation",
+    "load_error": "Unable to load the app shell.",
+    "react_shell": "React shell",
+    "signed_in": "Signed in",
+    "not_signed_in": "Not signed in",
+    "revision": "Revision",
+    "view_commit": "View commit",
+    "load_error_instance": "Unable to load this Syrus instance."
   }
 }

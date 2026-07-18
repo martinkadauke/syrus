@@ -216,5 +216,16 @@
     "entity_user": "Benutzer",
     "entity_repository": "Repository",
     "scope_range": "{{scope}} / {{start}} bis {{end}}"
+  },
+  "shell": {
+    "spa_aria": "Syrus SPA",
+    "settings_nav_aria": "Einstellungsnavigation",
+    "load_error": "App-Shell konnte nicht geladen werden.",
+    "react_shell": "React-Shell",
+    "signed_in": "Angemeldet",
+    "not_signed_in": "Nicht angemeldet",
+    "revision": "Revision",
+    "view_commit": "Commit anzeigen",
+    "load_error_instance": "Diese Syrus-Instanz konnte nicht geladen werden."
   }
 }

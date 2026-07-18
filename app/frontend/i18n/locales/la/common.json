@@ -216,5 +216,16 @@
     "entity_user": "Usor",
     "entity_repository": "Repositorium",
     "scope_range": "{{scope}} / {{start}} ad {{end}}"
+  },
+  "shell": {
+    "spa_aria": "Syrus SPA",
+    "settings_nav_aria": "Navigatio optionum",
+    "load_error": "Involucrum applicationis onerari non potest.",
+    "react_shell": "Involucrum React",
+    "signed_in": "Initum",
+    "not_signed_in": "Non initum",
+    "revision": "Recensio",
+    "view_commit": "Commissum videre",
+    "load_error_instance": "Haec instantia Syrus onerari non potest."
   }
 }
