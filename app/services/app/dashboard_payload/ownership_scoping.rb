@@ -6,13 +6,11 @@ module App
       # Ownership/scope-filtering extracted from DashboardPayload: resolving the
       # active ownership scope (mine/team/claimable/user), the selected owner, and
       # applying those scopes (incl. the default epic-work scope) to the job/epic/
-      # workflow queries. Mixed back in, so it reads the same @user/@params and the
-      # OWNERSHIP_SCOPES constants resolve via the include ancestry.
-
-      OWNERSHIP_SCOPES = %w[mine team claimable user].freeze
-      DEFAULT_OWNERSHIP_SCOPE = "mine"
-      USER_FOCUSED_SUBJECTS = [].freeze
-      TEAM_FOCUSED_SUBJECTS = %w[epic job workflow].freeze
+      # workflow queries. Mixed back in, so it reads the same @user/@params. The
+      # OWNERSHIP_SCOPES / *_FOCUSED_SUBJECTS constants live on the DashboardPayload
+      # class body (not here) so sibling concerns like ChromeSerializers can resolve
+      # them through Module.nesting — a constant defined in one included concern is
+      # NOT visible to a method lexically scoped inside another.
 
       def ownership_scope
         @ownership_scope ||= begin
