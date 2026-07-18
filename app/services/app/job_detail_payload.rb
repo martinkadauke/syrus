@@ -4,6 +4,8 @@ module App
     WORKFLOWS_PER_PAGE = App::WorkflowNavigation::PER_PAGE
 
     include WorkflowSerializers
+    include DependencySerializers
+    include LandingQueue
 
     def self.build(job:, user:, params: {})
       new(job: job, user: user, params: params).payload
@@ -228,76 +230,6 @@ module App
       }
     end
 
-    def dependency_json(dependency)
-      target = dependency.depends_on_job
-      {
-        id: dependency.id,
-        source: dependency.source,
-        manual: dependency.manual?,
-        pending: dependency.pending?,
-        succeeded: dependency.dependency_succeeded?,
-        unresolved_slug: dependency.unresolved_slug,
-        created_by_user_id: dependency.created_by_user_id,
-        depends_on_job: target && dependency_job_json(target)
-      }
-    end
-
-    def dependent_json(dependency)
-      {
-        id: dependency.id,
-        source: dependency.source,
-        job: dependency_job_json(dependency.job)
-      }
-    end
-
-    def dependency_job_json(job)
-      {
-        id: job.id,
-        kind: job.kind,
-        state: job.state,
-        summary_state: summary_state(job),
-        repository_slug: job.repository.slug,
-        issue_number: job.issue_number,
-        issue_title: job.issue_title,
-        branch_name: job.branch_name,
-        pr_number: job.pr_number,
-        job_path: job_path(job)
-      }
-    end
-
-    def dependency_target_options
-      jobs = @user.jobs
-                  .includes(:repository)
-                  .where.not(id: @job.id)
-                  .order(created_at: :desc, id: :desc)
-
-      seen_issues = {}
-      current_issue_key = @job.issue? && @job.issue_number.present? ? [ @job.repository_id, @job.issue_number ] : nil
-      jobs.each_with_object([]) do |job, options|
-        if job.issue? && job.issue_number.present?
-          issue_key = [ job.repository_id, job.issue_number ]
-          next if issue_key == current_issue_key
-          next if seen_issues[issue_key]
-
-          seen_issues[issue_key] = true
-          options << { label: dependency_target_label(job), value: "issue:#{job.repository_id}:#{job.issue_number}" }
-        else
-          options << { label: dependency_target_label(job), value: "job:#{job.id}" }
-        end
-      end
-    end
-
-    def dependency_target_label(job)
-      if job.issue? && job.issue_number.present?
-        title = job.issue_title.to_s.strip
-        title = " - #{title}" if title.present?
-        "#{job.repository.slug} ##{job.issue_number}#{title} (#{job.slug})"
-      else
-        title = job.issue_title.to_s.strip.presence || job.kind.titleize
-        "#{job.repository.slug} #{job.slug} - #{title}"
-      end
-    end
-
     def attachment_json(attachment)
       file = attachment.file if attachment.file.attached?
       {
@@ -415,71 +347,6 @@ module App
 
         { kind: "pr_comment", body: body, created_at: iso8601(workflow.created_at), state: workflow.state, feedback_source: nil }
       end
-    end
-
-    def landing_queue_entry_json
-      ensure_landing_queue_snapshot!
-      return if @job.landing_queue_cached_at.blank?
-
-      {
-        position: @job.landing_queue_entry_position,
-        blocked_reason: @job.landing_queue_blocked_reason,
-        waiting_for_jobs: landing_queue_waiting_jobs.map { |job| landing_queue_waiting_job_json(job) },
-        blocker_jobs: landing_queue_blocker_jobs.map { |job| landing_queue_blocker_job_json(job, @job.landing_queue_entry_key) },
-        dependency_edges: Array(@job.landing_queue_dependency_edges)
-      }
-    end
-
-    def ensure_landing_queue_snapshot!
-      return unless @job.approved? || @job.landing?
-      return if @job.landing_queue_cached_at.present?
-
-      LandingQueueProcessor.refresh_snapshot!(@user.jobs)
-      @job.reload
-    end
-
-    def landing_queue_waiting_jobs
-      ids = Array(@job.landing_queue_waiting_job_ids)
-      return [] if ids.empty?
-
-      Job.where(id: ids).index_by(&:id).values_at(*ids).compact
-    end
-
-    def landing_queue_blocker_jobs
-      ids = Array(@job.landing_queue_blocker_job_ids)
-      return [] if ids.empty?
-
-      Job.where(id: ids).includes(:epic).index_by(&:id).values_at(*ids).compact
-    end
-
-    def landing_queue_waiting_job_json(job)
-      {
-        id: job.id,
-        label: job.issue_number.present? ? "##{job.issue_number}" : job.slug,
-        title: job.issue_title.presence || job.slug,
-        job_path: "/jobs/#{job.id}"
-      }
-    end
-
-    def landing_queue_blocker_job_json(job, entry_key)
-      json = {
-        id: job.id,
-        title: job.issue_title.presence || job.slug,
-        job_path: "/jobs/#{job.id}",
-        state: job.state,
-        pr_number: job.pr_number || job.external_pr_number,
-        pr_path: App::Presentation.job_pr_url(job) || App::Presentation.external_pr_url(job)
-      }
-      if job.epic_id != landing_queue_entry_epic_id(entry_key)
-        json[:epic_id] = job.epic_id
-        json[:epic_title] = job.epic&.title
-      end
-      json
-    end
-
-    def landing_queue_entry_epic_id(entry_key)
-      match = entry_key.to_s.match(/\Aepic:(\d+)\z/)
-      match ? match[1].to_i : nil
     end
 
     def actions_json
