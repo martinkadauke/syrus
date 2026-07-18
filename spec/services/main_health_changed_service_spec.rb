@@ -25,8 +25,10 @@ RSpec.describe MainHealthChangedService do
       described_class.on_health_change!(repository)
     end
 
-    it "does not raise when health is unknown" do
-      expect { described_class.on_health_change!(repository) }.not_to raise_error
+    it "spawns no repair job when health is unknown" do
+      expect {
+        described_class.on_health_change!(repository)
+      }.not_to change { repository.jobs.count }
     end
 
     it "ignores health changes when main branch health checking is disabled" do

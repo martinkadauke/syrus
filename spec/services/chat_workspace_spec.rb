@@ -408,7 +408,8 @@ RSpec.describe ChatWorkspace do
     end
 
     it "is idempotent on a missing path" do
-      expect { described_class.destroy!(chat_session) }.not_to raise_error
+      described_class.destroy!(chat_session)
+      expect(described_class.path_for(chat_session)).not_to exist
     end
   end
 

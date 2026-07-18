@@ -335,7 +335,8 @@ RSpec.describe Run do
     it "is a no-op when the Run has no ClaudeSession" do
       run = job.initial_run
       run.start!; run.save!
-      expect { run.succeed!; run.save! }.not_to raise_error
+      run.succeed!; run.save!
+      expect(run.reload.state).to eq("succeeded")
     end
   end
 

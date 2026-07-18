@@ -35,6 +35,10 @@ RSpec.describe PromptTemplate do
   shared_examples "a skill-backed template" do |skill_id|
     let(:skill_path) { Rails.root.join("lib/agent_skills/#{skill_id}.md") }
 
+    it "exists" do
+      expect(subject).to be_present
+    end
+
     it "has a matching skill file in lib/agent_skills/" do
       expect(skill_path).to exist
     end
@@ -57,29 +61,17 @@ RSpec.describe PromptTemplate do
   describe "configure-syrus-prep template" do
     subject(:template) { described_class.find("configure-syrus-prep") }
 
-    it "exists" do
-      expect(template).to be_present
-    end
-
     include_examples "a skill-backed template", "configure-syrus-prep"
   end
 
   describe "add-github-actions-ci template" do
     subject(:template) { described_class.find("add-github-actions-ci") }
 
-    it "exists" do
-      expect(template).to be_present
-    end
-
     include_examples "a skill-backed template", "add-github-actions-ci"
   end
 
   describe "update-dependencies template" do
     subject(:template) { described_class.find("update-dependencies") }
-
-    it "exists" do
-      expect(template).to be_present
-    end
 
     include_examples "a skill-backed template", "update-dependencies"
   end

@@ -408,7 +408,8 @@ RSpec.describe WorkflowWorkspace do
 
     it "is idempotent on a missing path" do
       ws = described_class.new(workflow)
-      expect { ws.cleanup }.not_to raise_error
+      ws.cleanup
+      expect(described_class.path_for(workflow)).not_to exist
     end
   end
 
