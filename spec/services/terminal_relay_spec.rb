@@ -326,6 +326,18 @@ RSpec.describe TerminalRelay do
     pty_input_read&.close unless pty_input_read&.closed?
   end
 
+  it "truncates the scrollback on a UTF-8 boundary so no multibyte char is split" do
+    relay = described_class.new(session: session, command: [ "bash" ], env: {})
+    size = TerminalRelay::SCROLLBACK_SIZE
+    # "a€" + a*(size-1) = size+3 bytes; the excess-3 cut lands inside "€",
+    # which plain byteslice would leave as a dangling invalid continuation byte.
+    relay.send(:append_scrollback, "a€" + ("a" * (size - 1)))
+
+    scrollback = relay.instance_variable_get(:@scrollback)
+    expect(scrollback.bytesize).to be <= size
+    expect(scrollback.valid_encoding?).to be(true)
+  end
+
   it "sends the scrollback buffer as a replay frame to a late-joining client" do
     relay, child_output_write, _, = build_relay
     allow(relay).to receive(:pty_alive?).with(pid).and_return(true)

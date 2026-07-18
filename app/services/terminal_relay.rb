@@ -85,7 +85,10 @@ class TerminalRelay
       @scrollback << data
       if @scrollback.bytesize > SCROLLBACK_SIZE
         excess = @scrollback.bytesize - SCROLLBACK_SIZE
-        @scrollback = @scrollback.byteslice(excess, SCROLLBACK_SIZE) || +""
+        # safe_byteslice keeps the truncation on a UTF-8 char boundary so a
+        # multibyte glyph can't be split into invalid bytes before the buffer
+        # is serialized to the terminal UI.
+        @scrollback = @scrollback.safe_byteslice(excess, SCROLLBACK_SIZE)
       end
     end
   end

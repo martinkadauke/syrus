@@ -37,4 +37,11 @@ RSpec.describe "Filters chip contract" do
       expect(Filters::Registry.find(field).name).not_to start_with("Filters::Chips::Jobs::")
     end
   end
+
+  it "derives the latest_workflow_trigger_kind chip's values from the TriggerKind registry" do
+    # Guards against the list drifting out of sync with Workflow::TriggerKind
+    # (it previously hardcoded 8 kinds and silently omitted the rest).
+    expect(Filters::Chips::Jobs::LatestWorkflowTriggerKind.values)
+      .to match_array(Workflow::TriggerKind.values)
+  end
 end

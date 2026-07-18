@@ -6,7 +6,9 @@ module Filters
         label "Latest workflow trigger"
         bucket :enum
         operators :is, :is_not, :is_one_of, :is_none_of
-        values "initial", "pr_comment", "chat_feedback", "ci_failure", "retry", "rebase", "manual", "replay"
+        # Derive from the registry so new trigger kinds are always selectable
+        # (this list previously drifted and omitted half the kinds).
+        values(*Workflow::TriggerKind.values)
 
         def apply
           case op
