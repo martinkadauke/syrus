@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
 import { useState } from "react"
@@ -218,13 +219,6 @@ function sanitizeSnippet(html: string) {
 
   template.content.childNodes.forEach((child) => appendClean(child, output))
   return output.innerHTML
-}
-
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
 }
 
 function formatDate(value: string) {

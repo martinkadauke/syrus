@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { useQuery } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, useLocation } from "react-router-dom"
@@ -102,13 +103,6 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
 
 function routePrefix(pathname: string) {
   return pathname.startsWith("/app-shell") ? "/app-shell" : ""
-}
-
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
 }
 
 function severityClass(severity: string) {

@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { Link } from "react-router-dom"
 import type { RepositoryTab } from "../api/repositories"
 import { useT } from "../hooks/useT"
@@ -19,8 +20,3 @@ export function RepositoryTabs({ active, prefix, tabs }: { active: string; prefi
   )
 }
 
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-  return `${prefix}${path}`
-}

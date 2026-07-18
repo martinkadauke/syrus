@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { DragEvent, FocusEvent, FormEvent, KeyboardEvent } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -529,13 +530,6 @@ function clearDashboardFilterOverrides(path: string, search: string) {
 
   const query = params.toString()
   return query ? `${path}?${query}` : path
-}
-
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
 }
 
 function mergeFilterTrees(baseTree: FilterTree, overrideTree: FilterTree): FilterTree {

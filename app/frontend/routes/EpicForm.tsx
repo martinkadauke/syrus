@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { FormEvent, MouseEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
@@ -148,13 +149,6 @@ export function EpicForm({ mode, payload, prefix }: { mode: "new" | "edit"; payl
 
 function routePrefix(pathname: string) {
   return pathname.startsWith("/app-shell") ? "/app-shell" : ""
-}
-
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
 }
 
 function inputFromPayload(payload: EpicFormPayload): EpicInput {

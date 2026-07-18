@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
@@ -91,9 +92,3 @@ export function OnboardingEmptyState({
   )
 }
 
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
-}

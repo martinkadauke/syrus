@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { useQuery } from "@tanstack/react-query"
 import { useMemo, useState, type FormEvent } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
@@ -333,7 +334,3 @@ function humanize(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  return path.startsWith("/") ? `${prefix}${path}` : path
-}

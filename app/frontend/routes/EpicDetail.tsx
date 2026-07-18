@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
 import { type FormEvent, type ReactNode } from "react"
 import { useEffect, useRef, useState } from "react"
@@ -670,13 +671,6 @@ function uniqueActiveMembers(jobs: EpicDetailJob[]) {
 
 function routePrefix(pathname: string) {
   return pathname.startsWith("/app-shell") ? "/app-shell" : ""
-}
-
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
 }
 
 function StatePill({ state }: { state: string }) {

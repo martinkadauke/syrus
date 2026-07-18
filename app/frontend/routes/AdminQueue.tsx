@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
@@ -152,13 +153,6 @@ function QueueContent({ basePath, onNavigate, onSmartFolderMutationSuccess, path
 
 function isFilteredQueuePayload(payload: AdminQueuePayload): payload is ActiveQueuePayload | PendingQueuePayload | FailedQueuePayload {
   return "filter" in payload && "controls" in payload
-}
-
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
 }
 
 function QueueTabPanel({ tab, payload }: { tab: QueueTab; payload: unknown }) {

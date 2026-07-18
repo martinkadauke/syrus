@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { type MouseEvent, type ReactNode, useEffect, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
@@ -350,9 +351,3 @@ function BackIcon() {
   )
 }
 
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
-}

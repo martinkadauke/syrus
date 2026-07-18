@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { DragEvent, FormEvent, KeyboardEvent } from "react"
 import { useEffect, useRef, useState } from "react"
@@ -401,13 +402,6 @@ function folderClass(active: boolean) {
 
 function menuItemClass(extra = "") {
   return `block w-full rounded px-3 py-2 text-left text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 ${extra}`
-}
-
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
 }
 
 function cleanFilterOverrideUrl(location: { pathname: string; search: string }) {
