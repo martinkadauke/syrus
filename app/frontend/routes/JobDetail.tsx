@@ -70,6 +70,7 @@ import {
   type DisplayStepItem, type GradeStepItem, type GradeSummary, type LoopStepItem,
   type PrepareFailure, type WorkflowStepItem
 } from "./jobDetail/stepModel"
+import { ActiveRunBanner, PanelMessage, RunTranscriptLogs, SmallPill } from "./jobDetail/components"
 import { jobDetailQueryKey, jobDetailSearch, jobWorkflowsQueryKey, mergeJobWorkflowsPayload, tabFromLocation } from "./jobDetail/queryKeys"
 import { artifactPanelClass, disabledPaginationClass, formatCurrency, formatDate, formatDuration, jobSlug, menuButtonClass, paginationLinkClass, plural, shortSha, withRoutePrefix } from "./jobDetail/formatting"
 import type { SourceFile, SourceTreeFile, SourceTreeNode } from "./jobDetail/sourceTree"
@@ -1919,40 +1920,6 @@ function AgentDiff({ diff, annotations }: { diff: string; annotations?: Record<s
   )
 }
 
-function RunTranscriptLogs({ logs }: { logs: Awaited<ReturnType<typeof fetchJobRunArtifacts>>["logs"] }) {
-  const { t } = useT("jobs")
-  const listRef = useRef<HTMLOListElement | null>(null)
-  const atBottomRef = useRef(true)
-  const logSignature = logs.map((log) => `${log.id}:${log.sequence}:${log.kind || ""}:${log.chunk.length}`).join("|")
-  const displayLogs = coalesceTranscriptLogs(logs)
-
-  function handleScroll(event: UIEvent<HTMLOListElement>) {
-    atBottomRef.current = isRunTranscriptAtBottom(event.currentTarget)
-  }
-
-  useLayoutEffect(() => {
-    if (atBottomRef.current) scrollRunTranscriptToBottom(listRef.current)
-  }, [logSignature])
-
-  return (
-    <ol className="max-h-[32rem] overflow-auto divide-y divide-gray-200 max-md:min-h-0 max-md:flex-1 max-md:max-h-none dark:divide-gray-800" data-testid="run-transcript-log-stream" onScroll={handleScroll} ref={listRef}>
-      {displayLogs.map((log) => (
-        <li className="grid gap-2 px-3 py-2 font-mono text-xs text-gray-800 sm:grid-cols-[5rem_minmax(0,1fr)] dark:text-gray-200" key={log.id}>
-          <span className="text-gray-400 dark:text-gray-500">{transcriptLogKindLabel(log.kind, t) || `#${log.sequence}`}</span>
-          <pre className="whitespace-pre-wrap break-words"><AnsiText text={log.chunk} /></pre>
-        </li>
-      ))}
-    </ol>
-  )
-}
-
-function transcriptLogKindLabel(kind: string | null | undefined, t: ReturnType<typeof useT>["t"]) {
-  if (kind === "assistant_text") return t("transcript_kind_agent")
-  if (kind === "tool_call") return t("transcript_kind_tool")
-  if (kind === "system") return t("transcript_kind_system")
-  return kind
-}
-
 function AttachmentsTab({ payload, queryKey, onNotice }: { payload: JobDetailPayload; queryKey: JobDetailQueryKey; onNotice: (message: string | null) => void }) {
   const { t } = useT("jobs")
   const queryClient = useQueryClient()
@@ -2413,10 +2380,6 @@ function MergeablePill({ value }: { value: boolean | null }) {
   return <StatusPill state="unknown" />
 }
 
-function SmallPill({ children }: { children: ReactNode }) {
-  return <span className="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">{children}</span>
-}
-
 function JobStateBadge({ state }: { state: string }) {
   const normalized = state.toLowerCase()
   const isFail = normalized.includes("fail") || normalized.includes("invalid") || normalized.includes("cancel")
@@ -2445,15 +2408,6 @@ function JobStateBadge({ state }: { state: string }) {
       <span className="capitalize">{state.replaceAll("_", " ")}</span>
     </span>
   )
-}
-
-function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" | "success" }) {
-  const colors = {
-    error: "border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-200",
-    success: "border-green-200 bg-green-50 text-green-700 dark:border-green-900/70 dark:bg-green-950/40 dark:text-green-200",
-    muted: "border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
-  }
-  return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
 }
 
 function PendingJobTitle({ pending, title }: { pending: boolean; title: string }) {
@@ -2514,66 +2468,4 @@ function DependencyLink({ dependency, prefix }: { dependency: JobDependency; pre
   )
 }
 
-
-// Live wall-clock, ticking every second while `active`. Used so a
-// queued/running Run's elapsed time updates in place.
-function useNow(active: boolean) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!active) return undefined
-    const id = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(id)
-  }, [active])
-  return now
-}
-
-// A queued Run hasn't started_at yet — it's waiting for a free worker in
-// the SolidQueue pool, NOT "starting the agent". Surface that honestly
-// (with how long it's been waiting) so a capacity wait doesn't read as a
-// hung job; a running Run shows how long it's been going.
-function ActiveRunBanner({ run }: { run: JobRun }) {
-  const { t } = useT("jobs")
-  const location = useLocation()
-  const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
-  const queued = run.state === "queued" || !run.started_at
-  const now = useNow(true)
-  const sinceIso = queued ? run.created_at : run.started_at
-  const elapsed = sinceIso ? formatElapsed((now - new Date(sinceIso).getTime()) / 1000) : null
-  const activeProcess = run.active_process
-  const budgetParts: string[] = []
-  if (activeProcess?.wall_timeout_s) {
-    budgetParts.push(t("run_active_process_wall_budget", { duration: formatElapsed(activeProcess.wall_timeout_s) }))
-  }
-  if (activeProcess?.silent_timeout_s) {
-    budgetParts.push(t("run_active_process_silent_budget", { duration: formatElapsed(activeProcess.silent_timeout_s) }))
-  }
-
-  if (queued) {
-    return (
-      <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200">
-        <span className="font-semibold">{t("run_queued_waiting", { id: run.id })}{elapsed ? ` · ${t("run_queued_suffix", { elapsed })}` : ""}</span>
-        <span className="mt-1 block text-amber-700 dark:text-amber-300">
-          {t("run_queued_backlog")}{" "}
-          <Link className="underline hover:text-amber-900 dark:hover:text-amber-100" to={withRoutePrefix("/admin/queue/pending", prefix)}>{t("run_queued_backlog_link")}</Link> {t("run_queued_backlog_suffix")}
-        </span>
-      </div>
-    )
-  }
-
-  return (
-    <div className="mt-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-200">
-      <span className="font-semibold">{t("run_running", { id: run.id })}{elapsed ? ` · ${elapsed}` : ""}</span>
-      <span> {t("run_running_suffix", { date: formatDate(run.started_at) })}</span>
-      {activeProcess ? (
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-blue-700 dark:text-blue-300">
-          <span>{t("run_active_process", { kind: humanize(activeProcess.kind) })}</span>
-          <code className="max-w-full truncate rounded bg-white/75 px-1.5 py-0.5 font-mono text-[11px] text-blue-950 dark:bg-blue-900/40 dark:text-blue-100">
-            {activeProcess.command || t("run_active_process_unknown_command")}
-          </code>
-          {budgetParts.length > 0 ? <span>{t("run_active_process_budget", { budget: budgetParts.join(" · ") })}</span> : null}
-        </div>
-      ) : null}
-    </div>
-  )
-}
 
