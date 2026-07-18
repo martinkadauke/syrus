@@ -18,6 +18,7 @@ per-user/private:
   - app/controllers/api/v1/app/chat_job_status_controller.rb
   - app/controllers/api/v1/app/chat_whiteboards_controller.rb
   - app/controllers/api/v1/app/chats_controller.rb
+  - app/controllers/concerns/chat_attachable_resolution.rb
   - app/controllers/concerns/chat_attachment_search.rb
   - app/controllers/concerns/chat_index_payload.rb
   - app/controllers/api/v1/app/credentials_controller.rb
@@ -107,6 +108,7 @@ instead of broader model scopes.
 | `app/controllers/api/v1/app/chat_job_status_controller.rb` | per-user/private | Returns job and epic status for confirmed proposals in a chat session found through `Current.user.chat_sessions`. |
 | `app/controllers/api/v1/app/chat_whiteboards_controller.rb` | per-user/private | Locates whiteboards through `Current.user.chat_sessions`. |
 | `app/controllers/api/v1/app/chats_controller.rb` | per-user/private | Chat sessions, proposals, attached repositories/jobs/documents/epics, and pending actions are all owned or selected through the current user's associations. |
+| `app/controllers/concerns/chat_attachable_resolution.rb` | per-user/private | Attachable-resolution helpers (extracted from `ChatsController`) resolve a specific repository/job/document/epic through `Current.user`'s associations. |
 | `app/controllers/concerns/chat_attachment_search.rb` | per-user/private | Attachment-search helpers (extracted from `ChatsController`) scope candidate repositories/jobs/documents/epics through `Current.user`'s associations. |
 | `app/controllers/concerns/chat_index_payload.rb` | per-user/private | Chat index / recent-chats payload builders (extracted from `ChatsController`) list and group the current user's chat sessions through `Current.user.chat_sessions`. |
 | `app/controllers/api/v1/app/credentials/documents_controller.rb` | per-user/private | Personal credential documents are listed, created, and deleted through `Current.user.documents`. |
