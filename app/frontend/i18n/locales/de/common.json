@@ -129,5 +129,26 @@
   },
   "errorBoundary": {
     "appCrashHeading": "Ein unerwarteter Fehler ist aufgetreten."
+  },
+  "status": {
+    "needs_triage": "Prüfung nötig",
+    "triaging": "in Prüfung",
+    "queued": "in Warteschlange",
+    "blocked_by_epic": "durch Epic blockiert",
+    "running": "läuft",
+    "open": "offen",
+    "implemented": "umgesetzt",
+    "approved": "genehmigt",
+    "landing": "wird gelandet",
+    "merged": "zusammengeführt",
+    "closed": "geschlossen",
+    "coding": "wird programmiert",
+    "succeeded": "erfolgreich",
+    "success": "erfolgreich",
+    "failed": "fehlgeschlagen",
+    "cancelled": "abgebrochen",
+    "invalid": "ungültig",
+    "unmergeable": "nicht mergebar",
+    "mergeable": "mergebar"
   }
 }

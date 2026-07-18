@@ -129,5 +129,26 @@
   },
   "errorBoundary": {
     "appCrashHeading": "Error inopinatus accidit."
+  },
+  "status": {
+    "needs_triage": "Auspicanda",
+    "triaging": "Auspicia",
+    "queued": "In acie",
+    "blocked_by_epic": "Epico impedita",
+    "running": "Currit",
+    "open": "Agitur",
+    "implemented": "Factum",
+    "approved": "Probatum",
+    "landing": "Propinquat",
+    "merged": "In annales",
+    "closed": "Cecidit",
+    "coding": "Scribitur",
+    "succeeded": "Successit",
+    "success": "Successit",
+    "failed": "Defecit",
+    "cancelled": "Intermissum",
+    "invalid": "Invalidum",
+    "unmergeable": "Bellum",
+    "mergeable": "Concordia"
   }
 }

@@ -129,5 +129,26 @@
   },
   "errorBoundary": {
     "appCrashHeading": "An unexpected error has occurred."
+  },
+  "status": {
+    "needs_triage": "needs triage",
+    "triaging": "triaging",
+    "queued": "queued",
+    "blocked_by_epic": "blocked by epic",
+    "running": "running",
+    "open": "open",
+    "implemented": "implemented",
+    "approved": "approved",
+    "landing": "landing",
+    "merged": "merged",
+    "closed": "closed",
+    "coding": "coding",
+    "succeeded": "succeeded",
+    "success": "success",
+    "failed": "failed",
+    "cancelled": "cancelled",
+    "invalid": "invalid",
+    "unmergeable": "unmergeable",
+    "mergeable": "mergeable"
   }
 }

@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import { StatusPill } from "./StatusPill"
+import i18n from "../i18n"
 
 describe("StatusPill", () => {
   it("renders the state as human-readable text", () => {
@@ -32,5 +33,25 @@ describe("StatusPill", () => {
     render(<StatusPill state="custom_state" />)
     const pill = screen.getByText("custom state").closest("[data-status-pill]")
     expect(pill).not.toHaveAttribute("title")
+  })
+
+  it("translates the state label into the active locale", async () => {
+    await i18n.changeLanguage("de")
+    try {
+      render(<StatusPill state="approved" />)
+      expect(screen.getByText("genehmigt")).toBeInTheDocument()
+    } finally {
+      await i18n.changeLanguage("en")
+    }
+  })
+
+  it("falls back to the humanized state for locales missing the key", async () => {
+    await i18n.changeLanguage("de")
+    try {
+      render(<StatusPill state="custom_state" />)
+      expect(screen.getByText("custom state")).toBeInTheDocument()
+    } finally {
+      await i18n.changeLanguage("en")
+    }
   })
 })

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { useT } from "../hooks/useT"
 
 type PillTone = "red" | "green" | "blue" | "gray" | "amber"
 
@@ -24,14 +25,18 @@ const STATE_LATIN: Record<string, string> = {
 }
 
 export function StatusPill({ state }: { state: string }) {
+  const { t } = useT()
   const normalized = state.toLowerCase()
   const tone = normalized.includes("fail") || normalized.includes("invalid") || normalized.includes("cancel") ? "red" :
     normalized.includes("success") || normalized.includes("approved") || normalized.includes("merged") || normalized.includes("closed") ? "green" :
       normalized.includes("running") || normalized.includes("queued") ? "blue" : "gray"
 
+  // Translated label with a humanized fallback for states not in the locale.
+  const label = t(`status.${normalized}`, { defaultValue: state.replaceAll("_", " ") })
+
   return (
     <TonePill active={normalized === "running"} tone={tone} title={STATE_LATIN[normalized]}>
-      {state.replaceAll("_", " ")}
+      {label}
     </TonePill>
   )
 }
