@@ -242,5 +242,7 @@
   "attachments": "Attachments",
   "none": "None",
   "aria_hidden_chats": "Hidden chats",
-  "aria_chat_search": "Chat search"
+  "aria_chat_search": "Chat search",
+  "queued_messages": "Queued messages",
+  "no_dependencies": "No dependencies"
 }

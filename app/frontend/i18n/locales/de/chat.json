@@ -242,5 +242,7 @@
   "attachments": "Anhänge",
   "none": "Keine",
   "aria_hidden_chats": "Ausgeblendete Chats",
-  "aria_chat_search": "Chat-Suche"
+  "aria_chat_search": "Chat-Suche",
+  "queued_messages": "Eingereihte Nachrichten",
+  "no_dependencies": "Keine Abhängigkeiten"
 }

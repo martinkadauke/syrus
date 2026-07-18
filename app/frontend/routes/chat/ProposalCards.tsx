@@ -438,8 +438,9 @@ function PendingActionDetail({ detail }: { detail: string }) {
 }
 
 function ProposalDependencyStrip({ dependencies, hasDependencies, prefix }: { dependencies: ChatProposalDependency[]; hasDependencies: boolean; prefix: string }) {
+  const { t } = useT("chat")
   if (!hasDependencies) {
-    return <div className="mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">No dependencies</div>
+    return <div className="mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">{t("no_dependencies")}</div>
   }
 
   return (

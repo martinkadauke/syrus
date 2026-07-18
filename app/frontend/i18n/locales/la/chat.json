@@ -242,5 +242,7 @@
   "attachments": "Adnexa",
   "none": "Nulla",
   "aria_hidden_chats": "Colloquia occulta",
-  "aria_chat_search": "Quaestio colloquii"
+  "aria_chat_search": "Quaestio colloquii",
+  "queued_messages": "Nuntii in ordine",
+  "no_dependencies": "Nullae dependentiae"
 }

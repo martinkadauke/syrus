@@ -1595,9 +1595,10 @@ function highlightSlashCommand(name: string, query: string) {
 }
 
 function QueuedMessages({ chatId, messages, queryKey }: { chatId: string; messages: ChatQueuedMessage[]; queryKey: ChatQueryKey }) {
+  const { t } = useT("chat")
   return (
     <div className="mb-3 space-y-2 border-b border-gray-100 pb-3 dark:border-gray-800">
-      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Queued messages</div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{t("queued_messages")}</div>
       {messages.map((message, index) => <QueuedMessageRow chatId={chatId} key={message.id} message={message} position={index + 1} queryKey={queryKey} />)}
     </div>
   )
