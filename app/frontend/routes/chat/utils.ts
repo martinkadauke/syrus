@@ -42,3 +42,45 @@ export function errorAsError(error: unknown) {
 export function formatCurrency(value: number, digits = 4) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
 }
+
+export function formatTokenCount(value: number) {
+  if (value < 1000) return new Intl.NumberFormat("en-US").format(value)
+
+  const thousands = value / 1000
+  const compact = Number.isInteger(thousands) ? String(thousands) : thousands.toFixed(1).replace(/\.0$/, "")
+  return `${compact}k`
+}
+
+export function parsePixelValue(value: string) {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+export function truncateSnapshotName(name: string) {
+  return name.length > 40 ? `${name.slice(0, 39)}...` : name
+}
+
+export function providerLabel(provider: string) {
+  if (provider === "claude") return "Claude"
+  if (provider === "codex") return "Codex"
+  return provider
+}
+
+export function startOfLocalDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+export function sameLocalDay(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate()
+}
+
+export function dayDividerLabel(date: Date) {
+  const today = startOfLocalDay(new Date())
+  const candidate = startOfLocalDay(date)
+  const dayDelta = Math.round((today.getTime() - candidate.getTime()) / (24 * 60 * 60 * 1000))
+
+  if (dayDelta === 0) return "Today"
+  if (dayDelta === 1) return "Yesterday"
+
+  return date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })
+}

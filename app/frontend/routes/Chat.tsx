@@ -174,8 +174,15 @@ import {
   errorAsError,
   firstLine,
   formatCurrency,
+  formatTokenCount,
   humanize,
   numericArg,
+  parsePixelValue,
+  providerLabel,
+  sameLocalDay,
+  dayDividerLabel,
+  startOfLocalDay,
+  truncateSnapshotName,
   stringArray,
   stringValue
 } from "./chat/utils"
@@ -3892,11 +3899,6 @@ function autosizeChatTextarea(textarea: HTMLTextAreaElement) {
   textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden"
 }
 
-function parsePixelValue(value: string) {
-  const parsed = Number.parseFloat(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
 function useSubmitChatWithEnter() {
   const [enabled, setEnabled] = useState(isDesktopChatViewport)
 
@@ -4782,10 +4784,6 @@ function snapshotKindLabel(kind: WhiteboardSnapshot["snapshot_kind"]) {
   return "Saved"
 }
 
-function truncateSnapshotName(name: string) {
-  return name.length > 40 ? `${name.slice(0, 39)}...` : name
-}
-
 function formatRelativeTime(value: string) {
   const timestamp = Date.parse(value)
   if (Number.isNaN(timestamp)) return ""
@@ -4901,12 +4899,6 @@ function ChatSettingsDialog({ payload, prefix, queryKey, onClose }: { payload: C
       </section>
     </div>
   )
-}
-
-function providerLabel(provider: string) {
-  if (provider === "claude") return "Claude"
-  if (provider === "codex") return "Codex"
-  return provider
 }
 
 type WhiteboardBoundaryState = {
@@ -5712,14 +5704,6 @@ function currentRecentChat(payload: ChatPayload) {
   return payload.recent_chats.find((chat) => chat.id === payload.chat.id)
 }
 
-function formatTokenCount(value: number) {
-  if (value < 1000) return new Intl.NumberFormat("en-US").format(value)
-
-  const thousands = value / 1000
-  const compact = Number.isInteger(thousands) ? String(thousands) : thousands.toFixed(1).replace(/\.0$/, "")
-  return `${compact}k`
-}
-
 export function renderChatMessages(messages: ChatMessageItem[]): ChatRenderItem[] {
   const items: ChatRenderItem[] = []
   let currentGroup: ChatToolGroupItem | null = null
@@ -5854,25 +5838,6 @@ function injectTemporalMarkers(items: ChatStreamItem[]): ChatStreamItem[] {
 
 function temporalAnchorRole(role: ChatMessageItem["role"]) {
   return role === "user" || role === "assistant"
-}
-
-function sameLocalDay(left: Date, right: Date) {
-  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate()
-}
-
-function dayDividerLabel(date: Date) {
-  const today = startOfLocalDay(new Date())
-  const candidate = startOfLocalDay(date)
-  const dayDelta = Math.round((today.getTime() - candidate.getTime()) / (24 * 60 * 60 * 1000))
-
-  if (dayDelta === 0) return "Today"
-  if (dayDelta === 1) return "Yesterday"
-
-  return date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })
-}
-
-function startOfLocalDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
 }
 
 function streamItemMessageIds(item: ChatRenderItem) {
