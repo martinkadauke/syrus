@@ -1,3 +1,4 @@
+import { routePrefix } from "../lib/routing"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { FormEvent, KeyboardEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
@@ -340,10 +341,6 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
 
 function inputClass() {
   return "block w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 shadow-sm focus:outline-blue-600"
-}
-
-function routePrefix(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
 
 // The JSON auth endpoints return app-root paths ("/onboarding", "/dashboard");

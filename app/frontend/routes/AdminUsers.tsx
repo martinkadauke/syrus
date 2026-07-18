@@ -1,3 +1,4 @@
+import { routePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
@@ -312,6 +313,3 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleString()
 }
 
-function routePrefix(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
-}

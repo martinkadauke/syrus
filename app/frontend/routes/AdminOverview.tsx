@@ -1,4 +1,4 @@
-import { withRoutePrefix } from "../lib/routing"
+import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
 import { fetchAdminOverview, type AdminOverviewPayload } from "../api/adminOverview"
@@ -76,10 +76,6 @@ function StuckDetail({ item, prefix }: { item: AdminOverviewPayload["stuck"][num
       {item.detail}
     </Link>
   )
-}
-
-function routePrefix(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
 
 function Metric({

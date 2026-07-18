@@ -1,4 +1,4 @@
-import { withRoutePrefix } from "../lib/routing"
+import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useQuery } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, useLocation } from "react-router-dom"
@@ -99,10 +99,6 @@ function StuckTable({ items, prefix }: { items: StuckItem[]; prefix: string }) {
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {
   return <div className={`p-4 text-sm ${tone === "error" ? "text-red-700 dark:text-red-300" : "text-gray-600 dark:text-gray-300"}`}>{children}</div>
-}
-
-function routePrefix(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
 
 function severityClass(severity: string) {

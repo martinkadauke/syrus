@@ -1,4 +1,4 @@
-import { withRoutePrefix } from "../lib/routing"
+import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useQuery } from "@tanstack/react-query"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type UIEvent, type ReactNode } from "react"
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom"
@@ -285,10 +285,6 @@ function TranscriptError({ error }: { error: Error }) {
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {
   return <div className={`rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 text-sm ${tone === "error" ? "text-red-700 dark:text-red-300" : "text-gray-600 dark:text-gray-300"}`}>{children}</div>
-}
-
-function routePrefix(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
 
 function positiveInteger(value: string | null, fallback: number) {

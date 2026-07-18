@@ -1,4 +1,4 @@
-import { withRoutePrefix } from "../lib/routing"
+import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
@@ -1110,10 +1110,6 @@ function pageSearch(search: string) {
   const params = new URLSearchParams(search)
   const page = params.get("page")
   return page ? `?${new URLSearchParams({ page }).toString()}` : ""
-}
-
-function routePrefix(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
 
 function formatDate(value: string) {

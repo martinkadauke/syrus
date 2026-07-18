@@ -1,4 +1,4 @@
-import { withRoutePrefix } from "../lib/routing"
+import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
@@ -390,10 +390,6 @@ function inputClass() {
 
 function routeBase(pathname: string) {
   return `${routePrefix(pathname)}/cron_templates`
-}
-
-function routePrefix(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
 
 function inputFromTemplate(template: CronTemplateDetail): CronTemplateInput {

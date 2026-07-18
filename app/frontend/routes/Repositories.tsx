@@ -1,4 +1,4 @@
-import { withRoutePrefix } from "../lib/routing"
+import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useState } from "react"
@@ -299,9 +299,5 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
 function formatDate(value: string | null) {
   if (!value) return "-"
   return new Date(value).toLocaleString()
-}
-
-function routePrefix(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
 

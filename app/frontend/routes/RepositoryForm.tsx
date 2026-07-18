@@ -1,4 +1,4 @@
-import { withRoutePrefix } from "../lib/routing"
+import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { TFunction } from "i18next"
 import type { FormEvent, ReactNode } from "react"
@@ -499,10 +499,6 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
       </form>
     </>
   )
-}
-
-function routePrefix(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
 
 function inputFromPayload(payload: RepositoryFormPayload): RepositoryInput {

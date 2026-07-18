@@ -8,3 +8,10 @@ export function withRoutePrefix(path: string, prefix: string) {
 
   return `${prefix}${path}`
 }
+
+// Derives the active route prefix from the current pathname. The app can be
+// mounted under "/app-shell" (desktop shell) or at the root; this returns the
+// prefix to prepend to app-absolute paths via withRoutePrefix.
+export function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}

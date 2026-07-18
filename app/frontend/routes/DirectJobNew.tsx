@@ -1,4 +1,4 @@
-import { withRoutePrefix } from "../lib/routing"
+import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { DragEvent, FormEvent, ReactNode } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -301,10 +301,6 @@ function DirectJobForm({ payload, prefix }: { payload: DirectJobFormPayload; pre
       </div>
     </form>
   )
-}
-
-function routePrefix(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
 
 function initialValues(payload: DirectJobFormPayload): DirectJobFormState {

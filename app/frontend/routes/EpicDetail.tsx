@@ -1,4 +1,4 @@
-import { withRoutePrefix } from "../lib/routing"
+import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
 import { type FormEvent, type ReactNode } from "react"
 import { useEffect, useRef, useState } from "react"
@@ -667,10 +667,6 @@ function uniqueActiveMembers(jobs: EpicDetailJob[]) {
     }
   }
   return members
-}
-
-function routePrefix(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
 
 function StatePill({ state }: { state: string }) {
