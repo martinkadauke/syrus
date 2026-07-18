@@ -140,13 +140,26 @@ import {
   whiteboardScene,
   withFreshElementIds
 } from "./chat/whiteboardScene"
+import {
+  CHAT_ATTACHMENT_MAX_BYTES,
+  CHAT_ATTACHMENT_TOTAL_MAX_BYTES,
+  CHAT_BOTTOM_THRESHOLD_PX,
+  CHAT_COMPOSE_MAX_ROWS,
+  CHAT_DRAFT_KEY_PREFIX,
+  CHAT_ENTER_SUBMIT_MIN_WIDTH,
+  CHAT_INITIAL_FILL_MARGIN_PX,
+  CHAT_TOP_LOAD_THRESHOLD_PX,
+  CHAT_WORKSPACE_COLLAPSED_KEY,
+  CHAT_WORKSPACE_DEFAULT_WIDTH,
+  CHAT_WORKSPACE_MAX_WIDTH,
+  CHAT_WORKSPACE_MIN_WIDTH,
+  CHAT_WORKSPACE_TAB_KEY,
+  CHAT_WORKSPACE_WIDTH_KEY,
+  GHOST_SUGGESTION_TAB_GRACE_MS,
+  WHITEBOARD_MAX_ELEMENTS,
+  WHITEBOARD_SAVE_DEBOUNCE_MS
+} from "./chat/constants"
 
-const WHITEBOARD_SAVE_DEBOUNCE_MS = 500
-const CHAT_ENTER_SUBMIT_MIN_WIDTH = 1024
-const CHAT_BOTTOM_THRESHOLD_PX = 48
-const CHAT_TOP_LOAD_THRESHOLD_PX = 96
-const CHAT_INITIAL_FILL_MARGIN_PX = 80
-const CHAT_COMPOSE_MAX_ROWS = 5
 
 type ChatPendingActionStreamItem = {
   type: "pending_action"
@@ -156,20 +169,6 @@ type ChatPendingActionStreamItem = {
 type ChatTimestampItem = { type: "timestamp"; time: string; fullDatetime: string }
 type ChatDayDividerItem = { type: "day_divider"; date: string; label: string }
 type ChatStreamItem = ChatRenderItem | ChatPendingActionStreamItem | ChatTimestampItem | ChatDayDividerItem
-const CHAT_WORKSPACE_WIDTH_KEY = "syrus.chat.workspace.width"
-const CHAT_WORKSPACE_TAB_KEY = "syrus.chat.workspace.tab"
-const CHAT_WORKSPACE_COLLAPSED_KEY = "syrus.chat.workspace.collapsed"
-const CHAT_DRAFT_KEY_PREFIX = "syrus.chat.draft."
-// Tab only accepts the ghost suggestion after this grace period. A
-// suggestion that streams in asynchronously mid-keystroke must not
-// hijack a keyboard user's Tab navigation out of the composer.
-export const GHOST_SUGGESTION_TAB_GRACE_MS = 250
-const CHAT_WORKSPACE_DEFAULT_WIDTH = 520
-const CHAT_WORKSPACE_MIN_WIDTH = 360
-const CHAT_WORKSPACE_MAX_WIDTH = 760
-const CHAT_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024
-const CHAT_ATTACHMENT_TOTAL_MAX_BYTES = 20 * 1024 * 1024
-const WHITEBOARD_MAX_ELEMENTS = 1000
 
 type ExcalidrawComponent = typeof import("@excalidraw/excalidraw")["Excalidraw"]
 type ExcalidrawApi = Pick<ExcalidrawImperativeAPI, "addFiles" | "updateScene">
