@@ -291,6 +291,14 @@ class Job < ApplicationRecord
       transitions from: :failed, to: :queued
     end
 
+    # Retry pathway after an operator reopens a cancelled Job. Reopen
+    # intentionally returns the Job to :triaging, but retrying should enqueue
+    # exactly one fresh retry Workflow, not re-run the first-attempt triage
+    # callback that may create another initial Workflow.
+    event :queue_reopened_retry do
+      transitions from: :triaging, to: :queued, guard: :ready_for_execution?
+    end
+
     # Operator takes over a Job from the Local Mode chat. Acquires the coding
     # session on this Job, linking it to the chat so the agent can commit and
     # trigger graders via complete_implement_step.

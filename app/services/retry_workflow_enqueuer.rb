@@ -24,17 +24,9 @@ class RetryWorkflowEnqueuer
 
     job.switch_agent_provider!(agent_provider) if agent_provider.present?
     job.sync_skip_prepare_from_source!
-    # If the Job is :failed, transition back to :queued so the new
-    # workflow's Workflow#start can drive Job state :queued → :running
-    # via propagate_start_to_job!. Without this, the start callback's
-    # may_start_running? guard returns false (start_running only
-    # transitions from :queued / :implemented), the Job sits at :failed
-    # forever, and successive Retry clicks bounce off `any_active_run?`
-    # once the new Run starts piling up.
-    if job.failed? && job.may_retry_after_failure?
-      job.retry_after_failure!
-      job.save!
-    end
+    state_error = prepare_job_state_for_retry
+    return failure(state_error) if state_error
+
     workflow = Workflows::Retry.instantiate(job: job, artifacts: artifacts, agent_provider: agent_provider)
     StepDispatcher.start_workflow(workflow)
     Result.new(workflow: workflow, error: nil, circuit: nil)
@@ -83,6 +75,29 @@ class RetryWorkflowEnqueuer
     label = App::Presentation.agent_provider_label(provider_circuit.provider)
     until_text = provider_circuit.retry_after ? " until #{provider_circuit.retry_after.to_fs(:db)}" : ""
     "#{label} appears degraded#{until_text}; automatic retries are paused."
+  end
+
+  def prepare_job_state_for_retry
+    # If the Job is :failed, transition back to :queued so the new
+    # workflow's Workflow#start can drive Job state :queued → :running
+    # via propagate_start_to_job!. Without this, the start callback's
+    # may_start_running? guard returns false (start_running only
+    # transitions from :queued / :implemented), the Job sits at :failed
+    # forever, and successive Retry clicks bounce off `any_active_run?`
+    # once the new Run starts piling up.
+    if job.failed?
+      return "Job is not ready to retry yet." unless job.may_retry_after_failure?
+
+      job.retry_after_failure!
+      job.save!
+    elsif job.triaging?
+      return "Job is not ready to retry yet." unless job.may_queue_reopened_retry?
+
+      job.queue_reopened_retry!
+      job.save!
+    end
+
+    nil
   end
 
   def failure(message, circuit: nil)

@@ -67,11 +67,15 @@ module App
       eligibility = RetryWorkflowEligibility.call(job: job)
       return false unless eligibility.eligible?
       return false if job.landing_failure_reason.present?
-      return false unless job.failed? || latest_workflow&.failed?
+      return false unless job.failed? || latest_workflow_retryable_as_implementation?
       return false if latest_workflow&.landing_workflow?
       return false unless IMPLEMENTATION_TRIGGER_KINDS.include?(latest_workflow&.trigger_kind)
 
       failed_step.blank? || IMPLEMENTATION_FAILURE_STEP_KINDS.include?(failed_step.kind)
+    end
+
+    def latest_workflow_retryable_as_implementation?
+      latest_workflow&.failed? || latest_workflow&.cancelled?
     end
 
     def failed_step_label

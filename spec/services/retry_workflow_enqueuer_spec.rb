@@ -138,7 +138,7 @@ RSpec.describe RetryWorkflowEnqueuer do
     expect(result.workflow.steps.order(:position).pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect coverage_analyze summarize test_plan pr_open ])
   end
 
-it "transitions a :failed Job back to :queued before instantiating the new workflow" do
+  it "transitions a :failed Job back to :queued before instantiating the new workflow" do
     # Simulates the realistic post-failure state: the prior run
     # finished, the workflow failed, and Workflow#fail's
     # propagate_fail_to_job! drove the Job to :failed.
@@ -149,6 +149,24 @@ it "transitions a :failed Job back to :queued before instantiating the new workf
       result = described_class.call(job: job)
       expect(result).to be_success
     }.to change { job.reload.state }.from("failed").to("queued")
+  end
+
+  it "transitions a reopened cancelled Job back to :queued before instantiating the new workflow" do
+    finish_current_run!(state: "failed")
+    initial_workflow = job.latest_workflow
+    initial_workflow.update!(state: "cancelled", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+    job.update!(state: "closed", closure_reason: "cancelled", finished_at: Time.current)
+    job.reopen!
+    job.save!
+    initial_workflow_count = job.workflows.where(trigger_kind: "initial").count
+
+    expect {
+      result = described_class.call(job: job)
+      expect(result).to be_success
+      expect(result.workflow.trigger_kind).to eq("retry")
+    }.to change { job.reload.state }.from("triaging").to("queued")
+      .and change { job.workflows.where(trigger_kind: "retry").count }.by(1)
+    expect(job.workflows.where(trigger_kind: "initial").count).to eq(initial_workflow_count)
   end
 
   it "is a no-op on Job state when the Job is not :failed (e.g. :implemented retry)" do

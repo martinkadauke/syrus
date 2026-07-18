@@ -484,6 +484,35 @@ RSpec.describe App::JobDetailPayload do
       )
     end
 
+    it "offers implementation retry for a reopened cancelled initial workflow" do
+      job = Factories.job_record(
+        user: user,
+        repository: repo,
+        state: "triaging",
+        closure_reason: nil,
+        finished_at: nil
+      )
+      Workflow.create!(
+        job: job,
+        trigger_kind: "initial",
+        agent_provider: job.agent_provider,
+        state: "cancelled",
+        started_at: 2.minutes.ago,
+        finished_at: 1.minute.ago
+      )
+
+      actions = payload_for(job).fetch(:actions)
+
+      expect(actions[:can_retry]).to be(true)
+      expect(actions[:retry_implementation_action]).to include(
+        key: "retry_implementation",
+        label: "Retry implementation",
+        path: "/api/v1/app/jobs/#{job.id}/run_again"
+      )
+      expect(actions[:can_retry_from_failed_step]).to be(false)
+      expect(actions[:retry_failed_step_action]).to be_nil
+    end
+
     it "labels landing workflow retries separately from implementation retries" do
       job = Factories.job_record(
         user: user,
