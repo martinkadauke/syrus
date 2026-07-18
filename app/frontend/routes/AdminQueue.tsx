@@ -1,3 +1,4 @@
+import { formatDateTime as formatDate } from "../lib/format"
 import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -375,12 +376,6 @@ function formatQueues(queues: QueueWorker["queues"]) {
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {
   return <div className={`p-4 text-sm ${tone === "error" ? "text-red-700 dark:text-red-300" : "text-gray-600 dark:text-gray-300"}`}>{children}</div>
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return "-"
-
-  return new Date(value).toLocaleString()
 }
 
 function formatArguments(value: unknown[] | null) {

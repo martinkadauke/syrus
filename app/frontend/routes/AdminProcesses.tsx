@@ -1,3 +1,4 @@
+import { formatDateTime as formatDate } from "../lib/format"
 import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -287,12 +288,6 @@ function ProcessError({ error }: { error: Error }) {
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {
   return <div className={`p-4 text-sm ${tone === "error" ? "text-red-700 dark:text-red-300" : "text-gray-600 dark:text-gray-300"}`}>{children}</div>
-}
-
-function formatDate(value: string | null) {
-  if (!value) return "-"
-
-  return new Date(value).toLocaleString()
 }
 
 function formatDuration(value: number | null) {

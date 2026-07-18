@@ -1,3 +1,4 @@
+import { formatDateTime as formatDate } from "../lib/format"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useState } from "react"
@@ -246,6 +247,3 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
   return <div className={`p-4 text-sm ${tone === "error" ? "text-red-700 dark:text-red-300" : "text-gray-600 dark:text-gray-300"}`}>{children}</div>
 }
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleString()
-}

@@ -9,3 +9,10 @@ export function formatBytes(value: number | null | undefined): string {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
+
+// Full date+time in the viewer's locale, "-" for a missing value. The canonical
+// for what had been several byte-identical `null -> "-"; toLocaleString()` copies.
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "-"
+  return new Date(value).toLocaleString()
+}

@@ -1,3 +1,4 @@
+import { formatDateTime as formatDate } from "../lib/format"
 import { routePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -306,10 +307,5 @@ function rateLimitLabel(user: AdminUserRow) {
 function roleLabel(role: string | null | undefined) {
   if (!role) return "Developer"
   return role.replace(/_/g, " ").replace(/\b\w/g, (match) => match.toUpperCase())
-}
-
-function formatDate(value: string | null) {
-  if (!value) return "-"
-  return new Date(value).toLocaleString()
 }
 
