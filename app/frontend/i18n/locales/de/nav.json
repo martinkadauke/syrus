@@ -97,5 +97,18 @@
     "to": "Bis",
     "min": "Min",
     "max": "Max"
+  },
+  "notifications": {
+    "title": "Benachrichtigungen",
+    "aria_unread": "Benachrichtigungen, {{count}} ungelesen",
+    "mark_all_read": "Alle als gelesen markieren",
+    "empty": "Keine Benachrichtigungen",
+    "back": "Zurück",
+    "loading": "Wird geladen...",
+    "pr_link": "Link",
+    "just_now": "gerade eben",
+    "minutes_ago": "vor {{count}} Min.",
+    "hours_ago": "vor {{count}} Std.",
+    "days_ago": "vor {{count}} Tg."
   }
 }

@@ -9,17 +9,19 @@ import {
   type NotificationsPayload
 } from "../api/notifications"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
+import { useT } from "../hooks/useT"
 
 const notificationsQueryKey = ["notifications"] as const
 
 export function NotificationsBell({ initialUnreadCount, prefix, onNavigate }: { initialUnreadCount?: number; prefix: string; onNavigate?: () => void }) {
+  const { t } = useT("nav")
   const [open, setOpen] = useState(false)
   const isMobile = useMediaQuery("(max-width: 767px)")
   const panelRef = useDismissiblePopup<HTMLDivElement>(open, () => setOpen(false))
   const notifications = useNotificationsQuery({ enabled: open || initialUnreadCount == null })
   const unreadCount = notifications.data?.unread_count ?? initialUnreadCount ?? 0
   const badge = unreadCount > 9 ? "9+" : String(unreadCount)
-  const label = unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"
+  const label = unreadCount > 0 ? t("notifications.aria_unread", { count: unreadCount }) : t("notifications.title")
 
   if (isMobile) {
     return (
@@ -61,7 +63,7 @@ export function NotificationsBell({ initialUnreadCount, prefix, onNavigate }: { 
               onNavigate?.()
             }}
             prefix={prefix}
-            title="Notifications"
+            title={t("notifications.title")}
           />
         </div>
       ) : null}
@@ -70,13 +72,14 @@ export function NotificationsBell({ initialUnreadCount, prefix, onNavigate }: { 
 }
 
 export function NotificationsRoute() {
+  const { t } = useT("nav")
   const location = useLocation()
   const navigate = useNavigate()
   const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
   const notifications = useNotificationsQuery({ enabled: true })
 
   return (
-    <main aria-label="Notifications" className="min-h-full bg-gray-50 p-4 dark:bg-gray-900 sm:p-6">
+    <main aria-label={t("notifications.title")} className="min-h-full bg-gray-50 p-4 dark:bg-gray-900 sm:p-6">
       <div className="mx-auto max-w-3xl">
         <button
           className="mb-4 inline-flex items-center gap-2 rounded border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200 dark:hover:bg-gray-900"
@@ -84,14 +87,14 @@ export function NotificationsRoute() {
           type="button"
         >
           <BackIcon />
-          <span>Back</span>
+          <span>{t("notifications.back")}</span>
         </button>
         <section className="rounded border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
           <NotificationsPanel
             loading={notifications.isPending}
             notifications={notifications.data?.notifications ?? []}
             prefix={prefix}
-            title="Notifications"
+            title={t("notifications.title")}
           />
         </section>
       </div>
@@ -112,6 +115,7 @@ function NotificationsPanel({
   prefix: string
   title: string
 }) {
+  const { t } = useT("nav")
   const queryClient = useQueryClient()
   const markAll = useMutation({
     mutationFn: markAllNotificationsRead,
@@ -130,11 +134,11 @@ function NotificationsPanel({
           onClick={() => markAll.mutate()}
           type="button"
         >
-          Mark all read
+          {t("notifications.mark_all_read")}
         </button>
       </div>
       {loading ? (
-        <div className="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">Loading...</div>
+        <div className="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">{t("notifications.loading")}</div>
       ) : notifications.length > 0 ? (
         <div className="max-h-[28rem] overflow-y-auto">
           {notifications.map((notification) => (
@@ -147,13 +151,14 @@ function NotificationsPanel({
           ))}
         </div>
       ) : (
-        <div className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">No notifications</div>
+        <div className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">{t("notifications.empty")}</div>
       )}
     </div>
   )
 }
 
 function NotificationRow({ notification, onNavigate, prefix }: { notification: NotificationRecord; onNavigate?: () => void; prefix: string }) {
+  const { t } = useT("nav")
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const read = Boolean(notification.read_at)
@@ -190,6 +195,13 @@ function NotificationRow({ notification, onNavigate, prefix }: { notification: N
     if (notification.pr_url) window.open(notification.pr_url, "_blank", "noopener")
   }
 
+  const relative = relativeTimestamp(notification.created_at)
+  const relativeText = relative === null
+    ? ""
+    : "absolute" in relative
+      ? relative.absolute
+      : t(relative.key, relative.count === undefined ? undefined : { count: relative.count })
+
   return (
     <div
       className={`flex w-full min-w-0 items-start gap-3 border-b border-gray-100 px-4 py-3 text-left last:border-b-0 ${jobTarget ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900" : ""} ${read ? "" : "bg-blue-50/50 dark:bg-blue-950/20"}`}
@@ -222,12 +234,12 @@ function NotificationRow({ notification, onNavigate, prefix }: { notification: N
                 rel="noopener"
                 target="_blank"
               >
-                PR #{prNumber ?? "link"}
+                PR #{prNumber ?? t("notifications.pr_link")}
               </a>
               <span aria-hidden="true">·</span>
             </>
           ) : null}
-          <span>{relativeTimestamp(notification.created_at)}</span>
+          <span>{relativeText}</span>
         </span>
       </span>
     </div>
@@ -250,23 +262,25 @@ function bodyIncludesJobTitle(body: string, jobTitle: string | null) {
   return jobTitle.length > 77 && body.includes(`${jobTitle.slice(0, 77)}...`)
 }
 
-function relativeTimestamp(value: string) {
+type RelativeTime = { key: string; count?: number } | { absolute: string } | null
+
+function relativeTimestamp(value: string): RelativeTime {
   const timestamp = Date.parse(value)
-  if (Number.isNaN(timestamp)) return ""
+  if (Number.isNaN(timestamp)) return null
 
   const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
-  if (elapsedSeconds < 60) return "just now"
+  if (elapsedSeconds < 60) return { key: "notifications.just_now" }
 
   const elapsedMinutes = Math.floor(elapsedSeconds / 60)
-  if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`
+  if (elapsedMinutes < 60) return { key: "notifications.minutes_ago", count: elapsedMinutes }
 
   const elapsedHours = Math.floor(elapsedMinutes / 60)
-  if (elapsedHours < 24) return `${elapsedHours}h ago`
+  if (elapsedHours < 24) return { key: "notifications.hours_ago", count: elapsedHours }
 
   const elapsedDays = Math.floor(elapsedHours / 24)
-  if (elapsedDays < 30) return `${elapsedDays}d ago`
+  if (elapsedDays < 30) return { key: "notifications.days_ago", count: elapsedDays }
 
-  return new Date(timestamp).toLocaleDateString()
+  return { absolute: new Date(timestamp).toLocaleDateString() }
 }
 
 function useMediaQuery(query: string) {
