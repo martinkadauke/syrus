@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { startsNewEpicGroup } from "./Dashboard"
+import { startsNewEpicGroup } from "./dashboard/JobsTable"
 import type { DashboardJobItem } from "../api/dashboard"
 
 // Only `id` and `epic` are read by the grouping helper.
