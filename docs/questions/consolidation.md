@@ -22,7 +22,7 @@ placeholder.
 | File(s) | Format | Locale | Missing value |
 |---|---|---|---|
 | `lib/format.ts` (`formatDateTime`, canonical for 7 files) | `toLocaleString()` (full, OS-styled) | viewer | `"-"` |
-| `routes/RepositoryScheduledTasks.tsx`, `routes/ScheduledTasks.tsx` | `toLocaleString()` | viewer | `null` (returns null, not a string) |
+| `lib/format.ts` (`formatDateTimeOrNull`, canonical for 2 files) | `toLocaleString()` | viewer | `null` (returns null, for callers that render their own fallback) |
 | `routes/Memories.tsx` | `Intl` medium date + short time | viewer | (no guard) |
 | `routes/RepositoryDetail.tsx` | `Intl` medium date + short time | **en-US** (hard-coded) | (no guard) |
 | `routes/Profile.tsx` | `Intl` medium date + short time | **en-US** (hard-coded) | `"unknown"` |

@@ -16,3 +16,10 @@ export function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-"
   return new Date(value).toLocaleString()
 }
+
+// Full date+time in the viewer's locale, or null for a missing value (for
+// callers that render their own fallback). Canonical for the identical
+// `value ? toLocaleString() : null` copies.
+export function formatDateTimeOrNull(value: string | null): string | null {
+  return value ? new Date(value).toLocaleString() : null
+}

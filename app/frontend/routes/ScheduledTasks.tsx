@@ -1,3 +1,4 @@
+import { formatDateTimeOrNull as formatDate } from "../lib/format"
 import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { UseMutationResult } from "@tanstack/react-query"
@@ -458,10 +459,6 @@ function inputClass() {
 
 function tasksBase(pathname: string) {
   return `${routePrefix(pathname)}/scheduled_tasks`
-}
-
-function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString() : null
 }
 
 function formInput(input: ScheduledTaskInput): ScheduledTaskInput {
