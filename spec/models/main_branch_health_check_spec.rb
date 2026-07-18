@@ -116,6 +116,45 @@ RSpec.describe MainBranchHealthCheck do
       )
       expect(check.ci_failed_checks).to be_nil
     end
+
+    it "returns the existing record for an identical CI signal" do
+      failed_checks = [{ name: "RSpec", url: "https://github.com/check/42" }]
+      first = MainBranchHealthCheck.record_ci_poll(
+        repository: repository,
+        sha: "abc",
+        ci_health: "broken",
+        ci_failed_checks: failed_checks
+      )
+
+      second = nil
+      expect {
+        second = MainBranchHealthCheck.record_ci_poll(
+          repository: repository,
+          sha: "abc",
+          ci_health: "broken",
+          ci_failed_checks: failed_checks
+        )
+      }.not_to change(MainBranchHealthCheck, :count)
+      expect(second).to eq(first)
+    end
+
+    it "creates a new record when CI failures change" do
+      MainBranchHealthCheck.record_ci_poll(
+        repository: repository,
+        sha: "abc",
+        ci_health: "broken",
+        ci_failed_checks: [{ name: "RSpec" }]
+      )
+
+      expect {
+        MainBranchHealthCheck.record_ci_poll(
+          repository: repository,
+          sha: "abc",
+          ci_health: "broken",
+          ci_failed_checks: [{ name: "React" }]
+        )
+      }.to change(MainBranchHealthCheck, :count).by(1)
+    end
   end
 
   describe ".record_grader_workflow" do
@@ -155,6 +194,51 @@ RSpec.describe MainBranchHealthCheck do
         repository: repository, sha: "abc", grader_health: "healthy"
       )
       expect(check.workflow).to be_nil
+    end
+
+    it "returns the existing record for an identical grader workflow signal" do
+      workflow = Factories.job(repository: repository).workflows.first
+      first = MainBranchHealthCheck.record_grader_workflow(
+        repository: repository,
+        workflow: workflow,
+        sha: "abc",
+        grader_health: "broken",
+        grader_failed_names: [ "rspec" ]
+      )
+
+      second = nil
+      expect {
+        second = MainBranchHealthCheck.record_grader_workflow(
+          repository: repository,
+          workflow: workflow,
+          sha: "abc",
+          grader_health: "broken",
+          grader_failed_names: [ "rspec" ]
+        )
+      }.not_to change(MainBranchHealthCheck, :count)
+      expect(second).to eq(first)
+    end
+
+    it "keeps separate grader records for separate workflows" do
+      first_workflow = Factories.job(repository: repository).workflows.first
+      second_workflow = Factories.job(repository: repository).workflows.first
+      MainBranchHealthCheck.record_grader_workflow(
+        repository: repository,
+        workflow: first_workflow,
+        sha: "abc",
+        grader_health: "broken",
+        grader_failed_names: [ "rspec" ]
+      )
+
+      expect {
+        MainBranchHealthCheck.record_grader_workflow(
+          repository: repository,
+          workflow: second_workflow,
+          sha: "abc",
+          grader_health: "broken",
+          grader_failed_names: [ "rspec" ]
+        )
+      }.to change(MainBranchHealthCheck, :count).by(1)
     end
   end
 

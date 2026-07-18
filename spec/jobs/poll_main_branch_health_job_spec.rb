@@ -307,6 +307,29 @@ RSpec.describe PollMainBranchHealthJob do
       expect(check.ci_failed_checks).to eq([{ "name" => "RSpec", "url" => "https://github.com/check/42" }])
     end
 
+    it "does not duplicate terminal CI records while the main grader is still pending" do
+      failed = [{ name: "RSpec", url: "https://github.com/check/42" }]
+      repository.update!(
+        last_health_checked_sha: sha,
+        last_ci_evaluated_sha: sha,
+        last_graded_sha: "older-sha",
+        ci_health: "broken",
+        grader_health: "unknown"
+      )
+      MainBranchHealthCheck.record_ci_poll(
+        repository: repository,
+        sha: sha,
+        ci_health: "broken",
+        ci_failed_checks: failed
+      )
+      stub_sha(sha)
+      stub_check_runs({ any?: true, pending?: false, any_failed?: true, all_passed?: false, failed_checks: failed })
+
+      expect {
+        described_class.perform_now(repository.id)
+      }.not_to change(MainBranchHealthCheck, :count)
+    end
+
     it "does not record a health check when checks are still pending" do
       stub_sha(sha)
       stub_check_runs({ any?: true, pending?: true, any_failed?: false, all_passed?: false, failed_checks: [] })
