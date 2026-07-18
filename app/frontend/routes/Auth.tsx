@@ -1,7 +1,9 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { FormEvent, KeyboardEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
+import { Trans } from "react-i18next"
 import { Link, useLocation, useParams } from "react-router-dom"
+import { useT } from "../hooks/useT"
 import { authPrimaryButtonClass } from "../lib/buttonStyles"
 import { NoticeToast } from "../components/NoticeToast"
 import { CapsLockHint, EmailValidityHint, PasswordMatchHint, PasswordStrengthMeter } from "../components/PasswordFeedback"
@@ -16,6 +18,7 @@ import {
 import { errorMessage } from "../lib/errorMessage"
 
 export function SignInRoute() {
+  const { t } = useT("auth")
   const location = useLocation()
   const prefix = routePrefix(location.pathname)
   const [emailAddress, setEmailAddress] = useState("")
@@ -37,12 +40,12 @@ export function SignInRoute() {
 
   return (
     <AuthShell
-      title="Sign in"
-      subtitle="Use an existing Syrus account for this instance."
+      title={t("sign_in.title")}
+      subtitle={t("sign_in.subtitle")}
     >
       <form className="space-y-5" onSubmit={onSubmit}>
-        {submit.isError ? <PanelMessage tone="error">{errorMessage(submit.error, "Unable to sign in.")}</PanelMessage> : null}
-        <Field label="Email address">
+        {submit.isError ? <PanelMessage tone="error">{errorMessage(submit.error, t("sign_in.error"))}</PanelMessage> : null}
+        <Field label={t("field.email")}>
           <input
             autoComplete="username"
             autoFocus
@@ -54,7 +57,7 @@ export function SignInRoute() {
           />
           <EmailValidityHint email={emailAddress} />
         </Field>
-        <Field label="Password">
+        <Field label={t("field.password")}>
           <input
             autoComplete="current-password"
             className={inputClass()}
@@ -70,9 +73,9 @@ export function SignInRoute() {
         </Field>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <button className={authPrimaryButtonClass} disabled={submit.isPending} type="submit">
-            {submit.isPending ? "Signing in..." : "Sign in"}
+            {submit.isPending ? t("sign_in.submitting") : t("sign_in.submit")}
           </button>
-          <Link className="text-sm text-gray-700 dark:text-gray-300 underline hover:no-underline" to={`${prefix}/passwords/new`}>Forgot password?</Link>
+          <Link className="text-sm text-gray-700 dark:text-gray-300 underline hover:no-underline" to={`${prefix}/passwords/new`}>{t("sign_in.forgot")}</Link>
         </div>
       </form>
     </AuthShell>
@@ -80,6 +83,7 @@ export function SignInRoute() {
 }
 
 export function SignUpRoute() {
+  const { t } = useT("auth")
   const location = useLocation()
   const prefix = routePrefix(location.pathname)
   const signup = useQuery({
@@ -89,17 +93,18 @@ export function SignUpRoute() {
 
   return (
     <AuthShell
-      title="Create account"
-      subtitle="Join this Syrus instance with open sign-ups or an invitation link."
+      title={t("sign_up.title")}
+      subtitle={t("sign_up.subtitle")}
     >
-      {signup.isPending ? <PanelMessage>Loading sign-up...</PanelMessage> : null}
-      {signup.isError ? <PanelMessage tone="error">{errorMessage(signup.error, "Unable to load sign-up.")}</PanelMessage> : null}
+      {signup.isPending ? <PanelMessage>{t("sign_up.loading")}</PanelMessage> : null}
+      {signup.isError ? <PanelMessage tone="error">{errorMessage(signup.error, t("sign_up.error_load"))}</PanelMessage> : null}
       {signup.isSuccess ? <SignUpForm payload={signup.data} prefix={prefix} /> : null}
     </AuthShell>
   )
 }
 
 function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: string }) {
+  const { t } = useT("auth")
   const [emailAddress, setEmailAddress] = useState(payload.invitation?.email_address || "")
   const [password, setPassword] = useState("")
   const [passwordConfirmation, setPasswordConfirmation] = useState("")
@@ -125,17 +130,21 @@ function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: strin
   if (!payload.allowed) {
     return (
       <PanelMessage tone="error">
-        Sign-up is invitation-only. Use an invitation link or <Link className="underline hover:no-underline" to={`${prefix}/session/new`}>sign in</Link>.
+        <Trans
+          t={t}
+          i18nKey="sign_up.invite_only"
+          components={{ signin: <Link className="underline hover:no-underline" to={`${prefix}/session/new`} /> }}
+        />
       </PanelMessage>
     )
   }
 
   return (
     <form className="space-y-5" onSubmit={onSubmit}>
-      {payload.invitation ? <PanelMessage>Accepting an invitation from {payload.invitation.invited_by_email}.</PanelMessage> : null}
-      {payload.first_signup ? <PanelMessage>No users exist yet. This account will become the administrator.</PanelMessage> : null}
-      {submit.isError ? <PanelMessage tone="error">{errorMessage(submit.error, "Unable to create account.")}</PanelMessage> : null}
-      <Field label="Email address">
+      {payload.invitation ? <PanelMessage>{t("sign_up.accepting_invite", { email: payload.invitation.invited_by_email })}</PanelMessage> : null}
+      {payload.first_signup ? <PanelMessage>{t("sign_up.first_admin")}</PanelMessage> : null}
+      {submit.isError ? <PanelMessage tone="error">{errorMessage(submit.error, t("sign_up.error_create"))}</PanelMessage> : null}
+      <Field label={t("field.email")}>
         <input
           autoComplete="username"
           autoFocus
@@ -147,7 +156,7 @@ function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: strin
         />
         <EmailValidityHint email={emailAddress} />
       </Field>
-      <Field label="Password">
+      <Field label={t("field.password")}>
         <input
           autoComplete="new-password"
           className={inputClass()}
@@ -159,7 +168,7 @@ function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: strin
         />
         <PasswordStrengthMeter password={password} />
       </Field>
-      <Field label="Confirm password">
+      <Field label={t("field.confirm_password")}>
         <input
           autoComplete="new-password"
           className={inputClass()}
@@ -173,16 +182,17 @@ function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: strin
       </Field>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <button className={authPrimaryButtonClass} disabled={submit.isPending} type="submit">
-          {submit.isPending ? "Creating..." : "Create account"}
+          {submit.isPending ? t("sign_up.submitting") : t("sign_up.submit")}
         </button>
         {/* No accounts exist yet on the first signup — nobody to sign in as. */}
-        {payload.first_signup ? null : <Link className="text-sm text-gray-700 dark:text-gray-300 underline hover:no-underline" to={`${prefix}/session/new`}>Already have an account? Sign in</Link>}
+        {payload.first_signup ? null : <Link className="text-sm text-gray-700 dark:text-gray-300 underline hover:no-underline" to={`${prefix}/session/new`}>{t("sign_up.have_account")}</Link>}
       </div>
     </form>
   )
 }
 
 export function PasswordRequestRoute() {
+  const { t } = useT("auth")
   const location = useLocation()
   const prefix = routePrefix(location.pathname)
   const [emailAddress, setEmailAddress] = useState("")
@@ -200,13 +210,13 @@ export function PasswordRequestRoute() {
 
   return (
     <AuthShell
-      title="Reset password"
-      subtitle="Enter the email address for your Syrus account."
+      title={t("password_request.title")}
+      subtitle={t("password_request.subtitle")}
     >
       <form className="space-y-5" onSubmit={onSubmit}>
         <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
-        {submit.isError ? <PanelMessage tone="error">{errorMessage(submit.error, "Unable to request password reset.")}</PanelMessage> : null}
-        <Field label="Email address">
+        {submit.isError ? <PanelMessage tone="error">{errorMessage(submit.error, t("password_request.error"))}</PanelMessage> : null}
+        <Field label={t("field.email")}>
           <input
             autoComplete="username"
             autoFocus
@@ -220,9 +230,9 @@ export function PasswordRequestRoute() {
         </Field>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <button className={authPrimaryButtonClass} disabled={submit.isPending} type="submit">
-            {submit.isPending ? "Sending..." : "Email reset instructions"}
+            {submit.isPending ? t("password_request.submitting") : t("password_request.submit")}
           </button>
-          <Link className="text-sm text-gray-700 dark:text-gray-300 underline hover:no-underline" to={`${prefix}/session/new`}>Back to sign in</Link>
+          <Link className="text-sm text-gray-700 dark:text-gray-300 underline hover:no-underline" to={`${prefix}/session/new`}>{t("back_to_sign_in")}</Link>
         </div>
       </form>
     </AuthShell>
@@ -230,6 +240,7 @@ export function PasswordRequestRoute() {
 }
 
 export function PasswordResetRoute() {
+  const { t } = useT("auth")
   const params = useParams()
   const location = useLocation()
   const prefix = routePrefix(location.pathname)
@@ -248,12 +259,12 @@ export function PasswordResetRoute() {
 
   return (
     <AuthShell
-      title="Update password"
-      subtitle="Choose a new password for your Syrus account."
+      title={t("password_reset.title")}
+      subtitle={t("password_reset.subtitle")}
     >
       <form className="space-y-5" onSubmit={onSubmit}>
-        {submit.isError ? <PanelMessage tone="error">{errorMessage(submit.error, "Unable to update password.")}</PanelMessage> : null}
-        <Field label="New password">
+        {submit.isError ? <PanelMessage tone="error">{errorMessage(submit.error, t("password_reset.error"))}</PanelMessage> : null}
+        <Field label={t("field.new_password")}>
           <input
             autoComplete="new-password"
             autoFocus
@@ -266,7 +277,7 @@ export function PasswordResetRoute() {
           />
           <PasswordStrengthMeter password={password} />
         </Field>
-        <Field label="Confirm password">
+        <Field label={t("field.confirm_password")}>
           <input
             autoComplete="new-password"
             className={inputClass()}
@@ -280,9 +291,9 @@ export function PasswordResetRoute() {
         </Field>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <button className={authPrimaryButtonClass} disabled={submit.isPending} type="submit">
-            {submit.isPending ? "Saving..." : "Save"}
+            {submit.isPending ? t("password_reset.submitting") : t("password_reset.submit")}
           </button>
-          <Link className="text-sm text-gray-700 dark:text-gray-300 underline hover:no-underline" to={`${prefix}/session/new`}>Back to sign in</Link>
+          <Link className="text-sm text-gray-700 dark:text-gray-300 underline hover:no-underline" to={`${prefix}/session/new`}>{t("back_to_sign_in")}</Link>
         </div>
       </form>
     </AuthShell>

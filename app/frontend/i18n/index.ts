@@ -9,6 +9,7 @@ import enDashboard from "./locales/en/dashboard.json"
 import enChat from "./locales/en/chat.json"
 import enSettings from "./locales/en/settings.json"
 import enAdmin from "./locales/en/admin.json"
+import enAuth from "./locales/en/auth.json"
 
 import deCommon from "./locales/de/common.json"
 import deNav from "./locales/de/nav.json"
@@ -18,6 +19,7 @@ import deDashboard from "./locales/de/dashboard.json"
 import deChat from "./locales/de/chat.json"
 import deSettings from "./locales/de/settings.json"
 import deAdmin from "./locales/de/admin.json"
+import deAuth from "./locales/de/auth.json"
 
 import laCommon from "./locales/la/common.json"
 import laNav from "./locales/la/nav.json"
@@ -27,6 +29,7 @@ import laDashboard from "./locales/la/dashboard.json"
 import laChat from "./locales/la/chat.json"
 import laSettings from "./locales/la/settings.json"
 import laAdmin from "./locales/la/admin.json"
+import laAuth from "./locales/la/auth.json"
 
 import { readInitialBootstrap } from "../api/bootstrap"
 
@@ -40,7 +43,7 @@ i18n.use(initReactI18next).init({
   lng: detectedLocale,
   fallbackLng: "en",
   defaultNS: "common",
-  ns: ["common", "nav", "jobs", "epics", "dashboard", "chat", "settings", "admin"],
+  ns: ["common", "nav", "jobs", "epics", "dashboard", "chat", "settings", "admin", "auth"],
   resources: {
     en: {
       common: enCommon,
@@ -50,7 +53,8 @@ i18n.use(initReactI18next).init({
       dashboard: enDashboard,
       chat: enChat,
       settings: enSettings,
-      admin: enAdmin
+      admin: enAdmin,
+      auth: enAuth
     },
     de: {
       common: deCommon,
@@ -60,7 +64,8 @@ i18n.use(initReactI18next).init({
       dashboard: deDashboard,
       chat: deChat,
       settings: deSettings,
-      admin: deAdmin
+      admin: deAdmin,
+      auth: deAuth
     },
     la: {
       common: laCommon,
@@ -70,7 +75,8 @@ i18n.use(initReactI18next).init({
       dashboard: laDashboard,
       chat: laChat,
       settings: laSettings,
-      admin: laAdmin
+      admin: laAdmin,
+      auth: laAuth
     }
   },
   interpolation: {
