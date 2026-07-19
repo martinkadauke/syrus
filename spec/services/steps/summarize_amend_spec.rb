@@ -169,6 +169,24 @@ RSpec.describe Steps::SummarizeAmend do
       expect(commit_message).not_to include("Closes #")
     end
 
+    it "amends cleanly when HEAD is an empty commit (JOB-1830 transient CI re-trigger)" do
+      # The agentic step left an empty 're-trigger CI' commit at HEAD (a valid
+      # response to a transient CI failure with nothing to fix). Relabeling it
+      # must not fail with git's "amending would make it empty".
+      git_env = {
+        "GIT_AUTHOR_NAME" => "Test", "GIT_AUTHOR_EMAIL" => "test@test.com",
+        "GIT_COMMITTER_NAME" => "Test", "GIT_COMMITTER_EMAIL" => "test@test.com"
+      }
+      sh(git_env, "git -C #{@ws_path} commit -q --allow-empty -m 'Trigger CI re-run'")
+
+      stub_agent(title: "Trigger CI re-run after transient rspec failure", body: nil)
+
+      expect { handler.call }.not_to raise_error
+      expect(commit_message).to start_with("Trigger CI re-run after transient rspec failure")
+      # HEAD is still the (now relabeled) empty commit: no diff against its parent.
+      expect(`git -C #{@ws_path} diff --stat HEAD^ HEAD`.strip).to eq("")
+    end
+
     it "raises StepFailed when the agent did not call submit_summary" do
       allow(handler).to receive(:run_agent)
       expect { handler.call }.to raise_error(Steps::Base::StepFailed, /didn't call submit_summary/)

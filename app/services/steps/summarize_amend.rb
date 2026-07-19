@@ -70,8 +70,14 @@ module Steps
       body    = workflow.artifact("amend_commit_body")
       message = body.present? ? [ subject, "", body ].join("\n") : subject
       message = BotIdentity.for(job).append_co_authored_by(message)
+      # --allow-empty: the upstream agentic step may legitimately leave an
+      # empty commit at HEAD — e.g. a transient CI failure where the fix is a
+      # no-op and the agent creates an empty "re-trigger CI" commit. Relabeling
+      # that commit is a safe, intended operation; without --allow-empty git
+      # refuses ("amending would make it empty") and fails the whole workflow.
+      # For the normal non-empty case --allow-empty is a no-op.
       streaming_git.run(
-        "commit", "--amend", "-m", message,
+        "commit", "--amend", "--allow-empty", "-m", message,
         chdir: workspace.path.to_s
       )
     end

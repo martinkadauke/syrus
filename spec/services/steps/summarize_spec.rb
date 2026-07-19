@@ -230,6 +230,22 @@ RSpec.describe Steps::Summarize do
       expect(commit_message).to eq("Add greeting helper\n\nCo-Authored-By: Ada Lovelace <ada@example.com>")
     end
 
+    it "amends cleanly when the implement HEAD is an empty commit" do
+      # Parity with SummarizeAmend: relabeling an empty commit must not fail
+      # with git's "amending would make it empty".
+      git_env = {
+        "GIT_AUTHOR_NAME" => "Test", "GIT_AUTHOR_EMAIL" => "test@test.com",
+        "GIT_COMMITTER_NAME" => "Test", "GIT_COMMITTER_EMAIL" => "test@test.com"
+      }
+      sh(git_env, "git -C #{@ws_path} commit -q --allow-empty -m 'placeholder empty'")
+
+      stub_agent(title: "Add greeting helper", body: nil)
+
+      expect { handler.call }.not_to raise_error
+      expect(commit_message).to start_with("Add greeting helper")
+      expect(`git -C #{@ws_path} diff --stat HEAD^ HEAD`.strip).to eq("")
+    end
+
     it "does not add 'Closes #N' for cron jobs (no issue_number)" do
       cron_task = ScheduledTask.create!(
         user: job.user, repository: job.repository,

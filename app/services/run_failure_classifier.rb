@@ -39,6 +39,8 @@ class RunFailureClassifier
       result("worker_died", 0.95, true, "The worker or agent process disappeared while the run was active.")
     when branch_diverged?
       result("branch_diverged", 0.95, false, "The PR branch changed before Syrus could push this workflow.")
+    when empty_commit?
+      result("empty_commit", 0.85, false, "A git commit or amend was rejected because it would be empty (not a corrupt workspace).")
     when git_state_corrupt?
       result("git_state_corrupt", 0.85, false, "The workspace git state was corrupt or unsafe.")
     when max_turns?
@@ -96,6 +98,14 @@ class RunFailureClassifier
   def branch_diverged?
     diagnostic&.error_class.to_s.match?(/Steps::PrOpen::BranchDiverged/) ||
       text_match?(/PR branch changed before Syrus could push|branch diverged|non-fast-forward/i)
+  end
+
+  def empty_commit?
+    # A commit/amend git refused because it would introduce no changes — a
+    # benign situation (e.g. relabeling an empty "re-trigger CI" commit), NOT
+    # workspace corruption. Must be checked before git_state_corrupt?, which
+    # matches every GitRunner::GitError.
+    text_match?(/would make it empty|nothing to commit|no changes added to commit/i)
   end
 
   def git_state_corrupt?

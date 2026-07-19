@@ -140,8 +140,11 @@ module Steps
 
       body    = workflow.artifact("pr_body")
       message = BotIdentity.for(job).append_co_authored_by(build_pr_commit_message(title, body))
+      # --allow-empty for parity with SummarizeAmend: if the implement step's
+      # HEAD is an empty commit, relabeling it must not fail with "amending
+      # would make it empty". Harmless (no-op) for the normal non-empty commit.
       streaming_git.run(
-        "commit", "--amend", "-m", message,
+        "commit", "--amend", "--allow-empty", "-m", message,
         chdir: workspace.path.to_s
       )
     end

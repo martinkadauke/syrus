@@ -126,6 +126,20 @@ RSpec.describe RunFailureClassifier do
     expect(classification.classification).to eq("git_state_corrupt")
   end
 
+  it "classifies an empty-commit amend as empty_commit, not git_state_corrupt (JOB-1830 regression)" do
+    run.update!(state: "failed")
+    # A GitRunner::GitError whose error_class alone would match git_state_corrupt?,
+    # but the message is the benign empty-commit case — empty_commit? must win.
+    diagnostic(
+      "GitRunner::GitError",
+      "git commit --amend failed\nYou asked to amend the most recent commit, but doing so would make it empty."
+    )
+
+    result = classification
+    expect(result.classification).to eq("empty_commit")
+    expect(result.retryable).to eq(false)
+  end
+
   it "classifies branch divergence as non-retryable" do
     run.update!(state: "failed")
     diagnostic("Steps::PrOpen::BranchDiverged", "PR branch changed before Syrus could push WF-123")
