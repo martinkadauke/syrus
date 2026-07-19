@@ -41,9 +41,9 @@ module Prompts
         architectural choices.
 
         **Tools:**
-        - `write_memory(kind, scope, name, description, content)` -- create
-          or update. Upserts by name. `scope: global` for cross-repo facts;
-          `scope: repository` + `scope_id` for repo-specific ones.
+        - `write_memory(kind, scope, content)` -- create a memory.
+          `scope: global` for cross-repo facts; `scope: repository` +
+          `scope_id` (repository id) for repo-specific ones.
         - `list_memories` / `search_memories(query)` -- retrieve. Call when
           prior context seems relevant.
         - `read_memory(memory_id)` -- read the full content of a specific
@@ -53,7 +53,7 @@ module Prompts
         - `publish_memory(memory_id)` -- share with all users in that scope.
         - `unpublish_memory(memory_id)` -- make it private again.
 
-        **Kinds:** `user`, `feedback`, `project`, `reference`, `decision`.
+        **Kinds:** `user_pref`, `feedback`, `project_fact`, `reference`, `decision`.
 
         #{environment_snapshot}
 
@@ -491,7 +491,7 @@ module Prompts
       return [] unless @chat_session
 
       memories = ChatMemory.visible_to(@chat_session.user, attached_repositories)
-                           .order(:scope, :kind, :created_at)
+                           .order(Arel.sql("CASE WHEN scope = 'repository' THEN 0 ELSE 1 END, confidence IS NULL ASC, confidence DESC, last_verified_at IS NULL ASC, last_verified_at DESC, created_at DESC"))
       remaining = 2.kilobytes
       rendered = 0
       total = memories.size
