@@ -516,13 +516,12 @@ RSpec.describe ClaudeInvocation do
   end
 
   describe "default_runner cmd line ordering" do
-    # `claude --mcp-config <configs...>` is variadic and will swallow
-    # the next positional arg as a second config. If `--mcp-config <path>`
-    # ends up immediately before the prompt, claude prepends cwd to the
-    # prompt and bails with ENAMETOOLONG. This regression test pins the
-    # ordering: --mcp-config must always be followed by another flag,
-    # never by the prompt directly.
-    it "places --mcp-config before another flag, not directly before the prompt" do
+    # The prompt is sent over stdin, never on argv (a large prompt on argv
+    # overruns MAX_ARG_STRLEN and execve fails with Errno::E2BIG). This pins
+    # that: the prompt string must not appear anywhere in the command, and
+    # --mcp-config must still be followed by another flag (no trailing
+    # positional that its variadic could swallow).
+    it "keeps the prompt off argv and never leaves --mcp-config trailing" do
       invocation = described_class.new("/tmp", prompt: "PROMPT_BODY", oauth_token: "x",
                                        mcp_config: "/tmp/mcp.json")
 
@@ -532,19 +531,39 @@ RSpec.describe ClaudeInvocation do
         rd, wr = IO.pipe
         wr.close
         fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
-        blk.call($stdin, rd, fake_wait)
+        blk.call(File.open(File::NULL, "w"), rd, fake_wait)
         rd.close
       end
 
       invocation.run
 
-      mcp_idx    = cmd.index("--mcp-config")
-      prompt_idx = cmd.index("PROMPT_BODY")
+      expect(cmd).not_to include("PROMPT_BODY")   # prompt travels over stdin
+      mcp_idx = cmd.index("--mcp-config")
       expect(mcp_idx).not_to be_nil, "expected --mcp-config in cmd: #{cmd.inspect}"
       expect(cmd[mcp_idx + 1]).to eq("/tmp/mcp.json")
       expect(cmd[mcp_idx + 2]).to start_with("--"),
         "arg after mcp-config path must be another flag, not a positional — got #{cmd[mcp_idx + 2].inspect}"
-      expect(prompt_idx).to eq(cmd.length - 1)  # prompt is the last positional
+    end
+
+    it "delivers the prompt to ProcessRunner as stdin_data, not in the command" do
+      captured = {}
+      allow(ProcessRunner).to receive(:new) do |**kwargs|
+        captured[:command] = kwargs[:command]
+        captured[:stdin_data] = kwargs[:stdin_data]
+        fake = double("ProcessRunner")
+        allow(fake).to receive(:run).and_return(
+          ProcessRunner::Result.new(
+            exit_status: 0, timed_out: false, stopped: false, silent_timed_out: false,
+            operator_killed: false, aliveness_failed: false, duration_s: 1.0, spawned_process_id: nil
+          )
+        )
+        fake
+      end
+
+      described_class.new("/tmp", prompt: "A HUGE PROMPT BODY", oauth_token: "x").run
+
+      expect(captured[:stdin_data]).to eq("A HUGE PROMPT BODY")
+      expect(captured[:command]).not_to include("A HUGE PROMPT BODY")
     end
 
     it "passes --resume <id> when resume_session_id is set" do
@@ -555,7 +574,7 @@ RSpec.describe ClaudeInvocation do
         cmd.replace(args)
         rd, wr = IO.pipe; wr.close
         fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
-        blk.call($stdin, rd, fake_wait)
+        blk.call(File.open(File::NULL, "w"), rd, fake_wait)
         rd.close
       end
 
@@ -575,7 +594,7 @@ RSpec.describe ClaudeInvocation do
         cmd.replace(args)
         rd, wr = IO.pipe; wr.close
         fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
-        blk.call($stdin, rd, fake_wait)
+        blk.call(File.open(File::NULL, "w"), rd, fake_wait)
         rd.close
       end
 
@@ -596,7 +615,7 @@ RSpec.describe ClaudeInvocation do
         cmd.replace(args)
         rd, wr = IO.pipe; wr.close
         fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
-        blk.call($stdin, rd, fake_wait)
+        blk.call(File.open(File::NULL, "w"), rd, fake_wait)
         rd.close
       end
 
@@ -618,7 +637,7 @@ RSpec.describe ClaudeInvocation do
         cmd.replace(args)
         rd, wr = IO.pipe; wr.close
         fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
-        blk.call($stdin, rd, fake_wait)
+        blk.call(File.open(File::NULL, "w"), rd, fake_wait)
         rd.close
       end
 
@@ -633,7 +652,7 @@ RSpec.describe ClaudeInvocation do
         cmd.replace(args)
         rd, wr = IO.pipe; wr.close
         fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
-        blk.call($stdin, rd, fake_wait)
+        blk.call(File.open(File::NULL, "w"), rd, fake_wait)
         rd.close
       end
 
@@ -650,7 +669,7 @@ RSpec.describe ClaudeInvocation do
         cmd.replace(args)
         rd, wr = IO.pipe; wr.close
         fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
-        blk.call($stdin, rd, fake_wait)
+        blk.call(File.open(File::NULL, "w"), rd, fake_wait)
         rd.close
       end
 
@@ -665,7 +684,7 @@ RSpec.describe ClaudeInvocation do
         cmd.replace(args)
         rd, wr = IO.pipe; wr.close
         fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
-        blk.call($stdin, rd, fake_wait)
+        blk.call(File.open(File::NULL, "w"), rd, fake_wait)
         rd.close
       end
 
@@ -712,7 +731,7 @@ RSpec.describe ClaudeInvocation do
         captured[:opts] = opts
         rd, wr = IO.pipe; wr.close
         fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
-        blk.call($stdin, rd, fake_wait)
+        blk.call(File.open(File::NULL, "w"), rd, fake_wait)
         rd.close
       end
       yield

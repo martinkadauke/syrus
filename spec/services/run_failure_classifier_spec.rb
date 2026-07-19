@@ -72,6 +72,32 @@ RSpec.describe RunFailureClassifier do
     expect(classification.classification).to eq("provider_auth_or_config")
   end
 
+  it "classifies an Errno::E2BIG argv-too-long agent failure as agent_invocation_too_large" do
+    run.update!(state: "failed", agent_provider: "claude")
+    diagnostic("Errno::E2BIG", "Argument list too long - claude")
+
+    result = classification
+    expect(result.classification).to eq("agent_invocation_too_large")
+    expect(result.retryable).to eq(false)
+  end
+
+  it "does not mislabel an E2BIG failure whose command echoes --mcp-config as auth/config (JOB-1819 regression)" do
+    run.update!(state: "failed", agent_provider: "claude")
+    diagnostic(
+      "Errno::E2BIG",
+      "Argument list too long - claude --print --mcp-config /tmp/syrus-mcp-50825.json --output-format stream-json"
+    )
+
+    expect(classification.classification).to eq("agent_invocation_too_large")
+  end
+
+  it "no longer treats a bare --mcp-config mention as a provider auth/config failure" do
+    run.update!(state: "failed", agent_provider: "claude")
+    diagnostic("RuntimeError", "spawn failed for claude --print --mcp-config /tmp/x.json --verbose")
+
+    expect(classification.classification).not_to eq("provider_auth_or_config")
+  end
+
   it "classifies rate limits from structured JobLog rows" do
     run.update!(state: "failed")
     JobLog.append!(run: run, chunk: "Provider paused this request", kind: "rate_limited")

@@ -101,7 +101,6 @@ class CodexInvocation
 
     env = codex_env(api_key: api_key, codex_home: codex_home)
     cmd = codex_command(workspace_path: workspace_path,
-                        prompt: prompt,
                         resume_session_id: resume_session_id)
 
     metadata = {
@@ -122,6 +121,7 @@ class CodexInvocation
     runner_result = ProcessRunner.new(
       env: env,
       command: cmd,
+      stdin_data: prompt,
       chdir: workspace_path,
       timeout: timeout,
       # See AgentInvocation::SILENT_TIMEOUT_SECONDS — same rationale
@@ -181,12 +181,17 @@ class CodexInvocation
     )
   end
 
-  def codex_command(workspace_path:, prompt:, resume_session_id:)
+  # The prompt is delivered on stdin (see `stdin_data:` in default_runner),
+  # not as a positional arg. `codex exec -` reads the prompt from stdin; the
+  # trailing `-` is codex's stdin sentinel. Passing a large prompt on argv
+  # instead would overrun Linux's 128 KiB per-argument limit (MAX_ARG_STRLEN)
+  # and fail with Errno::E2BIG "Argument list too long".
+  def codex_command(workspace_path:, resume_session_id:)
     common = [ "--dangerously-bypass-approvals-and-sandbox", "--json" ]
     if resume_session_id.present?
-      [ "codex", "exec", "resume", *common, resume_session_id, prompt ]
+      [ "codex", "exec", "resume", *common, resume_session_id, "-" ]
     else
-      [ "codex", "exec", "--cd", workspace_path, *common, prompt ]
+      [ "codex", "exec", "--cd", workspace_path, *common, "-" ]
     end
   end
 

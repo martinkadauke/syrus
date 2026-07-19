@@ -43,6 +43,8 @@ class RunFailureClassifier
       result("git_state_corrupt", 0.85, false, "The workspace git state was corrupt or unsafe.")
     when max_turns?
       result("agent_max_turns", 0.90, false, "The agent stopped after reaching the configured turn limit.")
+    when argument_list_too_long?
+      result("agent_invocation_too_large", 0.90, false, "The agent command line exceeded the OS argument-size limit (the prompt is too large to pass on argv; it must be sent over stdin).")
     when auth_or_config?
       result("provider_auth_or_config", 0.80, false, "The provider authentication or configuration was invalid.")
     when validation_or_user_error?
@@ -107,7 +109,16 @@ class RunFailureClassifier
   end
 
   def auth_or_config?
-    text_match?(/auth|oauth|token|api key|unauthorized|forbidden|permission denied|not configured|missing.+credential|invalid.+credential|mcp.+initialize|connection closed: initialize|config/i)
+    # NOTE: match specific configuration phrasings, not a bare `config`
+    # substring — the latter matched the `--mcp-config` flag echoed in an
+    # unrelated command line (e.g. the Errno::E2BIG argv-too-long failure)
+    # and mislabeled it as an auth/config problem.
+    text_match?(/auth|oauth|token|api key|unauthorized|forbidden|permission denied|not configured|misconfigur|invalid configuration|missing.+credential|invalid.+credential|mcp.+initialize|connection closed: initialize/i)
+  end
+
+  def argument_list_too_long?
+    diagnostic&.error_class.to_s.match?(/Errno::E2BIG/) ||
+      text_match?(/Errno::E2BIG|argument list too long/i)
   end
 
   def validation_or_user_error?

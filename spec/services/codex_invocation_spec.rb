@@ -50,11 +50,12 @@ RSpec.describe CodexInvocation do
 
   describe "default_runner" do
     def capture_popen(invocation, lines: nil, exitstatus: 0)
-      captured = { env: nil, cmd: nil, opts: nil }
+      captured = { env: nil, cmd: nil, opts: nil, stdin: nil }
       allow(Open3).to receive(:popen2e) do |env, *args, **opts, &blk|
         captured[:env] = env
         captured[:cmd] = args
         captured[:opts] = opts
+        in_rd, in_wr = IO.pipe
         rd, wr = IO.pipe
         (lines || [
           { type: "thread.started", thread_id: "019e-test" },
@@ -66,8 +67,12 @@ RSpec.describe CodexInvocation do
         end
         wr.close
         fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(exitstatus), 0)
-        blk.call($stdin, rd, fake_wait)
+        blk.call(in_wr, rd, fake_wait)
         rd.close
+        # The invocation's stdin writer thread is joined inside blk.call, so the
+        # prompt is fully written and in_wr closed by now — safe to read it.
+        captured[:stdin] = in_rd.read
+        in_rd.close
       end
 
       result = invocation.run
@@ -82,6 +87,11 @@ RSpec.describe CodexInvocation do
         expect(captured[:env]["CODEX_HOME"]).to eq(home)
         expect(captured[:cmd]).to include("codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--json")
         expect(captured[:cmd]).to include("--cd", "/tmp/wkt")
+        # Prompt goes to stdin via the `-` sentinel, not on argv (argv-too-long
+        # / Errno::E2BIG guard). "P" must not appear as a positional.
+        expect(captured[:cmd].last).to eq("-")
+        expect(captured[:cmd]).not_to include("P")
+        expect(captured[:stdin]).to eq("P")
         expect(File.read(File.join(home, "config.toml"))).to include('model = "gpt-5.5"')
       end
     end
@@ -108,8 +118,10 @@ RSpec.describe CodexInvocation do
         captured, = capture_popen(invocation)
 
         expect(captured[:cmd][0, 3]).to eq(%w[codex exec resume])
-        expect(captured[:cmd]).to include("--dangerously-bypass-approvals-and-sandbox", "--json", "019e-test", "P")
+        expect(captured[:cmd]).to include("--dangerously-bypass-approvals-and-sandbox", "--json", "019e-test", "-")
         expect(captured[:cmd]).not_to include("--cd")
+        expect(captured[:cmd]).not_to include("P")   # prompt is on stdin, not argv
+        expect(captured[:stdin]).to eq("P")
       end
     end
 

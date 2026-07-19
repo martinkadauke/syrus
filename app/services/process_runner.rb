@@ -189,6 +189,7 @@ class ProcessRunner
           end
         end
 
+        @stdin_writer&.join
         killer.kill
         status = wait_thread.value
         result = Result.new(
@@ -304,10 +305,27 @@ class ProcessRunner
     @command.compact.map(&:to_s).join(" ").safe_byteslice(0, 4096)
   end
 
+  # Feed the child's stdin. When there is a payload, write it on a separate
+  # thread so the caller can start draining stdout immediately. A synchronous
+  # write of a large payload would deadlock: once the ~64 KiB stdin pipe buffer
+  # fills we would block writing stdin, while the child can be simultaneously
+  # blocked writing stdout that nobody is reading yet. The writer thread is
+  # joined after stream_output finishes (see #run).
   def write_stdin(stdin)
-    stdin.write(@stdin_data) if @stdin_data
-  ensure
-    stdin.close unless stdin.closed?
+    unless @stdin_data
+      stdin.close unless stdin.closed?
+      return
+    end
+
+    @stdin_writer = Thread.new do
+      Thread.current.report_on_exception = false
+      stdin.write(@stdin_data)
+    rescue Errno::EPIPE, IOError
+      # Child closed stdin before consuming the whole payload (e.g. it exited
+      # early or read only what it needed). It already has what it read.
+    ensure
+      stdin.close unless stdin.closed?
+    end
   end
 
   def stream_output(output, wait_thread, silent_check)

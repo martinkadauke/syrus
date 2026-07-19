@@ -70,14 +70,15 @@ class ClaudeInvocation
                      stop_requested: -> { false }, process_started: ->(_process) { })
     env = agent_env(oauth_token: oauth_token, workspace_path: workspace_path).merge(env || {})
     cmd = [ "claude", "--print" ]
-    # `--mcp-config <configs...>` is variadic — claude keeps consuming
-    # subsequent positional args as additional configs until it sees
-    # another flag. If we put it last, the prompt gets eaten as a
-    # second "config" and claude bails with ENAMETOOLONG. Slot it in
-    # *before* another flag (here, --output-format) so the variadic
-    # terminates after one path. Same rule applies to --resume even
-    # though it's a single-value flag — we keep it next to mcp-config
-    # for symmetry and to leave the prompt as the only trailing arg.
+    # The prompt is fed to claude over stdin (`stdin_data:` below), NOT as a
+    # positional arg. A large prompt on argv — e.g. an adversarial_review step
+    # that embeds a big diff — overruns Linux's 128 KiB per-argument limit
+    # (MAX_ARG_STRLEN) and execve fails with Errno::E2BIG "Argument list too
+    # long". stdin has no such ceiling. This also removes the old
+    # `--mcp-config <configs...>` variadic hazard entirely: with no trailing
+    # positional, claude cannot mistake the prompt for an extra mcp config,
+    # so `--mcp-config`/`--resume` no longer need a following flag to fence
+    # the variadic.
     cmd += [ "--mcp-config", mcp_config ] if mcp_config
     cmd += [ "--resume", resume_session_id ] if resume_session_id
     cmd += [ "--disallowedTools", *Array(disallowed_tools) ] if disallowed_tools.present?
@@ -92,7 +93,6 @@ class ClaudeInvocation
     # process timeout (AgentInvocation::DEFAULT_TIMEOUT_SECONDS) still bounds runaway
     # loops, so we're not unbounded on wall time even uncapped.
     cmd += [ "--max-turns", max_turns.to_s ] if max_turns && max_turns.positive?
-    cmd += [ prompt ]
 
     metadata = {
       turns: nil, is_error: false, outcome: nil, final_text: nil, session_id: nil,
@@ -104,6 +104,7 @@ class ClaudeInvocation
     runner_result = ProcessRunner.new(
       env: env,
       command: cmd,
+      stdin_data: prompt,
       chdir: workspace_path,
       timeout: timeout,
       silent_timeout: AgentInvocation::SILENT_TIMEOUT_SECONDS,

@@ -264,6 +264,45 @@ RSpec.describe ProcessRunner do
     ENV.replace(saved)
   end
 
+  it "delivers stdin_data to the child" do
+    lines = []
+    result = described_class.new(
+      env: {},
+      command: [ ruby, "-e", "print STDIN.read.bytesize" ],
+      chdir: @dir,
+      timeout: 5,
+      stdin_data: "hello stdin",
+      on_output_line: ->(line) { lines << line }
+    ).run
+
+    expect(result).to be_success
+    expect(lines.join).to eq("hello stdin".bytesize.to_s)
+  end
+
+  it "does not deadlock when a large stdin payload is written while the child streams output" do
+    # The payload (2 MiB) far exceeds the ~64 KiB stdin pipe buffer, and the
+    # child echoes every line back — so a synchronous stdin write would wedge
+    # (we block writing stdin; child blocks writing stdout nobody reads yet).
+    # The concurrent writer thread must prevent that.
+    big = "x" * (2 * 1024 * 1024)
+    script = 'n = 0; STDIN.each_line { |l| n += l.bytesize }; STDOUT.puts n'
+    total_bytes = nil
+
+    result = Timeout.timeout(20) do
+      described_class.new(
+        env: {},
+        command: [ ruby, "-e", script ],
+        chdir: @dir,
+        timeout: 15,
+        stdin_data: big + "\n",
+        on_output_line: ->(line) { total_bytes = line.to_i }
+      ).run
+    end
+
+    expect(result).to be_success
+    expect(total_bytes).to eq(big.bytesize + 1)
+  end
+
   def run_command(*command)
     described_class.new(env: {}, command: command, chdir: @dir, timeout: 5).run
   end
