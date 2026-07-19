@@ -14,7 +14,8 @@ class ClaudeInvocation
                  required_mcp_tools: nil,
                  env: nil,
                  stop_requested: -> { false },
-                 process_started: ->(_process) { })
+                 process_started: ->(_process) { },
+                 on_session_id: ->(_session_id) { })
     @workspace_path = workspace_path.to_s
     @prompt = prompt
     @oauth_token = oauth_token
@@ -31,6 +32,7 @@ class ClaudeInvocation
     @env = env || {}
     @stop_requested = stop_requested
     @process_started = process_started
+    @on_session_id = on_session_id
   end
 
   def run
@@ -48,7 +50,8 @@ class ClaudeInvocation
       disallowed_tools: @disallowed_tools,
       env: @env,
       stop_requested: @stop_requested,
-      process_started: @process_started
+      process_started: @process_started,
+      on_session_id: @on_session_id
     )
   end
 
@@ -67,8 +70,10 @@ class ClaudeInvocation
                      max_turns:, mcp_config: nil, image_paths: nil, file_paths: nil, resume_session_id: nil,
                      env: nil,
                      disallowed_tools: nil,
-                     stop_requested: -> { false }, process_started: ->(_process) { })
+                     stop_requested: -> { false }, process_started: ->(_process) { },
+                     on_session_id: ->(_session_id) { })
     env = agent_env(oauth_token: oauth_token, workspace_path: workspace_path).merge(env || {})
+    ensure_session_on_disk(resume_session_id, workspace_path, log_sink) if resume_session_id.present?
     cmd = [ "claude", "--print" ]
     # The prompt is fed to claude over stdin (`stdin_data:` below), NOT as a
     # positional arg. A large prompt on argv — e.g. an adversarial_review step
@@ -121,6 +126,9 @@ class ClaudeInvocation
           if update[:is_error] && update[:outcome] == "success"
             update[:outcome] = metadata[:outcome].presence || "api_error"
           end
+          if update[:session_id] && metadata[:session_id].nil?
+            on_session_id.call(update[:session_id])
+          end
           metadata.merge!(update)
         end
       end
@@ -152,6 +160,24 @@ class ClaudeInvocation
       cache_creation_input_tokens: metadata[:cache_creation_input_tokens],
       cache_read_input_tokens: metadata[:cache_read_input_tokens]
     )
+  end
+
+  def ensure_session_on_disk(session_id, workspace_path, log_sink)
+    path = ClaudeSession.canonical_path_for(
+      home: ENV.fetch("HOME", "/root"),
+      cwd: workspace_path,
+      session_id: session_id
+    )
+    return if File.exist?(path)
+
+    session = ClaudeSession.find_by(session_id: session_id)
+    return unless session&.transcript_jsonl.present?
+
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, session.transcript_jsonl)
+    log_sink.call("[ClaudeInvocation] restored session #{session_id} from DB to #{path}", kind: "system")
+  rescue StandardError => e
+    log_sink.call("[ClaudeInvocation] session restore failed for #{session_id}: #{e.message}", kind: "system")
   end
 
   def agent_env(oauth_token:, workspace_path:)
