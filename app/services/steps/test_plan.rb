@@ -30,13 +30,21 @@ module Steps
       )
 
       workflow.reload
+      verify_test_plan!
+    rescue StepFailed => e
+      raise unless mcp_sidecar_failure?(e)
+
+      write_fallback_test_plan!
+    end
+
+    private
+
+    def verify_test_plan!
       if workflow.artifact("test_plan").blank?
         capture_mcp_sidecar_stderr
         raise StepFailed, "agent didn't call submit_test_plan"
       end
     end
-
-    private
 
     def parent_session_id
       run.parent_session_id.presence || implement_session_id || super
@@ -55,6 +63,38 @@ module Steps
 
     def missing_required_implement_run?
       workflow.steps.exists?(kind: "implement") && successful_implement_run.blank?
+    end
+
+    def mcp_sidecar_failure?(error)
+      error.message.include?("mcp_sidecar_failed")
+    end
+
+    def write_fallback_test_plan!
+      workflow.set_artifact!("test_plan", {
+        steps: fallback_test_plan_steps,
+        notes: "Syrus generated this fallback because the test-plan MCP sidecar was unavailable. Review the PR summary and completed grader results for context."
+      })
+      log("[test_plan] MCP sidecar unavailable; wrote fallback test plan")
+    end
+
+    def fallback_test_plan_steps
+      grader_steps = workflow.steps.where(kind: "grader").order(:position).filter_map do |grader_step|
+        details = grader_step.details || {}
+        next unless details["required"] != false
+
+        command = details["command"].to_s.strip
+        name = details["name"].to_s.strip
+        if command.present?
+          "Run #{name.presence || "the configured grader"}: `#{command}`"
+        elsif name.present?
+          "Run the configured Syrus grader: #{name}"
+        end
+      end.uniq
+
+      [
+        "Review the PR diff and summary for the intended behavior.",
+        *(grader_steps.presence || [ "Run the required Syrus graders for this repository." ])
+      ]
     end
   end
 end

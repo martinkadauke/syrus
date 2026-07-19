@@ -54,6 +54,36 @@ RSpec.describe Steps::TestPlan do
     expect { handler.call }.to raise_error(Steps::Base::StepFailed, /didn't call submit_test_plan/)
   end
 
+  it "writes a fallback test plan when the MCP sidecar is unavailable" do
+    allow(handler).to receive(:run_agent).and_raise(Steps::Base::StepFailed, "agent reported mcp_sidecar_failed")
+
+    expect { handler.call }.not_to raise_error
+
+    artifact = workflow.reload.artifact("test_plan")
+    expect(artifact["steps"]).to include("Review the PR diff and summary for the intended behavior.")
+    expect(artifact["steps"]).to include("Run the required Syrus graders for this repository.")
+    expect(artifact["notes"]).to include("MCP sidecar was unavailable")
+  end
+
+  it "includes materialized grader commands in the fallback test plan" do
+    Step.create!(
+      workflow: workflow,
+      kind: "grader",
+      position: test_plan_step.position,
+      state: "succeeded",
+      details: {
+        "name" => "rspec",
+        "command" => "bundle exec rspec",
+        "required" => true
+      }
+    )
+    allow(handler).to receive(:run_agent).and_raise(Steps::Base::StepFailed, "agent reported mcp_sidecar_failed")
+
+    handler.call
+
+    expect(workflow.reload.artifact("test_plan")["steps"]).to include("Run rspec: `bundle exec rspec`")
+  end
+
   it "resumes from the succeeded implement session" do
     ClaudeSession.create!(resumable: implement_run, session_id: "implement-thread", transcript_jsonl: "{}\n")
 

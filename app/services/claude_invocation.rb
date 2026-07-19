@@ -312,7 +312,7 @@ class ClaudeInvocation
 
     sidecar = servers&.find { |server| server["name"] == "syrus-mcp-sidecar" }
     status = sidecar&.fetch("status", nil).presence || "missing"
-    return if status == "connected"
+    return if status == "connected" || status == "pending"
 
     log_sink.call(
       "[mcp_required] syrus-mcp-sidecar=#{status}; required tools unavailable: #{@required_mcp_tools.join(', ')}",
