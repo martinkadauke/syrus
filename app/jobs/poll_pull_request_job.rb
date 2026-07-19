@@ -461,6 +461,10 @@ class PollPullRequestJob < ApplicationJob
   # rolling window lets a Job recover after the loop quiets down.
   def ci_failure_cap_reached?
     return false if @manual  # operator-initiated polls bypass autopoll defenses
+
+    # Repair jobs must keep absorbing CI feedback until main is fixed.
+    return false if @job.main_branch_repair?
+
     recent = @job.workflows.where(trigger_kind: "ci_failure")
                            .where("created_at >= ?", CI_FAILURE_WINDOW.ago)
                            .count
@@ -493,7 +497,12 @@ class PollPullRequestJob < ApplicationJob
       "failed_checks" => failed_checks
     }
     workflow = Workflows::CiFailure.instantiate(job: @job, artifacts: artifacts, agent_provider: @agent_provider)
-    StepDispatcher.start_workflow(workflow)
+    run = StepDispatcher.start_workflow(workflow)
+    unless run
+      Rails.logger.info("[PollPullRequestJob] #{@job.slug}: created CiFailure workflow ##{workflow.id} for #{head_sha[0..6]} but start was deferred")
+      return
+    end
+
     @job.update!(last_ci_handled_sha: head_sha)
     Rails.logger.info("[PollPullRequestJob] #{@job.slug}: enqueued CiFailure workflow ##{workflow.id} for #{head_sha[0..6]} (#{failed_checks.size} failing)")
   end
