@@ -166,7 +166,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-white">
+    <div className="flex h-[100dvh] overflow-hidden bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-white">
       <aside className="relative hidden shrink-0 lg:flex" style={{ width: `${sidebarWidth}px` }}>
         <SidebarContent
           csrfToken={data?.csrf_token}
