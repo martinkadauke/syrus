@@ -176,7 +176,7 @@ function renderTable(lines: string[], index: number, key: number) {
   return {
     nextIndex: index,
     node: (
-      <table key={`block-${key}`}>
+      <div key={`block-${key}`} className="overflow-x-auto"><table>
         <thead>
           <tr>{headers.map((header, cellIndex) => <th key={cellIndex}>{renderInline(header)}</th>)}</tr>
         </thead>
@@ -187,7 +187,7 @@ function renderTable(lines: string[], index: number, key: number) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     )
   }
 }

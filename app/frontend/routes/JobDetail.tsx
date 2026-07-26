@@ -192,7 +192,7 @@ function TabNav({ active, workflowsCount, attachmentsCount, onSelect }: { active
     <div className="flex overflow-x-auto border-b border-gray-200 dark:border-gray-700">
       {tabs.map((tab) => (
         <button
-          className={`shrink-0 border-b-2 px-4 py-2 text-sm font-medium ${active === tab.id ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-300" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"}`}
+          className={`shrink-0 border-b-2 px-4 py-3 text-sm font-medium ${active === tab.id ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-300" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"}`}
           key={tab.id}
           onClick={() => onSelect(tab.id)}
           type="button"
@@ -259,7 +259,7 @@ function SummaryTab({ payload, command, prefix, queryKey }: { payload: JobDetail
         <div className="space-y-4">
           <section className="rounded border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-900">
             <h2 className="font-semibold text-gray-900 dark:text-gray-100">{t("section_details")}</h2>
-            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+            <div className="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
               <KeyValue label={t("detail_state")}><StatusPill state={payload.job.summary_state} /></KeyValue>
               <KeyValue label={t("detail_owner")}><JobOwnerLabel command={command} payload={payload} prefix={prefix} /></KeyValue>
               <KeyValue label={t("detail_priority")}><SmallPill>{payload.job.priority}</SmallPill></KeyValue>
