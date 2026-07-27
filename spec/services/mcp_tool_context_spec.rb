@@ -65,6 +65,21 @@ RSpec.describe McpToolContext do
       context = described_class.from_run(run.reload)
       expect(context.role).to eq(AgentRole::WORKFLOW_ADVERSARIAL_REVIEWER)
     end
+
+    it "assigns WORKFLOW_ADVERSARIAL_REVIEWER for adversarial_review step kind" do
+      run.step.update_columns(kind: "adversarial_review")
+      context = described_class.from_run(run.reload)
+      expect(context.role).to eq(AgentRole::WORKFLOW_ADVERSARIAL_REVIEWER)
+    end
+
+    it "exposes submit_adversarial_review to an adversarial_review step" do
+      run.step.update_columns(kind: "adversarial_review")
+      context = described_class.from_run(run.reload)
+
+      tools = McpToolPolicy.for(context)
+      expect(tools).to include(SyrusMcp::SubmitAdversarialReviewTool)
+      expect(tools).not_to include(SyrusMcp::SubmitSummaryTool)
+    end
   end
 
   describe ".from_chat_session" do
