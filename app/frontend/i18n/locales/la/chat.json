@@ -22,6 +22,7 @@
   "mode_coding": "Programmatisatio",
   "mode_local": "Localis",
   "mode_update_error": "Modus mutari non potuit.",
+  "mode_selector_label": "Mutare modum",
   "local_daemon_not_connected_title": "Daemon localis non coniunctus",
   "local_daemon_not_connected_body": "Hunc iussionem in receptaculo tuo exsequere:",
   "local_daemon_command": "syrus local",
@@ -215,6 +216,8 @@
   "aria_refresh_diff": "Diff renovare",
   "aria_refresh": "Renovare",
   "aria_chat_provider": "Praebitor colloquii",
+  "aria_chat_model": "Exemplar colloquii",
+  "chat_model_default": "Exemplar praedefinitum",
   "ph_search_name_id": "Per nomen aut id quaerere...",
   "submit": "Submittere",
   "aria_chat_workspace": "Area colloquii",
@@ -244,5 +247,10 @@
   "aria_hidden_chats": "Colloquia occulta",
   "aria_chat_search": "Quaestio colloquii",
   "queued_messages": "Nuntii in ordine",
-  "no_dependencies": "Nullae dependentiae"
+  "no_dependencies": "Nullae dependentiae",
+  "effort_label": "Labor",
+  "effort_none": "Nullus",
+  "effort_medium": "Medius",
+  "effort_high": "Altus",
+  "effort_update_error": "Gradus laboris mutari non potuit."
 }

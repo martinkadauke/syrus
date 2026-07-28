@@ -18,6 +18,8 @@ export type ChatRecord = {
   effective_chat_provider?: string
   effective_chat_provider_label?: string
   chat_provider_options?: ChatProviderOption[]
+  chat_model?: string | null
+  available_chat_models?: ChatModelOption[]
   mode?: ChatMode | null
   local_daemon_state?: "connected" | "disconnected" | null
   local_daemon_repo?: string | null
@@ -37,6 +39,7 @@ export type ChatRecord = {
   scratchpad_items_count?: number
   coding_checkout_uncommitted?: boolean
   coding_checkout_branch?: string | null
+  chat_effort?: string | null
 }
 
 export type ChatProviderOption = {
@@ -45,6 +48,11 @@ export type ChatProviderOption = {
   configured: boolean
   effective_provider: string
   effective_label: string
+}
+
+export type ChatModelOption = {
+  value: string
+  label: string
 }
 
 export type ChatNavRecord = ChatRecord & {
@@ -629,6 +637,14 @@ export function updateChatProvider(id: number | string, chatProvider: string | n
 
 export function updateChatMode(id: number | string, mode: ChatMode | null) {
   return patchJson<ChatPayload>(`/api/v1/app/chats/${id}`, { chat: { mode: mode ?? "" } })
+}
+
+export function updateChatModel(id: number | string, chatModel: string | null) {
+  return patchJson<ChatPayload>(`/api/v1/app/chats/${id}`, { chat: { chat_model: chatModel ?? "" } })
+}
+
+export function updateChatEffort(id: number | string, effort: string | null) {
+  return patchJson<ChatPayload>(`/api/v1/app/chats/${id}`, { chat: { chat_effort: effort ?? "" } })
 }
 
 export function cancelCodingCheckout(path: string) {

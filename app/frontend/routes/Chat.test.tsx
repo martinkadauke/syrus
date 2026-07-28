@@ -1790,6 +1790,104 @@ describe("scratchpad stash button", () => {
   })
 })
 
+describe("composer stop button", () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    mockDesktopViewport()
+  })
+
+  it("shows the stop button inside the textarea wrapper when agent is active", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      if (String(input) === "/api/v1/app/chats/8/mark_read" && (init as RequestInit)?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      return Promise.resolve(jsonResponse({ ...chatPayload(), agent_busy: true }))
+    })
+    renderRoute()
+
+    await screen.findByPlaceholderText("Queue a follow-up message...")
+    expect(screen.getByRole("button", { name: "Stop agent" })).toBeInTheDocument()
+  })
+
+  it("does not show the stop button when agent is idle", async () => {
+    mockChatRouteFetch(chatPayload())
+    renderRoute()
+
+    await screen.findByPlaceholderText("Ask about this repository...")
+    expect(screen.queryByRole("button", { name: "Stop agent" })).not.toBeInTheDocument()
+  })
+
+  it("does not show the stop button when switching provider", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      if (String(input) === "/api/v1/app/chats/8/mark_read" && (init as RequestInit)?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      return Promise.resolve(jsonResponse({ ...chatPayload(), agent_busy: true, switching_provider: true }))
+    })
+    renderRoute()
+
+    await screen.findByRole("textbox")
+    expect(screen.queryByRole("button", { name: "Stop agent" })).not.toBeInTheDocument()
+  })
+})
+
+describe("composer textarea right padding", () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    mockDesktopViewport()
+  })
+
+  it("uses pr-12 when agent is idle and textarea is empty", async () => {
+    mockChatRouteFetch(chatPayload())
+    renderRoute()
+
+    const textarea = await screen.findByPlaceholderText("Ask about this repository...")
+    expect(textarea).toHaveClass("pr-12")
+    expect(textarea).not.toHaveClass("pr-24")
+    expect(textarea).not.toHaveClass("pr-32")
+  })
+
+  it("uses pr-24 when text is typed (stash button appears)", async () => {
+    mockChatRouteFetch(chatPayload())
+    renderRoute()
+
+    const textarea = await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.change(textarea, { target: { value: "some text" } })
+    expect(textarea).toHaveClass("pr-24")
+    expect(textarea).not.toHaveClass("pr-12")
+  })
+
+  it("uses pr-24 when agent is active and textarea is empty (stop button appears)", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      if (String(input) === "/api/v1/app/chats/8/mark_read" && (init as RequestInit)?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      return Promise.resolve(jsonResponse({ ...chatPayload(), agent_busy: true }))
+    })
+    renderRoute()
+
+    const textarea = await screen.findByPlaceholderText("Queue a follow-up message...")
+    expect(textarea).toHaveClass("pr-24")
+    expect(textarea).not.toHaveClass("pr-12")
+  })
+
+  it("uses pr-32 when agent is active and text is typed (send + stash + stop buttons)", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      if (String(input) === "/api/v1/app/chats/8/mark_read" && (init as RequestInit)?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      return Promise.resolve(jsonResponse({ ...chatPayload(), agent_busy: true }))
+    })
+    renderRoute()
+
+    const textarea = await screen.findByPlaceholderText("Queue a follow-up message...")
+    fireEvent.change(textarea, { target: { value: "some text" } })
+    expect(textarea).toHaveClass("pr-32")
+    expect(textarea).not.toHaveClass("pr-12")
+    expect(textarea).not.toHaveClass("pr-24")
+  })
+})
+
 describe("scratchpad panel", () => {
   beforeEach(() => {
     window.localStorage.clear()
@@ -2603,6 +2701,120 @@ function chatPayload(overrides: { chat?: Record<string, unknown>; messages?: Arr
     }
   }
 }
+
+describe("chat mode selector in toolbar", () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    mockDesktopViewport()
+  })
+
+  it("does not render the mode selector when only planning mode is available", async () => {
+    mockChatRouteFetch(chatPayload())
+    renderRoute()
+
+    await screen.findByPlaceholderText("Ask about this repository...")
+    expect(screen.queryByRole("button", { name: "Change mode" })).not.toBeInTheDocument()
+  })
+
+  it("renders the mode selector when coding mode is available", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      if (String(input) === "/api/v1/app/chats/8/mark_read" && (init as RequestInit)?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      return Promise.resolve(jsonResponse({ ...chatPayload(), coding_mode_enabled: true }))
+    })
+    renderRoute()
+
+    await screen.findByPlaceholderText("Ask about this repository...")
+    expect(screen.getByRole("button", { name: "Change mode" })).toBeInTheDocument()
+  })
+
+  it("renders the mode selector when local mode is available", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      if (String(input) === "/api/v1/app/chats/8/mark_read" && (init as RequestInit)?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      return Promise.resolve(jsonResponse({ ...chatPayload(), local_mode_enabled: true }))
+    })
+    renderRoute()
+
+    await screen.findByPlaceholderText("Ask about this repository...")
+    expect(screen.getByRole("button", { name: "Change mode" })).toBeInTheDocument()
+  })
+
+  it("shows Planning label in the selector when no mode is set", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      if (String(input) === "/api/v1/app/chats/8/mark_read" && (init as RequestInit)?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      return Promise.resolve(jsonResponse({ ...chatPayload(), coding_mode_enabled: true }))
+    })
+    renderRoute()
+
+    const button = await screen.findByRole("button", { name: "Change mode" })
+    expect(button).toHaveTextContent("Planning")
+  })
+
+  it("shows the current mode label when a non-default mode is set", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      if (String(input) === "/api/v1/app/chats/8/mark_read" && (init as RequestInit)?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      return Promise.resolve(jsonResponse({ ...chatPayload({ chat: { mode: "coding" } }), coding_mode_enabled: true }))
+    })
+    renderRoute()
+
+    const button = await screen.findByRole("button", { name: "Change mode" })
+    expect(button).toHaveTextContent("Coding")
+  })
+
+  it("opens a listbox with available mode options on click", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      if (String(input) === "/api/v1/app/chats/8/mark_read" && (init as RequestInit)?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      return Promise.resolve(jsonResponse({ ...chatPayload(), coding_mode_enabled: true }))
+    })
+    renderRoute()
+
+    await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.click(screen.getByRole("button", { name: "Change mode" }))
+
+    const listbox = screen.getByRole("listbox")
+    expect(within(listbox).getByRole("option", { name: "Planning" })).toBeInTheDocument()
+    expect(within(listbox).getByRole("option", { name: "Coding" })).toBeInTheDocument()
+  })
+
+  it("calls PATCH /api/v1/app/chats/8 with the selected mode and closes the dropdown", async () => {
+    const updatedPayload = { ...chatPayload({ chat: { mode: "coding" } }), coding_mode_enabled: true }
+    const fetchMock = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/mark_read" && (init as RequestInit)?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      if (path === "/api/v1/app/chats/8" && (init as RequestInit)?.method === "PATCH") {
+        return Promise.resolve(jsonResponse(updatedPayload))
+      }
+      return Promise.resolve(jsonResponse({ ...chatPayload(), coding_mode_enabled: true }))
+    })
+
+    renderRoute()
+
+    await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.click(screen.getByRole("button", { name: "Change mode" }))
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Coding" }))
+
+    await waitFor(() => {
+      const patchCalls = fetchMock.mock.calls.filter((call: unknown[]) =>
+        String(call[0]) === "/api/v1/app/chats/8" && (call[1] as RequestInit)?.method === "PATCH"
+      )
+      expect(patchCalls).toHaveLength(1)
+      expect(JSON.parse((patchCalls[0][1] as RequestInit).body as string)).toMatchObject({ chat: { mode: "coding" } })
+    })
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+  })
+})
 
 describe("renderChatMessages tool_result content key", () => {
   it("renders result_body from the canonical 'content' key, not the legacy 'result' key", () => {

@@ -22,6 +22,7 @@
   "mode_coding": "Implementierung",
   "mode_local": "Lokal",
   "mode_update_error": "Modus konnte nicht aktualisiert werden.",
+  "mode_selector_label": "Modus ändern",
   "local_daemon_not_connected_title": "Lokaler Daemon nicht verbunden",
   "local_daemon_not_connected_body": "Führen Sie diesen Befehl in Ihrem Repository aus:",
   "local_daemon_command": "syrus local",
@@ -215,6 +216,8 @@
   "aria_refresh_diff": "Diff aktualisieren",
   "aria_refresh": "Aktualisieren",
   "aria_chat_provider": "Chat-Anbieter",
+  "aria_chat_model": "Chat-Modell",
+  "chat_model_default": "Standardmodell",
   "ph_search_name_id": "Nach Name oder ID suchen...",
   "submit": "Absenden",
   "aria_chat_workspace": "Chat-Arbeitsbereich",
@@ -244,5 +247,10 @@
   "aria_hidden_chats": "Ausgeblendete Chats",
   "aria_chat_search": "Chat-Suche",
   "queued_messages": "Eingereihte Nachrichten",
-  "no_dependencies": "Keine Abhängigkeiten"
+  "no_dependencies": "Keine Abhängigkeiten",
+  "effort_label": "Aufwand",
+  "effort_none": "Keiner",
+  "effort_medium": "Mittel",
+  "effort_high": "Hoch",
+  "effort_update_error": "Aufwandsstufe konnte nicht aktualisiert werden."
 }

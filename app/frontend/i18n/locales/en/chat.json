@@ -22,6 +22,7 @@
   "mode_coding": "Coding",
   "mode_local": "Local",
   "mode_update_error": "Mode could not be updated.",
+  "mode_selector_label": "Change mode",
   "local_daemon_not_connected_title": "Local daemon not connected",
   "local_daemon_not_connected_body": "Run this command in your repository to begin:",
   "local_daemon_command": "syrus local",
@@ -215,6 +216,8 @@
   "aria_refresh_diff": "Refresh diff",
   "aria_refresh": "Refresh",
   "aria_chat_provider": "Chat provider",
+  "aria_chat_model": "Chat model",
+  "chat_model_default": "Default model",
   "ph_search_name_id": "Search by name or id...",
   "submit": "Submit",
   "aria_chat_workspace": "Chat workspace",
@@ -244,5 +247,10 @@
   "aria_hidden_chats": "Hidden chats",
   "aria_chat_search": "Chat search",
   "queued_messages": "Queued messages",
-  "no_dependencies": "No dependencies"
+  "no_dependencies": "No dependencies",
+  "effort_label": "Effort",
+  "effort_none": "None",
+  "effort_medium": "Medium",
+  "effort_high": "High",
+  "effort_update_error": "Effort level could not be updated."
 }
