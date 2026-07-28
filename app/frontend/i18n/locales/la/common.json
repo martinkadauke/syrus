@@ -79,7 +79,9 @@
     "context_viewport": "Porta",
     "context_chat": "Sessio colloquii",
     "context_recent_errors": "Errores recentes",
-    "context_no_recent_errors": "Nulli"
+    "context_no_recent_errors": "Nulli",
+    "include_transcript": "Conloquii textum addere",
+    "transcript_preview": "Praevisa textus"
   },
   "image_annotation": {
     "annotate": "Annota {{name}}",
