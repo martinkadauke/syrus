@@ -114,7 +114,7 @@ export const BugReportButton = forwardRef<BugReportButtonHandle, {
   context: string
   position?: "bottom-left" | "bottom-right"
   reportIssueRepoSlug?: string | null
-}>(function BugReportButton({ bugReportMode, chatId, context, position = "bottom-left", reportIssueRepoSlug }, ref) {
+}>(function BugReportButton({ bugReportMode, chatId, context, position = "bottom-right", reportIssueRepoSlug }, ref) {
   const { t } = useT("common")
   const [open, setOpen] = useState(false)
   const [capturing, setCapturing] = useState(false)
