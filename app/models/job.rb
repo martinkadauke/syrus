@@ -22,16 +22,16 @@ class Job < ApplicationRecord
   CREDENTIAL_MODES = %w[ app pat ].freeze
   PREPARE_SKIP_LABEL = "syrus-skip-prepare".freeze
 
-  PRIORITIES = %w[ high medium low ].freeze
+  PRIORITIES = %w[ urgent high medium low ].freeze
   STACK_BASES = %w[ auto main ].freeze
   VALIDITIES = %w[ valid duplicate already_implemented ].freeze
   TRIAGING_REASONS = %w[ classifier_pending pending_epic_ref classifier_uncertain ].freeze
   APPROVAL_VIAS = %w[ operator bulk github_review auto_rule ].freeze
   # Maps priority label → SolidQueue priority integer. SolidQueue dispatches
-  # lower numbers first, so high-priority jobs (0) run before medium (10) and
-  # low (20). The gap of 10 between levels leaves room for future additions
+  # lower numbers first, so urgent (-10) runs before high (0), medium (10),
+  # and low (20). The gap of 10 between levels leaves room for future additions
   # without renumbering existing entries.
-  PRIORITY_TO_SQ = { "high" => 0, "medium" => 10, "low" => 20 }.freeze
+  PRIORITY_TO_SQ = { "urgent" => -10, "high" => 0, "medium" => 10, "low" => 20 }.freeze
   attr_accessor :prepare_skip_reason_override, :pending_dependency_warnings, :notify_job_implemented_on_transition
 
   belongs_to :user
@@ -450,6 +450,7 @@ class Job < ApplicationRecord
   after_update_commit :cancel_queued_chat_pending_actions, if: :saved_change_to_closed?
   after_update_commit :purge_coverage_hit_maps_on_close, if: :saved_change_to_closed?
   after_update_commit :ensure_main_branch_repair_after_close, if: :saved_change_to_closed_main_branch_repair?
+  after_update_commit :enqueue_urgent_job_closed, if: :saved_change_to_closed_urgent_job?
   after_update_commit :start_dependent_jobs_after_approval, if: :saved_change_to_approved?
   after_update_commit :cancel_queued_retry_workflows_after_approval, if: :saved_change_to_approved?
   after_update_commit :enqueue_landing_queue_processor, if: :saved_change_needs_landing_queue_processor?
@@ -651,6 +652,10 @@ class Job < ApplicationRecord
     saved_change_to_closed? && main_branch_repair?
   end
 
+  def saved_change_to_closed_urgent_job?
+    saved_change_to_closed? && priority == "urgent"
+  end
+
   def saved_change_to_implemented_main_branch_repair?
     saved_change_to_implemented? && main_branch_repair?
   end
@@ -665,6 +670,10 @@ class Job < ApplicationRecord
     else
       MainHealthChangedService.ensure_repair_job!(repository)
     end
+  end
+
+  def enqueue_urgent_job_closed
+    UrgentJobClosedJob.perform_later(repository_id)
   end
 
   def cancel_queued_retry_workflows_after_approval
