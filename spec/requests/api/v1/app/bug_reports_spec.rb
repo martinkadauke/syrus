@@ -99,6 +99,7 @@ RSpec.describe "API: /api/v1/app/bug_reports", type: :request do
       expect(parse_body.dig("error", "code")).to eq("validation_failed")
     end
 
+
     it "allows a user who does not own the bug-report repository to file a report" do
       owner_user = Factories.user
       Factories.repository(user: owner_user, owner: "operator", name: "syrus")

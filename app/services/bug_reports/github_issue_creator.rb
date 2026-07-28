@@ -64,6 +64,7 @@ module BugReports
       body = body_parts.reject(&:blank?).join("\n\n")
 
       issue = issue_client.create_issue(repo_slug, title: title, body: body)
+
       Result.new(issue_url: issue.html_url)
     rescue Octokit::Error => e
       Result.new(

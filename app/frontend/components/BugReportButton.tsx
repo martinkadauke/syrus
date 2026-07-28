@@ -80,6 +80,7 @@ function defaultPos(hint: "bottom-left" | "bottom-right"): ButtonPos {
 }
 
 
+
 export function BugReportButton({
   bugReportMode,
   context,
@@ -115,6 +116,7 @@ export function BugReportButton({
   } | null>(null)
   // Set to true by pointer handlers so the subsequent synthetic click event is suppressed.
   const pointerHandledRef = useRef(false)
+
 
 
   const bugReport = useMutation({
@@ -309,6 +311,7 @@ export function BugReportButton({
     }
     void openDialog()
   }
+
 
 
   const isGitHubIssueMode = bugReportMode === "github_issue"
