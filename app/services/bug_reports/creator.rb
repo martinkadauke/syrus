@@ -2,28 +2,31 @@ require "stringio"
 
 module BugReports
   class Creator
-    TARGET_NAME = "syrus".freeze
-
+    include BugReports::ContextFormatter
     Result = Struct.new(:job, :error, keyword_init: true) do
       def success?
         job.present? && error.blank?
       end
     end
 
-    def initialize(user:)
+    def initialize(user:, repository:)
       @user = user
+      @repository = repository
     end
 
-    def call(title:, description:, screenshot:)
-      repository = user.repositories.active.find_by(owner: target_owner, name: TARGET_NAME)
-      return failure("Bug report repository #{target_owner}/#{TARGET_NAME} is not configured.") unless repository
-
+    def call(title:, description:, screenshot:, attachments: [], context: nil)
       title = title.to_s.strip.presence || "In-app bug report"
       description = description.to_s.strip
-      prompt_text = [ title, description ].reject(&:blank?).join("\n\n")
+      prompt_text = [ title, description ].reject(&:blank?).join("\n\n") + format_context_markdown(context)
 
       if screenshot.present? && screenshot.content_type != "image/png"
         return failure("Screenshot must be a PNG.")
+      end
+
+      extra = Array(attachments).select(&:present?)
+      total = (screenshot.present? ? 1 : 0) + extra.size
+      if total > Document::MAX_ATTACHMENTS_PER_JOB
+        return failure("Too many attachments. Bug reports can have at most #{Document::MAX_ATTACHMENTS_PER_JOB} files.")
       end
 
       job = nil
@@ -42,7 +45,8 @@ module BugReports
         # workflow + starts it for direct Jobs (Job#create_initial_run_if_needed).
         job.advance_after_triage! if job.may_advance_after_triage?
 
-        attach_screenshot!(job, screenshot) if screenshot.present?
+        attach_file!(job, screenshot) if screenshot.present?
+        extra.each { |attachment| attach_file!(job, attachment) }
       end
 
       Result.new(job: job)
@@ -52,20 +56,16 @@ module BugReports
 
     private
 
-    attr_reader :user
-
-    def target_owner
-      ENV.fetch("SYRUS_BUG_REPORT_OWNER")
-    end
+    attr_reader :user, :repository
 
     def failure(error)
       Result.new(error: error)
     end
 
-    def attach_screenshot!(job, upload)
+    def attach_file!(job, upload)
       body = upload.read
-      filename = upload.original_filename.presence || "bug-report-screenshot.png"
-      content_type = upload.content_type.presence || "image/png"
+      filename = upload.original_filename.presence || "attachment"
+      content_type = upload.content_type.presence || "application/octet-stream"
 
       attachment = job.job_attachments.build(
         source_url: "bug-report://#{SecureRandom.uuid}",

@@ -682,6 +682,120 @@ RSpec.describe GithubClient do
     end
   end
 
+  describe "#upload_issue_asset" do
+    let(:client) { GithubClient.for_user(user) }
+    let(:octokit) { client.instance_variable_get(:@client) }
+    let(:fake_ref) { double("ref", object: double("object", sha: "abc123sha")) }
+    let(:fake_repo) { double("repo", default_branch: "main") }
+
+    def stub_branch_exists
+      allow(octokit).to receive(:ref)
+        .with("acme/widgets", "heads/bug-report-media")
+        .and_return(fake_ref)
+    end
+
+    def stub_branch_missing
+      allow(octokit).to receive(:ref)
+        .with("acme/widgets", "heads/bug-report-media")
+        .and_raise(Octokit::NotFound)
+      allow(octokit).to receive(:repository)
+        .with("acme/widgets")
+        .and_return(fake_repo)
+      allow(octokit).to receive(:ref)
+        .with("acme/widgets", "heads/main")
+        .and_return(fake_ref)
+      allow(octokit).to receive(:create_ref)
+        .with("acme/widgets", "refs/heads/bug-report-media", "abc123sha")
+        .and_return(double("created_ref"))
+    end
+
+    def stub_create_contents
+      allow(octokit).to receive(:create_contents)
+        .with("acme/widgets", anything, anything, anything, branch: "bug-report-media")
+        .and_return(double("contents_response"))
+    end
+
+    it "returns a raw.githubusercontent.com URL when the branch already exists" do
+      stub_branch_exists
+      stub_create_contents
+
+      result = client.upload_issue_asset(
+        "acme/widgets",
+        io: StringIO.new("\x89PNG\r\n\x1A\nfakedata"),
+        content_type: "image/png",
+        filename: "screenshot.png"
+      )
+
+      expect(result).to match(%r{\Ahttps://raw\.githubusercontent\.com/acme/widgets/bug-report-media/bug-report-attachments/[0-9a-f-]+/screenshot\.png\z})
+    end
+
+    it "passes raw binary content to create_contents without base64 encoding" do
+      stub_branch_exists
+      binary_data = "\x89PNG\r\n\x1A\nfakedata"
+      allow(octokit).to receive(:create_contents)
+        .with("acme/widgets", anything, anything, binary_data.b, branch: "bug-report-media")
+        .and_return(double("contents_response"))
+
+      client.upload_issue_asset(
+        "acme/widgets",
+        io: StringIO.new(binary_data),
+        content_type: "image/png",
+        filename: "screenshot.png"
+      )
+
+      expect(octokit).to have_received(:create_contents)
+        .with("acme/widgets", anything, anything, binary_data.b, branch: "bug-report-media")
+    end
+
+    it "creates the branch when it does not exist, then writes the file" do
+      stub_branch_missing
+      stub_create_contents
+
+      result = client.upload_issue_asset(
+        "acme/widgets",
+        io: StringIO.new("data"),
+        content_type: "image/pdf",
+        filename: "report.pdf"
+      )
+
+      expect(octokit).to have_received(:create_ref)
+        .with("acme/widgets", "refs/heads/bug-report-media", "abc123sha")
+      expect(result).to match(%r{\Ahttps://raw\.githubusercontent\.com/acme/widgets/bug-report-media/bug-report-attachments/[0-9a-f-]+/report\.pdf\z})
+    end
+
+    it "returns nil and logs a warning when create_contents raises" do
+      stub_branch_exists
+      allow(octokit).to receive(:create_contents).and_raise(Octokit::Error)
+
+      expect(Rails.logger).to receive(:warn).with(/\[GithubClient\] upload_issue_asset acme\/widgets\/shot\.png failed/)
+
+      result = client.upload_issue_asset(
+        "acme/widgets",
+        io: StringIO.new("data"),
+        content_type: "image/png",
+        filename: "shot.png"
+      )
+
+      expect(result).to be_nil
+    end
+
+    it "rewinds the io before reading to handle already-read streams" do
+      io = StringIO.new("already read content")
+      io.read
+      stub_branch_exists
+      stub_create_contents
+
+      result = client.upload_issue_asset(
+        "acme/widgets",
+        io: io,
+        content_type: "image/png",
+        filename: "shot.png"
+      )
+
+      expect(result).to match(%r{\Ahttps://raw\.githubusercontent\.com/acme/widgets/bug-report-media/})
+    end
+  end
+
   describe "#merge_upstream" do
     it "POSTs to the merge-upstream endpoint with the branch" do
       stub = stub_request(:post, "https://api.github.com/repos/acme/widgets/merge-upstream")

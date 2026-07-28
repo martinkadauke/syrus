@@ -165,6 +165,32 @@ class GithubClient
     raise
   end
 
+  # Uploads a file to the target repo's bug-report-media branch via the
+  # GitHub Contents API (Octokit#create_contents). Returns a raw.githubusercontent.com
+  # URL that renders inline in GitHub Markdown, or nil on any failure so the
+  # caller can fall back gracefully and still file the issue.
+  def upload_issue_asset(repo_slug, io:, content_type:, filename:)
+    io.rewind if io.respond_to?(:rewind)
+    file_body = io.read.b
+
+    branch = "bug-report-media"
+    owner, repo_name = repo_slug.split("/", 2)
+    ensure_bug_report_branch!(repo_slug, branch)
+
+    path = "bug-report-attachments/#{SecureRandom.uuid}/#{filename}"
+    @client.create_contents(
+      repo_slug,
+      path,
+      "Add bug report attachment",
+      file_body,
+      branch: branch
+    )
+    "https://raw.githubusercontent.com/#{owner}/#{repo_name}/#{branch}/#{path}"
+  rescue => e
+    Rails.logger.warn("[GithubClient] upload_issue_asset #{repo_slug}/#{filename} failed: #{e.class}: #{e.message}")
+    nil
+  end
+
   def readiness_check!
     track_rate_limits { @client.rate_limit }
     true
@@ -822,5 +848,13 @@ class GithubClient
     JobLog.append!(run: run, chunk: chunk, kind: "rate_limited")
   rescue => e
     Rails.logger.warn("[GithubClient] rate_limit log write failed: #{e.message}")
+  end
+
+  def ensure_bug_report_branch!(repo_slug, branch)
+    @client.ref(repo_slug, "heads/#{branch}")
+  rescue Octokit::NotFound
+    repo_info = @client.repository(repo_slug)
+    tip_sha = @client.ref(repo_slug, "heads/#{repo_info.default_branch}").object.sha
+    @client.create_ref(repo_slug, "refs/heads/#{branch}", tip_sha)
   end
 end

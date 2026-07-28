@@ -1,12 +1,14 @@
 import { useMutation } from "@tanstack/react-query"
-import type { FormEvent, KeyboardEvent } from "react"
-import { useEffect, useRef, useState } from "react"
+import type { ChangeEvent, FormEvent, KeyboardEvent, ReactNode } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { createBugReport } from "../api/bugReports"
+import type { ChatMessageItem } from "../api/chats"
 import { useShakeToReport } from "../hooks/useShakeToReport"
 import { useT } from "../hooks/useT"
 import { CloseIcon } from "./CloseIcon"
 import { NoticeToast } from "./NoticeToast"
 import { errorMessage } from "../lib/errorMessage"
+import { getRecentErrors, type RecentError } from "../lib/errorRingBuffer"
 
 type Html2Canvas = typeof import("html2canvas-pro").default
 type ScreenshotChoice = "viewport" | "fullPage" | "none"
@@ -16,7 +18,24 @@ type ScreenshotCapture = {
 }
 type ScreenshotCaptures = Partial<Record<Exclude<ScreenshotChoice, "none">, ScreenshotCapture>>
 
+type BugReportContext = {
+  url: string
+  user_agent: string
+  viewport: { width: number; height: number }
+  device_pixel_ratio: number
+  recent_errors: RecentError[]
+  chat_session_id?: number
+}
+
 const MAX_FULL_PAGE_SCREENSHOT_PIXELS = 8_000_000
+const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024
+const MAX_EXTRA_ATTACHMENTS = 9
+const TRANSCRIPT_PREVIEW_MAX_CHARS = 300
+const ACCEPTED_ATTACHMENT_TYPES = [
+  "text/plain", "text/markdown", "text/x-markdown", "application/pdf",
+  "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",
+  ".txt", ".md", ".markdown", ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"
+].join(",")
 
 const BUTTON_SIZE = 48 // h-12 = 3rem = 48px
 const BUTTON_MARGIN = 16 // 1rem
@@ -72,7 +91,30 @@ function defaultPos(hint: "bottom-left" | "bottom-right"): ButtonPos {
   return clampPos({ left, top })
 }
 
-export function BugReportButton({ context, position = "bottom-right" }: { context: string; position?: "bottom-left" | "bottom-right" }) {
+
+
+function collectContext(chatId?: number | null): BugReportContext {
+  return {
+    url: window.location.href,
+    user_agent: navigator.userAgent,
+    viewport: { width: window.innerWidth, height: window.innerHeight },
+    device_pixel_ratio: window.devicePixelRatio,
+    recent_errors: getRecentErrors(),
+    ...(chatId != null ? { chat_session_id: chatId } : {})
+  }
+}
+
+export interface BugReportButtonHandle {
+  open: (messages?: ChatMessageItem[]) => void
+}
+
+export const BugReportButton = forwardRef<BugReportButtonHandle, {
+  bugReportMode?: "direct_job" | "github_issue" | null
+  chatId?: number | null
+  context: string
+  position?: "bottom-left" | "bottom-right"
+  reportIssueRepoSlug?: string | null
+}>(function BugReportButton({ bugReportMode, chatId, context, position = "bottom-right", reportIssueRepoSlug }, ref) {
   const { t } = useT("common")
   const [open, setOpen] = useState(false)
   const [capturing, setCapturing] = useState(false)
@@ -82,7 +124,11 @@ export function BugReportButton({ context, position = "bottom-right" }: { contex
   const [captures, setCaptures] = useState<ScreenshotCaptures>({})
   const [screenshotChoice, setScreenshotChoice] = useState<ScreenshotChoice>("viewport")
   const [captureError, setCaptureError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [attachments, setAttachments] = useState<File[]>([])
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const [transcriptMessages, setTranscriptMessages] = useState<ChatMessageItem[]>([])
+  const [includeTranscript, setIncludeTranscript] = useState(false)
+  const [notice, setNotice] = useState<ReactNode>(null)
   const [pos, setPos] = useState<ButtonPos>(() => loadPos() ?? defaultPos(position))
 
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -96,16 +142,55 @@ export function BugReportButton({ context, position = "bottom-right" }: { contex
   // Set to true by pointer handlers so the subsequent synthetic click event is suppressed.
   const pointerHandledRef = useRef(false)
 
+  const [bugContext, setBugContext] = useState<BugReportContext | null>(null)
+
+  // Always-current reference to openDialog so the imperative handle never closes
+  // over a stale version of the function.
+  const openDialogRef = useRef<((messages?: ChatMessageItem[]) => void) | null>(null)
+
   const bugReport = useMutation({
-    mutationFn: () => createBugReport({ title, description, screenshot: selectedScreenshot(captures, screenshotChoice) }),
+    mutationFn: () => {
+      const allAttachments = [...attachments]
+      if (includeTranscript && transcriptMessages.length > 0) {
+        const text = serializeTranscript(transcriptMessages)
+        if (text.trim().length > 0) {
+          allAttachments.push(new File([text], "chat-transcript.txt", { type: "text/plain" }))
+        }
+      }
+      return createBugReport({
+        title,
+        description,
+        screenshot: selectedScreenshot(captures, screenshotChoice),
+        attachments: allAttachments,
+        context: bugContext ? JSON.stringify(bugContext) : undefined
+      })
+    },
     onSuccess: (payload) => {
       setOpen(false)
-      setNotice(payload.message || t("bug_report.queued"))
       setTitle("")
       setDescription("")
       setCaptures({})
       setScreenshotChoice("viewport")
       setCaptureError(null)
+      setAttachments([])
+      setAttachmentError(null)
+      setBugContext(null)
+      setTranscriptMessages([])
+      setIncludeTranscript(false)
+
+      if (payload.issue_url) {
+        const issueUrl = payload.issue_url
+        setNotice(
+          <span>
+            {t("bug_report.filed")}{" "}
+            <a className="underline hover:no-underline" href={issueUrl} rel="noreferrer" target="_blank">
+              {t("bug_report.view_issue")}
+            </a>
+          </span>
+        )
+      } else {
+        setNotice(payload.message || t("bug_report.queued"))
+      }
     }
   })
 
@@ -113,14 +198,28 @@ export function BugReportButton({ context, position = "bottom-right" }: { contex
 
   useShakeToReport(() => { if (!capturing && !open) void openDialog() })
 
-  async function openDialog() {
+  // Keep the ref up to date so the imperative handle always calls the latest openDialog.
+  openDialogRef.current = (messages?: ChatMessageItem[]) => void openDialog(messages ?? [])
+
+  useImperativeHandle(ref, () => ({
+    open(messages?: ChatMessageItem[]) {
+      openDialogRef.current?.(messages)
+    }
+  }), [])
+
+  async function openDialog(withMessages: ChatMessageItem[] = []) {
     bugReport.reset()
     setTitle(`${context} bug`)
     setDescription("")
     setCaptures({})
     setScreenshotChoice("viewport")
     setCaptureError(null)
+    setAttachments([])
+    setAttachmentError(null)
+    setTranscriptMessages(withMessages)
+    setIncludeTranscript(false)
     setNotice(null)
+    setBugContext(collectContext(chatId))
     setCapturing(true)
 
     try {
@@ -165,7 +264,41 @@ export function BugReportButton({ context, position = "bottom-right" }: { contex
     bugReport.reset()
     setCaptures({})
     setCaptureError(null)
+    setAttachments([])
+    setAttachmentError(null)
+    setTranscriptMessages([])
+    setIncludeTranscript(false)
     setOpen(false)
+  }
+
+  function handleAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ""
+
+    const oversized = files.find((f) => f.size > MAX_ATTACHMENT_SIZE)
+    if (oversized) {
+      setAttachmentError(t("bug_report.attachments_too_large", { filename: oversized.name }))
+      const valid = files.filter((f) => f.size <= MAX_ATTACHMENT_SIZE)
+      if (valid.length > 0) {
+        setAttachments((current) => [...current, ...valid].slice(0, MAX_EXTRA_ATTACHMENTS))
+      }
+      return
+    }
+
+    setAttachmentError(null)
+    setAttachments((current) => {
+      const combined = [...current, ...files]
+      if (combined.length > MAX_EXTRA_ATTACHMENTS) {
+        setAttachmentError(t("bug_report.attachments_max_reached"))
+        return combined.slice(0, MAX_EXTRA_ATTACHMENTS)
+      }
+      return combined
+    })
+  }
+
+  function removeAttachment(index: number) {
+    setAttachments((current) => current.filter((_, i) => i !== index))
+    setAttachmentError(null)
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -240,6 +373,15 @@ export function BugReportButton({ context, position = "bottom-right" }: { contex
     void openDialog()
   }
 
+  const visibleTranscriptMessages = transcriptMessages.filter(
+    (m) => (m.role === "user" || m.role === "assistant") && m.text.trim().length > 0
+  )
+
+  const isGitHubIssueMode = bugReportMode === "github_issue"
+  const submitLabel = bugReport.isPending
+    ? (isGitHubIssueMode ? t("bug_report.submitting_issue") : t("bug_report.submitting"))
+    : (isGitHubIssueMode ? t("bug_report.submit_issue") : t("bug_report.submit"))
+
   return (
     <>
       <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
@@ -264,7 +406,14 @@ export function BugReportButton({ context, position = "bottom-right" }: { contex
           <section aria-labelledby="bug-report-title" aria-modal="true" className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-lg bg-white dark:bg-gray-900 shadow-xl" role="dialog">
             <form className="space-y-5 p-5 sm:p-6" onKeyDown={submitOnShortcut} onSubmit={submit}>
               <div className="flex items-start justify-between gap-4">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" id="bug-report-title">{t("bug_report.title")}</h2>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" id="bug-report-title">{t("bug_report.title")}</h2>
+                  {bugReportMode === "direct_job" ? (
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{t("bug_report.mode_direct_job")}</p>
+                  ) : bugReportMode === "github_issue" && reportIssueRepoSlug ? (
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{t("bug_report.mode_github_issue", { slug: reportIssueRepoSlug })}</p>
+                  ) : null}
+                </div>
                 <button
                   aria-label={t("bug_report.close")}
                   className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-950"
@@ -325,6 +474,69 @@ export function BugReportButton({ context, position = "bottom-right" }: { contex
                 </div>
               </fieldset>
 
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t("bug_report.attachments")}</span>
+                  <label className={`cursor-pointer rounded-md border border-gray-300 dark:border-gray-600 px-2 py-1 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 ${attachments.length >= MAX_EXTRA_ATTACHMENTS ? "opacity-50 cursor-not-allowed" : ""}`}>
+                    {t("bug_report.attachments_add")}
+                    <input
+                      accept={ACCEPTED_ATTACHMENT_TYPES}
+                      className="sr-only"
+                      disabled={attachments.length >= MAX_EXTRA_ATTACHMENTS}
+                      multiple
+                      onChange={handleAttachmentChange}
+                      type="file"
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t("bug_report.attachments_hint")}</p>
+                {attachmentError ? (
+                  <p className="rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">{attachmentError}</p>
+                ) : null}
+                {attachments.length > 0 ? (
+                  <ul className="space-y-1">
+                    {attachments.map((file, index) => (
+                      <li className="flex items-center gap-2 rounded border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300" key={index}>
+                        <span className="min-w-0 flex-1 truncate">{file.name}</span>
+                        <button
+                          aria-label={t("bug_report.attachments_remove", { filename: file.name })}
+                          className="flex-none text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 rounded"
+                          onClick={() => removeAttachment(index)}
+                          type="button"
+                        >
+                          <CloseIcon className="h-4 w-4" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+              <WhatsIncluded bugContext={bugContext} captures={captures} screenshotChoice={screenshotChoice} />
+
+              {visibleTranscriptMessages.length > 0 ? (
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input
+                      checked={includeTranscript}
+                      className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                      onChange={(e) => setIncludeTranscript(e.target.checked)}
+                      type="checkbox"
+                    />
+                    {t("bug_report.include_transcript")}
+                  </label>
+                  {includeTranscript ? (
+                    <div aria-label={t("bug_report.transcript_preview")} className="max-h-48 overflow-y-auto rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 text-xs text-gray-600 dark:text-gray-400 space-y-3">
+                      {visibleTranscriptMessages.map((m, i) => (
+                        <div key={i}>
+                          <div className="font-semibold text-gray-700 dark:text-gray-300">[{m.role === "user" ? "User" : "Assistant"}]</div>
+                          <p className="mt-0.5 whitespace-pre-wrap font-mono">{truncateForPreview(m.text)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               {bugReport.isError ? (
                 <p className="rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">
                   {errorMessage(bugReport.error, t("bug_report.error"))}
@@ -336,7 +548,7 @@ export function BugReportButton({ context, position = "bottom-right" }: { contex
                   {t("bug_report.cancel")}
                 </button>
                 <button className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 dark:hover:bg-blue-500 disabled:bg-blue-300 dark:disabled:bg-blue-900" disabled={bugReport.isPending} type="submit">
-                  {bugReport.isPending ? t("bug_report.submitting") : t("bug_report.submit")}
+                  {submitLabel}
                 </button>
               </div>
             </form>
@@ -344,6 +556,95 @@ export function BugReportButton({ context, position = "bottom-right" }: { contex
         </div>
       ) : null}
     </>
+  )
+})
+
+function WhatsIncluded({
+  bugContext,
+  captures,
+  screenshotChoice
+}: {
+  bugContext: BugReportContext | null
+  captures: ScreenshotCaptures
+  screenshotChoice: ScreenshotChoice
+}) {
+  const { t } = useT("common")
+  const capture = screenshotChoice !== "none" ? captures[screenshotChoice as "viewport" | "fullPage"] : undefined
+
+  return (
+    <details className="group rounded border border-gray-200 dark:border-gray-700">
+      <summary className="flex cursor-pointer list-none items-center justify-between rounded px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+        <span>{t("bug_report.whats_included")}</span>
+        <ChevronDownIcon />
+      </summary>
+      <div className="space-y-3 border-t border-gray-200 dark:border-gray-700 px-3 pb-3 pt-2">
+        {capture?.previewUrl ? (
+          <div>
+            <p className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+              {screenshotChoice === "viewport" ? t("bug_report.viewport") : t("bug_report.full_page")}
+            </p>
+            <img alt="" className="max-h-24 rounded border border-gray-100 dark:border-gray-800 object-contain" src={capture.previewUrl} />
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              {capture.file.name} ({formatBytes(capture.file.size)})
+            </p>
+          </div>
+        ) : null}
+
+        {bugContext ? (
+          <dl className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
+            <ContextRow label={t("bug_report.context_url")} value={bugContext.url} />
+            <ContextRow label={t("bug_report.context_browser")} value={bugContext.user_agent} />
+            <ContextRow
+              label={t("bug_report.context_viewport")}
+              value={`${bugContext.viewport.width}×${bugContext.viewport.height} @ ${bugContext.device_pixel_ratio}x`}
+            />
+            {bugContext.chat_session_id != null ? (
+              <ContextRow label={t("bug_report.context_chat")} value={String(bugContext.chat_session_id)} />
+            ) : null}
+            <div>
+              <dt className="font-medium text-gray-700 dark:text-gray-300">{t("bug_report.context_recent_errors")}</dt>
+              {bugContext.recent_errors.length > 0 ? (
+                <dd className="mt-1">
+                  <ul className="space-y-0.5">
+                    {bugContext.recent_errors.map((e, i) => (
+                      <li key={i} className="font-mono text-xs">
+                        <code className="text-gray-800 dark:text-gray-200">{e.message}</code>
+                        <span className="text-gray-400 dark:text-gray-500"> ({e.source})</span>
+                      </li>
+                    ))}
+                  </ul>
+                </dd>
+              ) : (
+                <dd className="text-gray-400 dark:text-gray-500">{t("bug_report.context_no_recent_errors")}</dd>
+              )}
+            </div>
+          </dl>
+        ) : null}
+      </div>
+    </details>
+  )
+}
+
+function ContextRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 gap-1.5">
+      <dt className="shrink-0 font-medium text-gray-700 dark:text-gray-300">{label}:</dt>
+      <dd className="truncate">{value}</dd>
+    </div>
+  )
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4 text-gray-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
   )
 }
 
@@ -478,4 +779,16 @@ function revokeCaptures(captures: ScreenshotCaptures) {
       URL.revokeObjectURL(capture.previewUrl)
     }
   })
+}
+
+function serializeTranscript(messages: ChatMessageItem[]): string {
+  return messages
+    .filter((m) => (m.role === "user" || m.role === "assistant") && m.text.trim().length > 0)
+    .map((m) => `[${m.role === "user" ? "User" : "Assistant"}]\n${m.text}`)
+    .join("\n\n")
+}
+
+function truncateForPreview(text: string): string {
+  if (text.length <= TRANSCRIPT_PREVIEW_MAX_CHARS) return text
+  return text.slice(0, TRANSCRIPT_PREVIEW_MAX_CHARS) + "…"
 }
