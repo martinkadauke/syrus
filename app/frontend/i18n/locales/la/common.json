@@ -64,6 +64,7 @@
   },
   "image_annotation": {
     "annotate": "Annota {{name}}",
+    "tool_select": "Elige",
     "tool_rectangle": "Rectangulum",
     "tool_ellipse": "Ellipsis",
     "tool_line": "Linea",
@@ -77,6 +78,7 @@
     "color_white": "Album",
     "color_black": "Nigrum",
     "undo": "Revoca",
+    "redo": "Repete",
     "cancel": "Omitte",
     "done": "Factum",
     "close": "Claude editorem annotationum",
@@ -84,7 +86,13 @@
     "colors": "Color annotationum",
     "canvas": "Area annotationum",
     "text_input": "Textus annotationum",
-    "text_placeholder": "Scribe, deinde Enter preme"
+    "text_placeholder": "Scribe, deinde Enter preme",
+    "discard_confirm": "Omnibus annotationibus deletis?",
+    "discard": "Dele",
+    "keep_editing": "Perge",
+    "zoom_in": "Auge",
+    "zoom_out": "Minue",
+    "zoom_label": "Gradus zoom"
   },
   "epic_start": {
     "in_progress": "In progressu",

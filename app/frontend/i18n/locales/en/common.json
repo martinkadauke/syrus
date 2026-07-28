@@ -64,6 +64,7 @@
   },
   "image_annotation": {
     "annotate": "Annotate {{name}}",
+    "tool_select": "Select",
     "tool_rectangle": "Rectangle",
     "tool_ellipse": "Ellipse",
     "tool_line": "Line",
@@ -77,6 +78,7 @@
     "color_white": "White",
     "color_black": "Black",
     "undo": "Undo",
+    "redo": "Redo",
     "cancel": "Cancel",
     "done": "Done",
     "close": "Close annotation editor",
@@ -84,7 +86,13 @@
     "colors": "Annotation color",
     "canvas": "Annotation canvas",
     "text_input": "Annotation text",
-    "text_placeholder": "Type, then press Enter"
+    "text_placeholder": "Type, then press Enter",
+    "discard_confirm": "Discard all annotations?",
+    "discard": "Discard",
+    "keep_editing": "Keep Editing",
+    "zoom_in": "Zoom in",
+    "zoom_out": "Zoom out",
+    "zoom_label": "Zoom level"
   },
   "epic_start": {
     "in_progress": "In progress",
