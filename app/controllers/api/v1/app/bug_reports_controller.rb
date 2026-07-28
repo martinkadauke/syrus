@@ -7,7 +7,8 @@ module Api
             title: params[:title],
             description: params[:description],
             screenshot: params[:screenshot],
-            attachments: Array(params[:attachments]).compact
+            attachments: Array(params[:attachments]).compact,
+            context: params[:context]
           )
 
           if result.error_code == "github_token_required"

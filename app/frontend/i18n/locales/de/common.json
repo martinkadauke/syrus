@@ -72,7 +72,14 @@
     "attachments_hint": "Bis zu 9 zusätzliche Dateien, jeweils max. 20 MB. Akzeptiert: Bilder, PDF, Text, Markdown.",
     "attachments_remove": "{{filename}} entfernen",
     "attachments_too_large": "{{filename}} überschreitet das 20-MB-Limit und wurde nicht hinzugefügt.",
-    "attachments_max_reached": "Sie können maximal 9 zusätzliche Dateien anhängen."
+    "attachments_max_reached": "Sie können maximal 9 zusätzliche Dateien anhängen.",
+    "whats_included": "Was enthalten ist",
+    "context_url": "URL",
+    "context_browser": "Browser",
+    "context_viewport": "Anzeigebereich",
+    "context_chat": "Chat-Sitzung",
+    "context_recent_errors": "Aktuelle JS-Fehler",
+    "context_no_recent_errors": "Keine"
   },
   "image_annotation": {
     "annotate": "{{name}} annotieren",

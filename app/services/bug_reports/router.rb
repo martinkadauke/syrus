@@ -18,11 +18,11 @@ module BugReports
       system_repo || user_fork_repo ? :direct_job : :github_issue
     end
 
-    def call(title:, description:, screenshot: nil, attachments: [])
+    def call(title:, description:, screenshot: nil, attachments: [], context: nil)
       if (repo = system_repo || user_fork_repo)
-        route_to_creator(repo, title: title, description: description, screenshot: screenshot, attachments: attachments)
+        route_to_creator(repo, title: title, description: description, screenshot: screenshot, attachments: attachments, context: context)
       else
-        route_to_github_issue(title: title, description: description, screenshot: screenshot, attachments: attachments)
+        route_to_github_issue(title: title, description: description, screenshot: screenshot, attachments: attachments, context: context)
       end
     end
 
@@ -46,9 +46,9 @@ module BugReports
       user.repositories.active.find_by(upstream_owner: target_owner, upstream_name: target_name)
     end
 
-    def route_to_creator(repository, title:, description:, screenshot:, attachments: [])
+    def route_to_creator(repository, title:, description:, screenshot:, attachments: [], context: nil)
       result = BugReports::Creator.new(user: user, repository: repository).call(
-        title: title, description: description, screenshot: screenshot, attachments: attachments
+        title: title, description: description, screenshot: screenshot, attachments: attachments, context: context
       )
       if result.success?
         Result.new(job: result.job, mode: :direct_job)
@@ -57,9 +57,9 @@ module BugReports
       end
     end
 
-    def route_to_github_issue(title:, description:, screenshot: nil, attachments: [])
+    def route_to_github_issue(title:, description:, screenshot: nil, attachments: [], context: nil)
       result = BugReports::GithubIssueCreator.new(user: user).call(
-        title: title, description: description, screenshot: screenshot, attachments: attachments
+        title: title, description: description, screenshot: screenshot, attachments: attachments, context: context
       )
       if result.success?
         Result.new(issue_url: result.issue_url, mode: :github_issue)

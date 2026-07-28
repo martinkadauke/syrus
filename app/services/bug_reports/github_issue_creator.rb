@@ -1,5 +1,6 @@
 module BugReports
   class GithubIssueCreator
+    include BugReports::ContextFormatter
     Result = Struct.new(:issue_url, :error_code, :error_message, keyword_init: true) do
       def success? = issue_url.present? && error_code.nil?
     end
@@ -8,7 +9,7 @@ module BugReports
       @user = user
     end
 
-    def call(title:, description:, screenshot: nil, attachments: [])
+    def call(title:, description:, screenshot: nil, attachments: [], context: nil)
       if user.github_token.blank?
         return Result.new(
           error_code: "github_token_required",
@@ -30,7 +31,7 @@ module BugReports
         issue_client
       end
 
-      body_parts = [ description.to_s.strip ]
+      body_parts = [ description.to_s.strip + format_context_markdown(context) ]
 
       if screenshot.present?
         url = upload_client.upload_issue_asset(
