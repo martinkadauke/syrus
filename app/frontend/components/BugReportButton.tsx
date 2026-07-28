@@ -72,6 +72,7 @@ function defaultPos(hint: "bottom-left" | "bottom-right"): ButtonPos {
   return clampPos({ left, top })
 }
 
+
 export function BugReportButton({
   bugReportMode,
   context,
@@ -105,6 +106,7 @@ export function BugReportButton({
   } | null>(null)
   // Set to true by pointer handlers so the subsequent synthetic click event is suppressed.
   const pointerHandledRef = useRef(false)
+
 
   const bugReport = useMutation({
     mutationFn: () => createBugReport({ title, description, screenshot: selectedScreenshot(captures, screenshotChoice) }),
@@ -262,6 +264,7 @@ export function BugReportButton({
     }
     void openDialog()
   }
+
 
   const isGitHubIssueMode = bugReportMode === "github_issue"
   const submitLabel = bugReport.isPending
