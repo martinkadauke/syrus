@@ -22,7 +22,6 @@ class Epic < ApplicationRecord
   belongs_to :owner_user, class_name: "User", optional: true, inverse_of: :dashboard_owned_epics
   belongs_to :reconciliation_job, class_name: "Job", optional: true
   has_many :jobs, dependent: :nullify
-  belongs_to :reconciliation_job, class_name: "Job", optional: true
   has_many :chat_proposals, dependent: :nullify
   has_many :versions, class_name: "EpicVersion", dependent: :destroy, inverse_of: :epic
   has_many :dependencies,
