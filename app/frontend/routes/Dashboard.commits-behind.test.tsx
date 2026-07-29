@@ -76,27 +76,26 @@ function renderTable(items: DashboardJobItem[]) {
 }
 
 describe("commits_behind_base column rendering", () => {
-  it("renders a green badge for 0 commits behind", () => {
+  it("renders no badge for 0 commits behind", () => {
     renderTable([ jobItem(1, 0) ])
-    const badge = screen.getByText("0")
-    expect(badge.className).toContain("green")
+    expect(screen.queryByLabelText(/commits behind base/)).toBeNull()
   })
 
-  it("renders a yellow badge for a small number of commits behind (1-19)", () => {
+  it("renders an amber badge for a small number of commits behind (10-19)", () => {
     renderTable([ jobItem(2, 10) ])
-    const badge = screen.getByText("10")
-    expect(badge.className).toContain("yellow")
+    const badge = screen.getByLabelText("10 commits behind base")
+    expect(badge.className).toContain("amber")
   })
 
-  it("renders an orange badge for a moderate number of commits behind (20-49)", () => {
+  it("renders a red badge for a moderate number of commits behind (20+)", () => {
     renderTable([ jobItem(3, 25) ])
-    const badge = screen.getByText("25")
-    expect(badge.className).toContain("orange")
+    const badge = screen.getByLabelText("25 commits behind base")
+    expect(badge.className).toContain("red")
   })
 
   it("renders a red badge for many commits behind (50+)", () => {
     renderTable([ jobItem(4, 75) ])
-    const badge = screen.getByText("75")
+    const badge = screen.getByLabelText("75 commits behind base")
     expect(badge.className).toContain("red")
   })
 
