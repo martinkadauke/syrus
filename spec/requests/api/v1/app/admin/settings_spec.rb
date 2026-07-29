@@ -97,6 +97,33 @@ RSpec.describe "API: /api/v1/app/admin/settings", type: :request do
     expect(AppSetting.current.reload.video_retention_days).to eq(7)
   end
 
+  it "exposes and updates the proactive rebase commit threshold" do
+    sign_in_as(admin)
+
+    get "/api/v1/app/admin/settings"
+    expect(parse_body.dig("settings", "proactive_rebase_commit_threshold")).to eq(20)
+
+    patch "/api/v1/app/admin/settings", params: {
+      app_setting: { signups_open: false, proactive_rebase_commit_threshold: 50 }
+    }
+
+    expect(response).to have_http_status(:ok)
+    expect(AppSetting.current.reload.proactive_rebase_commit_threshold).to eq(50)
+  end
+
+  it "rejects a proactive_rebase_commit_threshold below 1" do
+    sign_in_as(admin)
+    AppSetting.current.update!(proactive_rebase_commit_threshold: 20)
+
+    patch "/api/v1/app/admin/settings", params: {
+      app_setting: { signups_open: false, proactive_rebase_commit_threshold: 0 }
+    }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "code")).to eq("validation_failed")
+    expect(AppSetting.current.reload.proactive_rebase_commit_threshold).to eq(20)
+  end
+
   it "rejects unknown app secret names" do
     sign_in_as(admin)
 

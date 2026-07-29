@@ -40,6 +40,7 @@ module Api
                 # Global cap on concurrent agent Runs across all worker pods.
                 # 0 = unlimited (bounded only by per-pod JOB_CONCURRENCY).
                 max_concurrent_agent_runs: setting.max_concurrent_agent_runs,
+                proactive_rebase_commit_threshold: setting.proactive_rebase_commit_threshold,
                 clearable_secrets: AppSetting.clearable_secrets.map do |key, label|
                   {
                     key: key,
@@ -52,7 +53,7 @@ module Api
           end
 
           def settings_params
-            permitted_settings = [ :signups_open, :video_retention_days, :video_storage_budget_mb, :max_concurrent_agent_runs ] +
+            permitted_settings = [ :signups_open, :video_retention_days, :video_storage_budget_mb, :max_concurrent_agent_runs, :proactive_rebase_commit_threshold ] +
                                  AppSetting.clearable_secrets.keys.map(&:to_sym)
 
             params

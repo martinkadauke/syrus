@@ -372,4 +372,110 @@ RSpec.describe PollMergeStateJob do
       expect(preempted.reload.closure_reason).to eq("preempted")
     end
   end
+
+  describe "proactive rebase on commit-distance threshold" do
+    let(:fake_clone) { instance_double(RepositoryBareClone) }
+
+    before do
+      allow(RepositoryBareClone).to receive(:new).and_return(fake_clone)
+      allow(fake_clone).to receive(:sync!)
+      allow(fake_clone).to receive(:commits_behind).and_return(21)
+      allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(
+        pr(mergeable_state: "clean", mergeable: true)
+      )
+      allow_any_instance_of(GithubClient).to receive(:pr_reviews).and_return([])
+    end
+
+    it "dispatches a rebase when commits_behind_base exceeds the threshold and mergeable_state is clean" do
+      AppSetting.current.update!(proactive_rebase_commit_threshold: 20)
+
+      expect {
+        described_class.perform_now(job.id)
+      }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
+    end
+
+    it "does not dispatch a rebase when commits_behind_base equals the threshold" do
+      allow(fake_clone).to receive(:commits_behind).and_return(20)
+      AppSetting.current.update!(proactive_rebase_commit_threshold: 20)
+
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+    end
+
+    it "does not dispatch a rebase when commits_behind_base is below the threshold" do
+      allow(fake_clone).to receive(:commits_behind).and_return(5)
+      AppSetting.current.update!(proactive_rebase_commit_threshold: 20)
+
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+    end
+
+    it "does not dispatch a rebase when commits_behind_base is nil" do
+      allow(fake_clone).to receive(:commits_behind).and_return(nil)
+      AppSetting.current.update!(proactive_rebase_commit_threshold: 20)
+
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+    end
+
+    it "still applies all existing guards inside dispatch_rebase" do
+      AppSetting.current.update!(proactive_rebase_commit_threshold: 20)
+      job.update_columns(state: "approved", approved_at: 1.minute.ago, approved_via: "operator")
+      LandingQueueProcessor::REBASE_PREFETCH_DEPTH.times do |i|
+        sibling = Factories.job(user: user, repository: repository, pr_number: 100 + i, branch_name: "syrus/sib-#{100 + i}")
+        sibling.update_columns(state: "approved", approved_at: (10 + i).minutes.ago, approved_via: "operator")
+      end
+
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+    end
+  end
+
+  describe "commits_behind_base computation" do
+    let(:fake_clone) { instance_double(RepositoryBareClone) }
+
+    before do
+      allow(RepositoryBareClone).to receive(:new).and_return(fake_clone)
+      allow(fake_clone).to receive(:sync!)
+      allow(fake_clone).to receive(:commits_behind).and_return(5)
+    end
+
+    it "stores the computed distance on the job" do
+      described_class.perform_now(job.id)
+
+      expect(job.reload.commits_behind_base).to eq(5)
+    end
+
+    it "passes head_sha and base_sha from the PR to the bare clone" do
+      expect(fake_clone).to receive(:commits_behind).with(head_sha: "abc", base_sha: "base")
+
+      described_class.perform_now(job.id)
+    end
+
+    it "leaves commits_behind_base nil when the bare clone raises" do
+      allow(fake_clone).to receive(:sync!).and_raise(GitRunner::GitError.new(["fetch"], 1, "error"))
+
+      described_class.perform_now(job.id)
+
+      expect(job.reload.commits_behind_base).to be_nil
+    end
+
+    it "leaves commits_behind_base nil when commits_behind returns nil" do
+      allow(fake_clone).to receive(:commits_behind).and_return(nil)
+
+      described_class.perform_now(job.id)
+
+      expect(job.reload.commits_behind_base).to be_nil
+    end
+
+    it "syncs the effective_pr_repository bare clone" do
+      expect(RepositoryBareClone).to receive(:new).with(repository).and_return(fake_clone)
+
+      described_class.perform_now(job.id)
+    end
+  end
 end

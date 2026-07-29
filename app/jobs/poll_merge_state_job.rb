@@ -35,6 +35,7 @@ class PollMergeStateJob < ApplicationJob
     return if finalize_terminal_external_pr(@pr)
 
     persist_mergeability(@pr)
+    compute_commits_behind(@pr)
 
     return if @pr.merged
     return if @pr.state == "closed"
@@ -45,6 +46,8 @@ class PollMergeStateJob < ApplicationJob
       approve_for_landing
     elsif rebaseable_mergeable_state?
       dispatch_rebase
+    elsif proactive_rebase_threshold_exceeded?
+      dispatch_rebase
     end
   end
 
@@ -52,6 +55,20 @@ class PollMergeStateJob < ApplicationJob
 
   def persist_mergeability(pr)
     MergeabilityRecorder.record_github!(job: @job, pr: pr)
+  end
+
+  def compute_commits_behind(pr)
+    head_sha = pr&.head&.sha.to_s.presence
+    base_sha = pr&.base&.sha.to_s.presence
+    return unless head_sha && base_sha
+
+    pr_repo = @job.effective_pr_repository
+    bare_clone = RepositoryBareClone.new(pr_repo)
+    bare_clone.sync!(user: @job.user)
+    distance = bare_clone.commits_behind(head_sha: head_sha, base_sha: base_sha)
+    @job.update_column(:commits_behind_base, distance)
+  rescue StandardError => e
+    Rails.logger.warn("[PollMergeStateJob] #{@job.slug} commits_behind_base skipped: #{e.class}: #{e.message}")
   end
 
   # Finalize a preempted Job whose tracked external PR has merged or
@@ -78,6 +95,11 @@ class PollMergeStateJob < ApplicationJob
 
   def rebaseable_mergeable_state?
     REBASE_MERGEABLE_STATES.include?(mergeable_state)
+  end
+
+  def proactive_rebase_threshold_exceeded?
+    distance = @job.commits_behind_base
+    distance.present? && distance > AppSetting.proactive_rebase_commit_threshold
   end
 
   def approve_for_landing

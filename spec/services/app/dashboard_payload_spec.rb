@@ -99,6 +99,54 @@ RSpec.describe App::DashboardPayload do
     end
   end
 
+  describe "commits_behind_base column" do
+    let(:far_behind_job) { Factories.job_record(user: user, repository: repo).tap { |j| j.update_columns(commits_behind_base: 55) } }
+    let(:slightly_behind_job) { Factories.job_record(user: user, repository: repo).tap { |j| j.update_columns(commits_behind_base: 5) } }
+    let(:current_job) { Factories.job_record(user: user, repository: repo).tap { |j| j.update_columns(commits_behind_base: 0) } }
+    let(:unknown_job) { Factories.job_record(user: user, repository: repo) }
+
+    before { [ far_behind_job, slightly_behind_job, current_job, unknown_job ] }
+
+    it "serializes commits_behind_base in each job item" do
+      result = call(subject: "job")
+      item = result[:items].find { |j| j[:id] == far_behind_job.id }
+      expect(item[:commits_behind_base]).to eq(55)
+    end
+
+    it "serializes nil for jobs with no commits_behind_base" do
+      result = call(subject: "job")
+      item = result[:items].find { |j| j[:id] == unknown_job.id }
+      expect(item[:commits_behind_base]).to be_nil
+    end
+
+    it "exposes commits_behind_base as an optional column" do
+      result = call(subject: "job")
+      optional_keys = result[:controls][:columns][:optional].map { |c| c[:key] }
+      expect(optional_keys).to include("commits_behind_base")
+    end
+
+    it "exposes commits_behind_base as a sortable column in controls" do
+      result = call(subject: "job")
+      expect(result[:controls][:sort_columns]).to include("commits_behind_base")
+    end
+
+    it "sorts ascending: lowest commits_behind_base first, nulls last" do
+      result = call(subject: "job", sort_column: "commits_behind_base", sort_direction: "asc")
+      ids = result[:items].map { |j| j[:id] }
+      expect(ids.index(current_job.id)).to be < ids.index(slightly_behind_job.id)
+      expect(ids.index(slightly_behind_job.id)).to be < ids.index(far_behind_job.id)
+      expect(ids.index(far_behind_job.id)).to be < ids.index(unknown_job.id)
+    end
+
+    it "sorts descending: highest commits_behind_base first, nulls last" do
+      result = call(subject: "job", sort_column: "commits_behind_base", sort_direction: "desc")
+      ids = result[:items].map { |j| j[:id] }
+      expect(ids.index(far_behind_job.id)).to be < ids.index(slightly_behind_job.id)
+      expect(ids.index(slightly_behind_job.id)).to be < ids.index(current_job.id)
+      expect(ids.index(current_job.id)).to be < ids.index(unknown_job.id)
+    end
+  end
+
   describe "landing queue blocker job entries" do
     before { SmartFolder.ensure_builtins_for_subject!("job") }
 
@@ -127,6 +175,27 @@ RSpec.describe App::DashboardPayload do
         latest_workflow_trigger_kind: "initial",
         created_at: blocker_job.created_at.iso8601
       )
+    end
+  end
+
+  describe "commits_behind_base in job items" do
+    it "includes commits_behind_base in the job item payload" do
+      job = Factories.job_record(user: user, repository: repo)
+      job.update_columns(commits_behind_base: 25)
+
+      result = call(subject: "job")
+      item = result[:items].find { |i| i[:id] == job.id }
+
+      expect(item).to include(commits_behind_base: 25)
+    end
+
+    it "includes nil commits_behind_base when not yet computed" do
+      job = Factories.job_record(user: user, repository: repo)
+
+      result = call(subject: "job")
+      item = result[:items].find { |i| i[:id] == job.id }
+
+      expect(item).to include(commits_behind_base: nil)
     end
   end
 end

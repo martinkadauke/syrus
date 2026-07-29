@@ -134,6 +134,7 @@ export type DashboardJobItem = {
   last_feedback_addressed_at: string | null
   last_seen_comment_at: string | null
   pr_mergeable_checked_at: string | null
+  commits_behind_base: number | null
   workflows_count: number
   repository: DashboardRepository
   epic: DashboardJobEpic | null
@@ -169,6 +170,7 @@ export type DashboardEpicItem = {
   jobs_count: number
   landed_jobs_count: number
   job_state_counts: Record<string, number>
+  max_commits_behind_base: number | null
   created_at: string | null
   updated_at: string | null
   done_at: string | null

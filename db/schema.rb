@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_29_000719) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_29_154443) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -65,6 +65,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_29_000719) do
     t.boolean "merge_train_enabled", default: false, null: false
     t.integer "merge_train_max_size", default: 20, null: false
     t.boolean "polling_paused", default: false, null: false
+    t.integer "proactive_rebase_commit_threshold", default: 20, null: false
     t.string "report_issue_repo_slug", default: "tkadauke/syrus", null: false
     t.boolean "runs_paused", default: false, null: false
     t.boolean "signups_open", default: false, null: false
@@ -702,6 +703,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_29_000719) do
     t.datetime "claimed_at"
     t.integer "claimed_by_user_id"
     t.string "closure_reason"
+    t.integer "commits_behind_base"
     t.datetime "created_at", null: false
     t.string "credential_mode", default: "pat", null: false
     t.datetime "dependencies_overridden_at"

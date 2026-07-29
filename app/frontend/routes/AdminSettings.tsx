@@ -99,12 +99,14 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
   const [videoRetentionDays, setVideoRetentionDays] = useState(String(payload.settings.video_retention_days))
   const [videoBudgetMb, setVideoBudgetMb] = useState(String(payload.settings.video_storage_budget_mb))
   const [maxConcurrentAgentRuns, setMaxConcurrentAgentRuns] = useState(String(payload.settings.max_concurrent_agent_runs))
+  const [proactiveRebaseThreshold, setProactiveRebaseThreshold] = useState(String(payload.settings.proactive_rebase_commit_threshold))
   const update = useMutation({
     mutationFn: () => updateAdminSettings({
       signups_open: signupsOpen,
       video_retention_days: Number(videoRetentionDays),
       video_storage_budget_mb: Number(videoBudgetMb),
-      max_concurrent_agent_runs: Number(maxConcurrentAgentRuns)
+      max_concurrent_agent_runs: Number(maxConcurrentAgentRuns),
+      proactive_rebase_commit_threshold: Number(proactiveRebaseThreshold)
     }),
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
@@ -117,7 +119,8 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
     setVideoRetentionDays(String(payload.settings.video_retention_days))
     setVideoBudgetMb(String(payload.settings.video_storage_budget_mb))
     setMaxConcurrentAgentRuns(String(payload.settings.max_concurrent_agent_runs))
-  }, [payload.settings.signups_open, payload.settings.video_retention_days, payload.settings.video_storage_budget_mb, payload.settings.max_concurrent_agent_runs])
+    setProactiveRebaseThreshold(String(payload.settings.proactive_rebase_commit_threshold))
+  }, [payload.settings.signups_open, payload.settings.video_retention_days, payload.settings.video_storage_budget_mb, payload.settings.max_concurrent_agent_runs, payload.settings.proactive_rebase_commit_threshold])
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -179,6 +182,19 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
           onChange={(event) => setMaxConcurrentAgentRuns(event.target.value)}
           type="number"
           value={maxConcurrentAgentRuns}
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="admin-settings-proactive-rebase-threshold">{t("settings.proactive_rebase_commit_threshold_label")}</label>
+        <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">{t("settings.proactive_rebase_commit_threshold_help")}</span>
+        <input
+          id="admin-settings-proactive-rebase-threshold"
+          className="mt-1 w-32 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-950 dark:text-gray-100 px-2 py-1 text-sm"
+          min={1}
+          onChange={(event) => setProactiveRebaseThreshold(event.target.value)}
+          type="number"
+          value={proactiveRebaseThreshold}
         />
       </div>
 

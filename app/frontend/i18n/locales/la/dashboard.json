@@ -98,6 +98,8 @@
     "last_feedback_addressed_at": "Ultima relatio habita",
     "last_seen_comment_at": "Ultima nota visa",
     "pr_mergeable_checked_at": "Rogatio verificata",
+    "commits_behind_base": "Post",
+    "commits_behind_base_tooltip": "Promissiones post ramum basem",
     "workflow": "Cursus",
     "workflow_title": "Cursus",
     "job": "Opus",
@@ -122,5 +124,7 @@
   "broken_main_repair_starting": "Incipit...",
   "broken_main_repair_start_failed": "Reparatio incipi non potuit.",
   "broken_main_dismiss": "Dimitte",
-  "needs_attention_aria": "Attentionem requirit"
+  "needs_attention_aria": "Attentionem requirit",
+  "epic_commits_behind_one": "{{count}} comissio post",
+  "epic_commits_behind_other": "{{count}} comissiones post"
 }

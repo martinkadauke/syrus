@@ -60,6 +60,7 @@ module App
         "latest" => "Latest",
         "workflows_count" => "Workflows count",
         "started" => "Started",
+        "commits_behind_base" => "Behind",
         "created_at" => "Created at",
         "updated_at" => "Updated at",
         "started_at" => "Started at",
@@ -433,6 +434,12 @@ module App
       when [ "job", "priority" ]
         scope.reorder(
           Arel.sql("CASE jobs.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END #{direction.to_s.upcase}"),
+          Job.arel_table[:id].public_send(direction)
+        )
+      when [ "job", "commits_behind_base" ]
+        scope.reorder(
+          Arel.sql("CASE WHEN jobs.commits_behind_base IS NULL THEN 1 ELSE 0 END ASC"),
+          Job.arel_table[:commits_behind_base].public_send(direction),
           Job.arel_table[:id].public_send(direction)
         )
       when [ "epic", "title" ]

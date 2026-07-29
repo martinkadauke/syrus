@@ -98,6 +98,8 @@
     "last_feedback_addressed_at": "Last feedback addressed at",
     "last_seen_comment_at": "Last seen comment at",
     "pr_mergeable_checked_at": "PR mergeable checked at",
+    "commits_behind_base": "Behind",
+    "commits_behind_base_tooltip": "Commits behind base branch",
     "workflow": "Workflow",
     "workflow_title": "Workflow",
     "job": "Job",
@@ -122,5 +124,7 @@
   "broken_main_repair_starting": "Starting...",
   "broken_main_repair_start_failed": "Repair could not be started.",
   "broken_main_dismiss": "Dismiss",
-  "needs_attention_aria": "Needs attention"
+  "needs_attention_aria": "Needs attention",
+  "epic_commits_behind_one": "{{count}} commit behind",
+  "epic_commits_behind_other": "{{count}} commits behind"
 }
