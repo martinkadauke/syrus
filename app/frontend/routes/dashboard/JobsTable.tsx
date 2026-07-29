@@ -525,7 +525,14 @@ function JobCell({ job, column, selected, onToggleOne, prefix }: { job: Dashboar
     )
   }
   if (column === "landing_queue_position") {
-    return <td className="px-4 py-3 font-mono text-xs font-semibold text-gray-600 dark:text-gray-300">{job.landing_queue_position ? `#${job.landing_queue_position}` : "-"}</td>
+    return (
+      <td className="px-4 py-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="font-mono text-xs font-semibold text-gray-600 dark:text-gray-300">{job.landing_queue_position ? `#${job.landing_queue_position}` : "-"}</span>
+          <CommitsBehindBadge count={job.commits_behind_base} />
+        </div>
+      </td>
+    )
   }
   if (column === "landing_queue_blocked_reason") {
     return <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{job.landing_queue_blocked_reason ? translateBlockedReason(job.landing_queue_blocked_reason, t) : "-"}</td>
@@ -542,28 +549,11 @@ function JobCell({ job, column, selected, onToggleOne, prefix }: { job: Dashboar
   return <TimestampCell value={jobDateValue(job, column)} />
 }
 
-function commitsBehindTone(count: number): "green" | "yellow" | "orange" | "red" {
-  if (count === 0) return "green"
-  if (count < 20) return "yellow"
-  if (count < 50) return "orange"
-  return "red"
-}
+export function CommitsBehindBadge({ count }: { count: number | null | undefined }) {
+  if (count == null || count === 0) return null
 
-const COMMITS_BEHIND_CLASS: Record<"green" | "yellow" | "orange" | "red", string> = {
-  green: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-  yellow: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
-  orange: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
-  red: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
-}
-
-function CommitsBehindBadge({ count }: { count: number | null }) {
-  if (count == null) return null
-  const tone = commitsBehindTone(count)
-  return (
-    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium tabular-nums ${COMMITS_BEHIND_CLASS[tone]}`}>
-      {count}
-    </span>
-  )
+  const tone: "red" | "amber" | "gray" = count >= 20 ? "red" : count >= 10 ? "amber" : "gray"
+  return <TonePill ariaLabel={`${count} commits behind base`} tone={tone}>{count} behind</TonePill>
 }
 
 export const PRIORITY_TONE: Record<string, "red" | "amber" | "blue"> = {
