@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_29_183701) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_29_200913) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -473,6 +473,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_29_183701) do
     t.integer "owner_user_id"
     t.json "pending_epic_dependency_refs", null: false
     t.bigint "reconciliation_job_id"
+    t.string "reconciliation_mode"
     t.integer "repository_id", null: false
     t.string "slug"
     t.string "state", default: "backlog", null: false
