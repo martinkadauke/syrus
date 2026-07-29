@@ -327,6 +327,7 @@ export type RepositoryTab = {
   key: string
   label: string
   path: string
+  badge?: number
 }
 
 export type RepositoryDetailJob = {
