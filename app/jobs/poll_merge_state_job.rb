@@ -46,6 +46,8 @@ class PollMergeStateJob < ApplicationJob
       approve_for_landing
     elsif rebaseable_mergeable_state?
       dispatch_rebase
+    elsif proactive_rebase_threshold_exceeded?
+      dispatch_rebase
     end
   end
 
@@ -93,6 +95,11 @@ class PollMergeStateJob < ApplicationJob
 
   def rebaseable_mergeable_state?
     REBASE_MERGEABLE_STATES.include?(mergeable_state)
+  end
+
+  def proactive_rebase_threshold_exceeded?
+    distance = @job.commits_behind_base
+    distance.present? && distance > AppSetting.proactive_rebase_commit_threshold
   end
 
   def approve_for_landing

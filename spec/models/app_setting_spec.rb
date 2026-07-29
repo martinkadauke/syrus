@@ -183,6 +183,25 @@ RSpec.describe AppSetting do
     expect(setting.reload.github_app_private_key_pem).to eq("private-key-pem")
   end
 
+  it ".proactive_rebase_commit_threshold defaults to 20 and reflects the setting" do
+    expect(AppSetting.proactive_rebase_commit_threshold).to eq(20)
+
+    AppSetting.current.update!(proactive_rebase_commit_threshold: 50)
+
+    expect(AppSetting.proactive_rebase_commit_threshold).to eq(50)
+  end
+
+  it "rejects a proactive_rebase_commit_threshold below 1" do
+    setting = AppSetting.current
+
+    setting.proactive_rebase_commit_threshold = 0
+    expect(setting).not_to be_valid
+    expect(setting.errors[:proactive_rebase_commit_threshold]).to be_present
+
+    setting.proactive_rebase_commit_threshold = 1
+    expect(setting).to be_valid
+  end
+
   it "rejects clearing non-secret settings" do
     setting = AppSetting.current
 

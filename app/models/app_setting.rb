@@ -45,6 +45,13 @@ class AppSetting < ApplicationRecord
     only_integer: true,
     greater_than_or_equal_to: 0
   }
+  # Proactive rebase fires when commits_behind_base exceeds this threshold,
+  # even when GitHub's mergeable_state is clean. Must be >= 1 (0 would trigger
+  # a rebase on every PR with any commits behind, which is never the intent).
+  validates :proactive_rebase_commit_threshold, numericality: {
+    only_integer: true,
+    greater_than_or_equal_to: 1
+  }
 
   encrypts :github_app_private_key_pem
 
@@ -76,6 +83,10 @@ class AppSetting < ApplicationRecord
   # 0 = unlimited.
   def self.max_concurrent_agent_runs
     current.max_concurrent_agent_runs
+  end
+
+  def self.proactive_rebase_commit_threshold
+    current.proactive_rebase_commit_threshold
   end
 
   def self.max_job_failures
