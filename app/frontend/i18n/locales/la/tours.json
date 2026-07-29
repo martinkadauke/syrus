@@ -1,0 +1,36 @@
+{
+  "back": "Retro",
+  "close": "Claudere",
+  "last": "Factum",
+  "next": "Progredi",
+  "open": "Dialogum aperire",
+  "skip": "Iter praeterire",
+  "dashboard": {
+    "filter_chips_title": "Labores tuos filtra",
+    "filter_chips_content": "Filtri activi hic apparent ut tesserae. Clicca × ut unum removeas, vel '+ Filtrum addere' utere ut coartes per statum, genus laboris, repositorium, et plura.",
+    "view_switcher_title": "Tabula an Kanban",
+    "view_switcher_content": "Inter aspectum tabulae et tabulam Kanban commuta. Kanban tibi conspectum celerem de statu epicorum praebet — et permittit tibi epica inter Acervum, Paratum, et In Progressu trahere.",
+    "create_actions_title": "Opus novum incipe",
+    "create_actions_content": "'Novus Labor' formulam creationis celeris aperit; 'Novum Epicum' labores cognatos colligit. Via commendanda ad labores et epica creanda est per Colloquium — munus tuum ibi describe et Syrus id in petitionem trahendi convertit.",
+    "job_row_title": "Clicca laborem quemvis ut ingrediaris",
+    "job_row_content": "Labor apertus ostendit totam lineam temporis implementationis, differentiam petitionis trahendi, et permittit te iudicium dare vel opus approbare."
+  },
+  "job_detail": {
+    "timeline_title": "Progressio implementationis",
+    "timeline_content": "Quodque gradus ostendit quid Syrus fecerit: consilium, codicem scribere, petitionem tractus aperire. Clicca gradum ut transcriptum plenum agentis videas.",
+    "approve_title": "Opus probare",
+    "approve_content": "Postquam petitionem tractus inspexisti, clicca Probare ut in ordinem mergendi addatur. Syrus reliqua curat.",
+    "feedback_title": "Mutationes postulare",
+    "feedback_content": "Non satis rectum? Narra quid mutandum sit verbis simplicibus — Syrus novum conatum implementationis ex commentis tuis aperiet.",
+    "pr_title": "Differentiam recensere",
+    "pr_content": "Nexus petitionis tractus te recta ad GitHub ducit ut mutationes codicis exactas ante probationem recenseas."
+  },
+  "chat": {
+    "step_compose_title": "Munus describe",
+    "step_compose_content": "Scribe lingua communi quid aedificari velis. Tam specifica quam brevis sis — Syrus amplius rogabit si opus fuerit.",
+    "step_messages_title": "Ante omnia confirma",
+    "step_messages_content": "Cum Syrus Officium vel Epicum proponit, charta confirmationis hic apparet. Inspice, deinde confirma ut inceptum incipias — vel tentamen tuum muta et iterum tempta.",
+    "step_slash_title": "Mandata obliqua",
+    "step_slash_content": "Scribe / ut mandata disponibilia videas — ut /review ad statum PR examinandum, /loop ad opus iterandum, vel /schedule ad opera recurrentia."
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "back": "Back",
+  "close": "Close",
+  "last": "Done",
+  "next": "Next",
+  "open": "Open the dialog",
+  "skip": "Skip tour",
+  "dashboard": {
+    "filter_chips_title": "Filter your jobs",
+    "filter_chips_content": "Active filters appear as chips here. Click × to remove one, or use '+ Add filter' to narrow by status, job type, repository, and more.",
+    "view_switcher_title": "List or Kanban",
+    "view_switcher_content": "Switch between a table view and a Kanban board. Kanban gives you an at-a-glance overview of where your epics stand — and lets you drag epics between Backlog, Ready, and In Progress.",
+    "create_actions_title": "Start new work",
+    "create_actions_content": "'New Job' opens a quick-start form; 'New Epic' groups related jobs together. The recommended way to create jobs and epics is through Chat — describe your task there and Syrus turns it into a pull request.",
+    "job_row_title": "Click any job to dive in",
+    "job_row_content": "Opening a job shows the full implementation timeline, the pull request diff, and lets you give feedback or approve the work."
+  },
+  "job_detail": {
+    "timeline_title": "Implementation timeline",
+    "timeline_content": "Each step shows what Syrus did: planning, writing code, opening a pull request. Click a step to see the agent's full transcript.",
+    "approve_title": "Approve the work",
+    "approve_content": "Once you've reviewed the pull request, click Approve to queue it for merging. Syrus handles the rest.",
+    "feedback_title": "Request changes",
+    "feedback_content": "Not quite right? Submit feedback in plain language — Syrus will open a new implementation attempt based on your comments.",
+    "pr_title": "Review the diff",
+    "pr_content": "The pull request link takes you straight to GitHub to review the exact code changes before you approve."
+  },
+  "chat": {
+    "step_compose_title": "Describe a task",
+    "step_compose_content": "Type what you want built in plain language. Be as specific or as brief as you like — Syrus will ask for clarification if it needs more detail.",
+    "step_messages_title": "Confirm before anything runs",
+    "step_messages_content": "When Syrus proposes a Job or Epic, a confirmation card appears here. Review it, then click Confirm to start implementation — or edit your prompt and try again.",
+    "step_slash_title": "Slash commands",
+    "step_slash_content": "Type / to see available commands — like /review to audit a PR, /loop to run a task repeatedly, or /schedule to set up recurring work."
+  }
+}
