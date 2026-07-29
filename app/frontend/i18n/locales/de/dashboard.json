@@ -98,6 +98,8 @@
     "last_feedback_addressed_at": "Letztes Feedback behoben am",
     "last_seen_comment_at": "Letzter Kommentar gesehen am",
     "pr_mergeable_checked_at": "PR-Zusammenführbarkeit geprüft am",
+    "commits_behind_base": "Rückstand",
+    "commits_behind_base_tooltip": "Commits hinter dem Basis-Branch",
     "workflow": "Arbeitsablauf",
     "workflow_title": "Arbeitsablauf",
     "job": "Aufgabe",

@@ -190,7 +190,7 @@ function JobsTable({
         <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500 dark:bg-gray-800 dark:text-gray-400">
           <tr>
             {columns.map((column) => (
-              <th aria-sort={columnAriaSort("job", column, sortState)} className={column === "checkbox" ? "w-10 px-4 py-2" : "px-4 py-2"} key={column}>
+              <th aria-sort={columnAriaSort("job", column, sortState)} className={column === "checkbox" ? "w-10 px-4 py-2" : "px-4 py-2"} key={column} title={column === "commits_behind_base" ? t("column_label.commits_behind_base_tooltip") : undefined}>
                 {column === "checkbox" ? <input aria-label={t("select_all_jobs")} checked={allSelected} onChange={onToggleAll} type="checkbox" /> : <SortableColumnHeader column={column} sortState={sortState} subject="job" />}
               </th>
             ))}
@@ -346,6 +346,7 @@ function LandingQueueBlockerCell({ job, column, attribution, prefix }: { job: La
   }
   if (column === "started" || column === "started_at") return <TimestampCell value={job.started_at} />
   if (column === "created_at") return <TimestampCell value={job.created_at} />
+  if (column === "commits_behind_base") return <td className="px-4 py-3" />
 
   return <td className="px-4 py-3 text-gray-400 dark:text-gray-500">-</td>
 }
@@ -536,8 +537,33 @@ function JobCell({ job, column, selected, onToggleOne, prefix }: { job: Dashboar
   if (column === "latest") return <LatestWorkflowCell job={job} />
   if (column === "workflows_count") return <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{job.workflows_count}</td>
   if (column === "priority") return <PriorityPillCell priority={job.priority} />
+  if (column === "commits_behind_base") return <td className="px-4 py-3"><CommitsBehindBadge count={job.commits_behind_base} /></td>
 
   return <TimestampCell value={jobDateValue(job, column)} />
+}
+
+function commitsBehindTone(count: number): "green" | "yellow" | "orange" | "red" {
+  if (count === 0) return "green"
+  if (count < 20) return "yellow"
+  if (count < 50) return "orange"
+  return "red"
+}
+
+const COMMITS_BEHIND_CLASS: Record<"green" | "yellow" | "orange" | "red", string> = {
+  green: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+  yellow: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
+  orange: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+  red: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
+}
+
+function CommitsBehindBadge({ count }: { count: number | null }) {
+  if (count == null) return null
+  const tone = commitsBehindTone(count)
+  return (
+    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium tabular-nums ${COMMITS_BEHIND_CLASS[tone]}`}>
+      {count}
+    </span>
+  )
 }
 
 export const PRIORITY_TONE: Record<string, "red" | "amber" | "blue"> = {

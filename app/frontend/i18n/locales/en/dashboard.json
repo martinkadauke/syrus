@@ -98,6 +98,8 @@
     "last_feedback_addressed_at": "Last feedback addressed at",
     "last_seen_comment_at": "Last seen comment at",
     "pr_mergeable_checked_at": "PR mergeable checked at",
+    "commits_behind_base": "Behind",
+    "commits_behind_base_tooltip": "Commits behind base branch",
     "workflow": "Workflow",
     "workflow_title": "Workflow",
     "job": "Job",

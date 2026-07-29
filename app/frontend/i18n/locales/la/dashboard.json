@@ -98,6 +98,8 @@
     "last_feedback_addressed_at": "Ultima relatio habita",
     "last_seen_comment_at": "Ultima nota visa",
     "pr_mergeable_checked_at": "Rogatio verificata",
+    "commits_behind_base": "Post",
+    "commits_behind_base_tooltip": "Promissiones post ramum basem",
     "workflow": "Cursus",
     "workflow_title": "Cursus",
     "job": "Opus",
