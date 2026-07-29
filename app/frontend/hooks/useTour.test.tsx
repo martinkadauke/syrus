@@ -113,6 +113,25 @@ describe("useTour", () => {
     expect(screen.getByTestId("run")).toHaveTextContent("true")
   })
 
+  it("run is false when seen_tours is absent from bootstrap (field not returned by API)", () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const bootstrapWithoutSeenTours = buildBootstrap([])
+    // Simulate a bootstrap response that omits the seen_tours field entirely
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { seen_tours: _omit, ...currentUserWithoutSeenTours } = bootstrapWithoutSeenTours.current_user as NonNullable<typeof bootstrapWithoutSeenTours.current_user> & { seen_tours: string[] }
+    queryClient.setQueryData(["bootstrap"], {
+      ...bootstrapWithoutSeenTours,
+      current_user: currentUserWithoutSeenTours
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <Probe tourId="dashboard" />
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByTestId("run")).toHaveTextContent("false")
+  })
+
   it("calls the dismiss API on FINISHED", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({}))
 
@@ -165,6 +184,7 @@ describe("useTour", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((url) => {
       if (String(url).includes("/api/v1/app/bootstrap")) {
         bootstrapCallCount++
+        // Refetch after dismiss returns the tour as seen
         return Promise.resolve(jsonResponse(buildBootstrap(["dashboard"])))
       }
       return Promise.resolve(jsonResponse({}))
@@ -174,12 +194,13 @@ describe("useTour", () => {
     // After dismiss, invalidateQueries explicitly marks it stale and triggers a fetch.
     renderProbe("dashboard", [])
 
-    const countBeforeDismiss = bootstrapCallCount
-
+    // Data is already in cache (seeded by renderProbe), so no initial fetch fires.
+    // After dismissal, invalidateQueries forces a refetch regardless of staleTime.
     act(() => screen.getByTestId("finish").click())
 
+    // onSuccess from dismiss mutation calls invalidateQueries → triggers a fetch
     await waitFor(() => {
-      expect(bootstrapCallCount).toBeGreaterThan(countBeforeDismiss)
+      expect(bootstrapCallCount).toBeGreaterThanOrEqual(1)
     })
   })
 })

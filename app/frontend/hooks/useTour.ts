@@ -13,8 +13,8 @@ export function useTour(tourId: string): {
   // invalidateQueries in the dismiss callback ignores staleTime and still forces a refresh.
   const { data: bootstrap } = useQuery({ queryKey: ["bootstrap"], queryFn: fetchBootstrap, staleTime: Infinity })
 
-  const seenTours = bootstrap?.current_user?.seen_tours ?? []
-  const run = !seenTours.includes(tourId)
+  const seenTours = bootstrap?.current_user?.seen_tours
+  const run = Array.isArray(seenTours) && !seenTours.includes(tourId)
 
   const dismiss = useMutation({
     mutationFn: () => postJson("/api/v1/app/tours/dismiss", { tour_id: tourId }),
