@@ -5,9 +5,110 @@ import type { CSSProperties, FormEvent, KeyboardEvent, MouseEvent as ReactMouseE
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import "@excalidraw/excalidraw/index.css"
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
+import { exportToBlob } from "@excalidraw/excalidraw"
+import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
-import { refreshRecentChats } from "../lib/chatCache"
-import { answerAgentQuestion, fetchChat, fetchChatMessages, fetchSharedChat, markChatRead, cancelCodingCheckout, type ChatAgentQuestion, type ChatBookmark, type ChatMessageItem, type ChatPayload, type SharedChatPayload } from "../api/chats"
+import { GeminiSetupSheet } from "../components/GeminiSetupSheet"
+import { AnalyzingHint, annotationHoldLabel, annotationIdleHintKind, annotationShortcutLabel, formatClock, RECORDER_WARNING_SECONDS, shouldShowAnnotationSurfaceNote, useNativeRecorderHud, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../components/WalkthroughRecorder"
+import {
+  isWalkthroughVideoFile,
+  MAX_WALKTHROUGH_BYTES,
+  MAX_WALKTHROUGH_DURATION_SECONDS,
+  measureVideoDuration,
+  retryVideoWalkthrough,
+  uploadVideoWalkthrough,
+  type VideoWalkthrough
+} from "../api/videoWalkthroughs"
+import { refreshRecentChats, updateRecentChatCache } from "../lib/chatCache"
+import { useDismissiblePopup } from "../lib/useDismissiblePopup"
+import {
+  addChatAttachment,
+  answerAgentQuestion,
+  attachChatRepository,
+  branchChat,
+  clearChatHistory,
+  confirmChatProposal,
+  confirmPendingAction,
+  createChat,
+  createChatBookmark,
+  createChatTopicBookmark,
+  createWhiteboardSnapshot,
+  createScratchpadItem,
+  deleteScratchpadItem,
+  deleteQueuedChatMessage,
+  deleteChatAttachment,
+  enqueueChatMessage,
+  reorderScratchpadItems,
+  updateScratchpadItem,
+  fetchChat,
+  fetchChatMedia,
+  fetchChatMessages,
+  fetchSharedChat,
+  fetchChatWhiteboard,
+  fetchWhiteboardSnapshot,
+  fetchWhiteboardSnapshots,
+  markChatRead,
+  patchChatWhiteboard,
+  postSnapshotPng,
+  rejectChatProposal,
+  rejectPendingAction,
+  renameChat,
+  searchChatEpics,
+  searchChatJobs,
+  searchChatProposals,
+  sendChatMessage,
+  shareChat,
+  stopChat,
+  updateChatProvider,
+  cancelCodingCheckout,
+  fetchCodingFileTree,
+  fetchCodingFileContent,
+  fetchCodingDiff,
+  updateChatMode,
+  updateChatProposal,
+  updateChatPinned,
+  updateQueuedChatMessage,
+  type ChatAttachmentResult,
+  type ChatMode,
+  type ChatAttachmentRow,
+  type ChatAgentQuestion,
+  type ChatBranchPayload,
+  type ChatBookmark,
+  type ChatMessageAttachmentInput,
+  type ChatCreatedPayload,
+  type ChatMcpHealth,
+  type ChatNavRecord,
+  type ChatEpicDependencySearchResult,
+  type ChatJobDependencySearchResult,
+  type ChatMediaImage,
+  type ChatMediaPayload,
+  type ChatMediaSnapshot,
+  type ChatMessageItem,
+  type ChatPendingAction,
+  type ChatPendingActionInline,
+  type ChatPayload,
+  type ChatProposal,
+  type ChatProposalChild,
+  type ChatProposalChildDependency,
+  type ChatProposalDependency,
+  type ChatProposalSearchResult,
+  type ChatQueuedMessage,
+  type ChatScratchpadItem,
+  type ChatRenderItem,
+  type ChatStructuredTool,
+  type ChatSystemMessage,
+  type ChatWhiteboardElement,
+  type ChatWhiteboardScene,
+  type ChatToolGroupItem,
+  type ShareChatPayload,
+  type SharedChatPayload,
+  type WhiteboardSnapshot,
+  type CodingFilesPayload,
+  type CodingFileContentPayload,
+  type CodingDiffPayload
+} from "../api/chats"
 import { fetchBootstrap, readInitialBootstrap } from "../api/bootstrap"
 import { CloseIcon } from "../components/CloseIcon"
 import { GearIcon } from "../components/GearIcon"
@@ -512,6 +613,7 @@ function MessageStream({ bookmarkTarget, payload, prefix, queryKey, onNotice }: 
     </div>
   )
 }
+
 
 
 function useMediaQuery(query: string, defaultMatches: boolean) {
