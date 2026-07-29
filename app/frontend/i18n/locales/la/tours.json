@@ -14,5 +14,15 @@
     "create_actions_content": "'Novus Labor' formulam creationis celeris aperit; 'Novum Epicum' labores cognatos colligit. Via commendanda ad labores et epica creanda est per Colloquium — munus tuum ibi describe et Syrus id in petitionem trahendi convertit.",
     "job_row_title": "Clicca laborem quemvis ut ingrediaris",
     "job_row_content": "Labor apertus ostendit totam lineam temporis implementationis, differentiam petitionis trahendi, et permittit te iudicium dare vel opus approbare."
+  },
+  "job_detail": {
+    "timeline_title": "Progressio implementationis",
+    "timeline_content": "Quodque gradus ostendit quid Syrus fecerit: consilium, codicem scribere, petitionem tractus aperire. Clicca gradum ut transcriptum plenum agentis videas.",
+    "approve_title": "Opus probare",
+    "approve_content": "Postquam petitionem tractus inspexisti, clicca Probare ut in ordinem mergendi addatur. Syrus reliqua curat.",
+    "feedback_title": "Mutationes postulare",
+    "feedback_content": "Non satis rectum? Narra quid mutandum sit verbis simplicibus — Syrus novum conatum implementationis ex commentis tuis aperiet.",
+    "pr_title": "Differentiam recensere",
+    "pr_content": "Nexus petitionis tractus te recta ad GitHub ducit ut mutationes codicis exactas ante probationem recenseas."
   }
 }
