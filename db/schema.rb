@@ -844,6 +844,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.integer "dependencies_overridden_by_user_id"
     t.integer "epic_id"
     t.string "epic_title"
+    t.string "external_pr_author"
     t.integer "external_pr_number"
     t.string "external_ref"
     t.integer "failure_count", default: 0, null: false
@@ -928,6 +929,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.index ["owner_user_id"], name: "index_jobs_on_owner_user_id"
     t.index ["parent_job_id"], name: "index_jobs_on_parent_job_id"
     t.index ["pr_repository_id"], name: "index_jobs_on_pr_repository_id"
+    t.index ["repository_id", "external_pr_number"], name: "index_jobs_on_repository_id_and_external_pr_number_unique", unique: true
     t.index ["repository_id", "issue_number", "state"], name: "index_jobs_on_repository_id_and_issue_number_and_state"
     t.index ["repository_id", "owner_user_id", "kind", "state"], name: "idx_jobs_dashboard_repo_owner_kind_state"
     t.index ["repository_id", "state", "closure_reason", "finished_at"], name: "idx_jobs_repo_state_closure_finished"
