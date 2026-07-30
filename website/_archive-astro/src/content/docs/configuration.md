@@ -20,8 +20,8 @@ For deployment-specific placement, see [Deployment](/docs/deployment).
 `.syrus.yml` is read from the root of the target repository during the
 workflow and by local CLI checkout commands. It configures deterministic
 setup commands before the agent runs, optional adversarial review rounds
-for Initial workflows, and optional local hooks after an operator checks
-out a Syrus branch.
+for Initial workflows, grader commands, and optional local hooks after an
+operator checks out a Syrus branch.
 
 ```yaml
 prepare:
@@ -30,6 +30,11 @@ prepare:
 
 adversarial_review:
   rounds: 2
+
+grade:
+  - name: rspec
+    run: bin/rspec
+    fast: COVERAGE=false bin/rspec
 
 hooks:
   post_checkout:
@@ -43,6 +48,7 @@ Schema:
 | `prepare` | Array of strings | Shell commands to run in order before agent work starts |
 | `prepare` | `[]` | Explicitly run no preparation commands |
 | `prepare` | `false` | Opt out of preparation entirely |
+| `grade` | Array or mapping | Required grader commands; each step has `name`, `run`, and optional `fast` |
 | `adversarial_review.rounds` | Integer | Number of adversarial review rounds to run before grading; omit or set `0` to disable |
 | `hooks.post_checkout` | Array of strings | Shell commands the CLI runs after `syrus checkout` succeeds |
 
@@ -94,6 +100,13 @@ final `implement` step to address the last review before grading.
 The workflow chain is created before the workspace clone exists, so Syrus
 reads this setting from `.syrus.yml` on the repository's default branch. If
 the file or setting is absent, adversarial review is disabled.
+
+### `grade`
+
+`grade` defines the checks Syrus runs after agent work. `run` is the
+normal command. `fast` is an optional alternate command for pass/fail-only
+contexts such as landing, main graders, repair workflows, and repeat grade
+iterations after the first. If `fast` is absent, Syrus uses `run`.
 
 ### `coverage`
 

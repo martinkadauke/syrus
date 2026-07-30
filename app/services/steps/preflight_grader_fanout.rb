@@ -13,7 +13,7 @@ module Steps
   class PreflightGraderFanout < Base
     def call
       workspace.setup
-      plan = RepoGradePlan.for(workspace.path)
+      plan = effective_plan(RepoGradePlan.for(workspace.path))
       grader_fingerprint = GraderConclusionCache.fingerprint_for_plan(plan)
 
       workflow.set_artifact!("preflight_grade_plan_source", plan.source)
@@ -32,6 +32,20 @@ module Steps
     end
 
     private
+
+    def effective_plan(plan)
+      plan.with(
+        graders: plan.graders.map do |grader|
+          metadata = {
+            "standard_command" => grader.command,
+            "fast_command" => grader.fast_command,
+            "fast_variant" => grader.fast_command.present?
+          }.compact
+
+          grader.with(command: grader.command_for(fast: true), metadata: metadata)
+        end
+      )
+    end
 
     def materialize_grader_steps!(graders)
       continuation = step.next_step
@@ -52,6 +66,9 @@ module Steps
             details: {
               "name" => grader.name,
               "command" => grader.command,
+              "standard_command" => grader.metadata["standard_command"],
+              "fast_command" => grader.metadata["fast_command"],
+              "fast_variant" => grader.metadata["fast_variant"],
               "description" => grader.description,
               "required" => grader.required,
               "timeout_minutes" => grader.timeout_minutes

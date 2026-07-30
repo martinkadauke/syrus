@@ -25,6 +25,12 @@ module Steps
       command = definition.fetch("command") { raise StepFailed, "grader Step missing details[command]" }
       timeout_minutes = (definition["timeout_minutes"] || 15).to_i
 
+      log("[grader:#{name}] $ #{command}")
+
+      log_path = grader_log_path(name)
+      absolute_log_path = workspace.path.join(log_path)
+      FileUtils.mkdir_p(absolute_log_path.dirname)
+
       # Augment rspec commands with a structured output file so failure
       # details survive even when stdout is cut off mid-output (OOM, signal).
       json_results_path = nil
@@ -32,12 +38,6 @@ module Steps
         json_results_path = Rails.root.join("tmp", "rspec_grade_#{SecureRandom.hex(8)}.json").to_s
         command = "#{command} --format json --out #{json_results_path}"
       end
-
-      log("[grader:#{name}] $ #{command}")
-
-      log_path = grader_log_path(name)
-      absolute_log_path = workspace.path.join(log_path)
-      FileUtils.mkdir_p(absolute_log_path.dirname)
 
       started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       exit_code = nil

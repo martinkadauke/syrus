@@ -129,6 +129,23 @@ RSpec.describe Steps::PreflightGraderFanout do
     )
   end
 
+  it "uses fast grader commands for main-branch repair preflight checks" do
+    write_grade_config(<<~YAML)
+      grade:
+        - name: rspec
+          run: bin/rspec
+          fast: COVERAGE=false bin/rspec
+    YAML
+
+    handler.call
+
+    details = workflow.steps.find_by!(kind: "preflight_grader").details
+    expect(details["command"]).to eq("COVERAGE=false bin/rspec")
+    expect(details["standard_command"]).to eq("bin/rspec")
+    expect(details["fast_command"]).to eq("COVERAGE=false bin/rspec")
+    expect(details["fast_variant"]).to be true
+  end
+
   it "records grade_plan_source in workflow artifacts" do
     write_grade_config(<<~YAML)
       grade:

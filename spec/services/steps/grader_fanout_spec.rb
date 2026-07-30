@@ -97,6 +97,72 @@ RSpec.describe Steps::GraderFanout do
     expect(grader_steps.first.details["name"]).to eq("rspec")
   end
 
+  it "uses the normal grader command on the first implementation validation pass" do
+    write_config(<<~YAML)
+      grade:
+        - name: rspec
+          run: bin/rspec
+          fast: COVERAGE=false bin/rspec
+    YAML
+
+    handler.call
+
+    details = workflow.steps.find_by!(kind: "grader").details
+    expect(details["command"]).to eq("bin/rspec")
+    expect(details["standard_command"]).to eq("bin/rspec")
+    expect(details["fast_command"]).to eq("COVERAGE=false bin/rspec")
+    expect(details["fast_variant"]).to be false
+  end
+
+  it "uses the fast grader command for landing validations" do
+    workflow.update!(trigger_kind: "auto_merge")
+    write_config(<<~YAML)
+      grade:
+        - name: rspec
+          run: bin/rspec
+          fast: COVERAGE=false bin/rspec
+    YAML
+
+    handler.call
+
+    details = workflow.steps.find_by!(kind: "grader").details
+    expect(details["command"]).to eq("COVERAGE=false bin/rspec")
+    expect(details["standard_command"]).to eq("bin/rspec")
+    expect(details["fast_command"]).to eq("COVERAGE=false bin/rspec")
+    expect(details["fast_variant"]).to be true
+  end
+
+  it "falls back to the normal command in fast contexts when no fast command is configured" do
+    workflow.update!(trigger_kind: "auto_merge")
+    write_config(<<~YAML)
+      grade:
+        - name: rspec
+          run: bin/rspec
+    YAML
+
+    handler.call
+
+    details = workflow.steps.find_by!(kind: "grader").details
+    expect(details["command"]).to eq("bin/rspec")
+    expect(details["fast_variant"]).to be false
+  end
+
+  it "uses the fast grader command after the first implementation validation iteration" do
+    step.update!(iteration: 2)
+    collect.update!(iteration: 2)
+    run.update!(iteration: 2)
+    write_config(<<~YAML)
+      grade:
+        - name: rspec
+          run: bin/rspec
+          fast: COVERAGE=false bin/rspec
+    YAML
+
+    handler.call
+
+    expect(workflow.steps.find_by!(kind: "grader").details["command"]).to eq("COVERAGE=false bin/rspec")
+  end
+
   it "materializes graders whose when_files_changed patterns match changed files" do
     write_config(<<~YAML)
       grade:

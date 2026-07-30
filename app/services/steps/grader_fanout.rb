@@ -15,9 +15,25 @@ module Steps
   # is snapshotted onto its Step#details — immutable for that Step,
   # immune to `.syrus.yml` evolution.
   class GraderFanout < Base
+    FAST_GRADER_TRIGGER_KINDS = %w[
+      auto_merge
+      ci_failure
+      main_branch_repair
+      main_grader
+      merge_train
+    ].freeze
+
+    FAST_GRADER_REPEAT_TRIGGER_KINDS = %w[
+      chat_feedback
+      coding_handoff
+      initial
+      pr_comment
+      retry
+    ].freeze
+
     def call
       workspace.setup
-      plan = RepoGradePlan.for(workspace.path)
+      plan = effective_plan(RepoGradePlan.for(workspace.path))
       grader_fingerprint = GraderConclusionCache.fingerprint_for_plan(plan)
       record_plan_source!(plan, grader_fingerprint)
       apply_loop_max_iterations!(plan.max_iterations)
@@ -29,6 +45,7 @@ module Steps
         log("[grader_fanout] no graders configured — collect Step will pass through")
         return
       end
+      log("[grader_fanout] using fast grader variants where configured") if fast_grader_context?
 
       # Skip graders whose when_files_changed globs don't match this PR's diff.
       files = changed_files
@@ -146,6 +163,9 @@ module Steps
             details: {
               "name" => grader.name,
               "command" => grader.command,
+              "standard_command" => grader.metadata["standard_command"],
+              "fast_command" => grader.metadata["fast_command"],
+              "fast_variant" => grader.metadata["fast_variant"],
               "description" => grader.description,
               "required" => grader.required,
               "timeout_minutes" => grader.timeout_minutes,
@@ -159,6 +179,28 @@ module Steps
         ([ step ] + new_steps).each_cons(2) { |a, b| a.update!(next_step_id: b.id) }
         new_steps.last.update!(next_step_id: continuation&.id)
       end
+    end
+
+    def effective_plan(plan)
+      fast = fast_grader_context?
+      plan.with(
+        graders: plan.graders.map do |grader|
+          command = grader.command_for(fast: fast)
+          metadata = {
+            "standard_command" => grader.command,
+            "fast_command" => grader.fast_command,
+            "fast_variant" => fast && grader.fast_command.present?
+          }.compact
+
+          grader.with(command: command, metadata: metadata)
+        end
+      )
+    end
+
+    def fast_grader_context?
+      return true if FAST_GRADER_TRIGGER_KINDS.include?(workflow.trigger_kind)
+
+      run.iteration.to_i > 1 && FAST_GRADER_REPEAT_TRIGGER_KINDS.include?(workflow.trigger_kind)
     end
   end
 end

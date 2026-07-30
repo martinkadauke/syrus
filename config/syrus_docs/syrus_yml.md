@@ -36,6 +36,7 @@ grade:
   steps:
     - name: rspec
       run: bin/rspec
+      fast: COVERAGE=false bin/rspec
       description: Run the Ruby test suite
       required: true
       timeout_minutes: 15
@@ -64,10 +65,24 @@ grade:
 |---|---|---|---|
 | `name` | yes | — | Alphanumeric + hyphens; must be unique |
 | `run` | yes | — | Shell command |
+| `fast` | no | — | Alternate shell command for pass/fail-only validation contexts |
 | `description` | no | — | Human-readable label |
 | `required` | no | `true` | Non-required failures warn but don't block |
 | `timeout_minutes` | no | 15 | Clamped to 30 max |
 | `when_files_changed` | no | — | Array of glob patterns; grader is skipped at fanout time if none of the PR's changed files match |
+
+### fast
+
+`fast` is an optional alternate command for the same grader. Syrus uses it when the grader result is only a pass/fail safety check and no fresh coverage report is consumed: `main_grader`, `main_branch_repair`, `ci_failure`, `auto_merge`, `merge_train`, and implementation/feedback/coding grade-loop iterations after the first. If `fast` is absent, Syrus falls back to `run`.
+
+For example, a Ruby suite can keep coverage on for the first implementation validation while disabling coverage instrumentation for landing and repair rechecks:
+
+```yaml
+grade:
+  - name: rspec
+    run: bin/rspec
+    fast: COVERAGE=false bin/rspec
+```
 
 ### when_files_changed
 

@@ -54,6 +54,8 @@ Non-agentic. Reads grader definitions from `.syrus.yml` and materializes one `gr
 
 Non-agentic. Runs a single grader command (e.g., `bin/rspec`). Required graders must pass; non-required graders warn on failure.
 
+When a grader defines a `.syrus.yml` `fast:` command, Syrus uses that alternate command in pass/fail-only validation contexts: `main_grader`, `main_branch_repair`, `ci_failure`, `auto_merge`, `merge_train`, and implementation/feedback/coding grade-loop iterations after the first. If `fast:` is absent, the normal `run:` command is used.
+
 ### grader_collect
 
 Non-agentic. Aggregates grader results. Fails the check cycle if any required grader failed; succeeds otherwise.
