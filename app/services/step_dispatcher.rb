@@ -31,12 +31,21 @@ class StepDispatcher
     end
 
     unless workflow.job.stack_ready_for_execution?
+      return fail_unstartable_landing_workflow!(workflow, "landing start blocked: stack dependencies not ready") if workflow.landing_workflow?
+
       cancel_unstartable_rebase_workflow!(workflow, "stack_dependencies_not_ready")
       warn_if_stuck_queued(workflow, "stack_dependencies_not_ready")
       return
     end
 
     unless workflow.job.ready_for_execution?
+      reason = if workflow.job.blocked_by_epic_before_execution?
+        "landing start blocked: waiting for Epic to release"
+      else
+        "landing start blocked: job not ready for execution"
+      end
+      return fail_unstartable_landing_workflow!(workflow, reason) if workflow.landing_workflow?
+
       cancel_unstartable_rebase_workflow!(workflow, "job_not_ready_for_execution")
       warn_if_stuck_queued(workflow, "job_not_ready_for_execution")
       return
@@ -145,6 +154,18 @@ class StepDispatcher
       "start_blocked_at" => Time.current.iso8601
     )
     workflow.cancel! if workflow.may_cancel?
+    workflow.save!
+    nil
+  end
+
+  def self.fail_unstartable_landing_workflow!(workflow, reason)
+    workflow.artifacts = (workflow.artifacts || {}).merge(
+      "failure_reason" => reason,
+      "start_blocked_reason" => reason,
+      "start_blocked_at" => Time.current.iso8601
+    )
+    workflow.failure_reason = reason
+    workflow.fail! if workflow.may_fail?
     workflow.save!
     nil
   end

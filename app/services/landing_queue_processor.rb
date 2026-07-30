@@ -459,6 +459,7 @@ class LandingQueueProcessor
        job.repository.jobs.where(priority: "urgent").where.not(state: %w[closed]).exists?
       return blocked("urgent job active")
     end
+    return blocked("waiting for Epic to release") if job.blocked_by_epic_before_execution?
     # With merge-trains on, Epic children never land via the per-Job
     # path — they land atomically as part of their Epic's train. Keep
     # them in :approved with a clear reason; MergeTrainDispatcher picks
@@ -489,7 +490,6 @@ class LandingQueueProcessor
     return blocked(MERGEABILITY_WAIT_REASON) if waiting_for_github_mergeability?(job)
     return blocked(RebaseLoopGuard::BLOCK_REASON) if RebaseLoopGuard.waiting_after_noop?(job)
     return blocked(RebaseAttemptGuard::BLOCK_REASON) if RebaseAttemptGuard.blocking_landing?(job)
-    return blocked("waiting for Epic to release") if job.blocked_by_epic_before_execution?
     if job.epic
       epic = job.epic
       if epic.reconciliation_job_id.present? &&

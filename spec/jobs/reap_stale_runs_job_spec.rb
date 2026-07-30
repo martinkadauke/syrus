@@ -588,6 +588,43 @@ RSpec.describe ReapStaleRunsJob do
         expect { described_class.perform_now }
           .not_to change { first_step.runs.reload.count }
       end
+
+      it "fails and defers an orphaned landing workflow that is not execution-ready" do
+        repo = Factories.repository(auto_merge_enabled: true)
+        epic = Factories.epic(user: repo.user, repository: repo, state: "backlog", reconciliation_mode: "none")
+        a = Factories.job_record(user: repo.user, repository: repo, epic: epic, issue_number: 51,
+                                 state: "landing", pr_number: 501, branch_name: "syrus/issue-51")
+        b = Factories.job_record(user: repo.user, repository: repo, epic: epic, issue_number: 52,
+                                 state: "landing", pr_number: 502, branch_name: "syrus/issue-52")
+        train = MergeTrain.create!(epic: epic, repository: repo, base_branch: repo.default_branch)
+        [ a, b ].each_with_index { |job, index| MergeTrainMember.create!(merge_train: train, job: job, position: index) }
+        workflow = Workflow.create!(
+          job: b,
+          trigger_kind: "merge_train",
+          artifacts: { "merge_train_id" => train.id }
+        )
+        workflow.update_columns(
+          created_at: (ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds).ago,
+          updated_at: (ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds).ago
+        )
+        first_step = Step.create!(workflow: workflow, kind: "merge_train_assemble", position: 0)
+
+        expect(workflow.reload).to be_queued
+        expect(workflow.created_at).to be < ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD.ago
+        expect(workflow.job).to be_open
+        expect(first_step).to be_queued
+        expect(first_step.runs).to be_empty
+        expect(workflow.job).not_to be_ready_for_execution
+
+        expect { described_class.perform_now }
+          .not_to change { first_step.runs.reload.count }
+
+        expect(workflow.reload).to be_failed
+        expect(workflow.failure_reason).to eq("landing start blocked: waiting for Epic to release")
+        expect(train.reload.state).to eq("failed")
+        expect(a.reload).to be_approved
+        expect(b.reload).to be_approved
+      end
     end
 
     describe "orphan-workflow path: Workflow :running but all descendants are terminal" do

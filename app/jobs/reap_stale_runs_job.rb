@@ -157,8 +157,10 @@ class ReapStaleRunsJob < ApplicationJob
       next unless first&.queued?
       next if first.runs.exists?
       next unless workflow.job&.open?
-      next unless workflow.job.ready_for_execution?
-      next unless workflow.job.stack_ready_for_execution?
+      unless workflow.landing_workflow?
+        next unless workflow.job.ready_for_execution?
+        next unless workflow.job.stack_ready_for_execution?
+      end
 
       Rails.logger.info("[ReapStaleRunsJob] Workflow ##{workflow.id} started: :queued with no first Run after #{ORPHAN_RUN_GRACE_PERIOD.inspect}")
       StepDispatcher.start_workflow(workflow)

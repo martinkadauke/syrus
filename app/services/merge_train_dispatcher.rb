@@ -61,6 +61,7 @@ class MergeTrainDispatcher
 
   def blocker_reason
     return "merge trains are disabled" unless AppSetting.merge_train_enabled?
+    return "waiting for Epic to release" unless @epic.releases_jobs_for_execution?
     return "#{@epic.slug} already has an active merge train" if active_train_in_progress?
 
     if (landing_job = landing_job_in_progress)

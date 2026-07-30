@@ -28,7 +28,7 @@ class LandingFailureHandler
     if infrastructure_blocker?
       pause_landing!
       job.defer_landing! if job.may_defer_landing?
-    elsif rebase_cap_blocker? || merge_train_rebuild_required?
+    elsif rebase_cap_blocker? || merge_train_rebuild_required? || landing_start_blocker?
       log_deferral!
       job.defer_landing! if job.may_defer_landing?
     else
@@ -51,6 +51,10 @@ class LandingFailureHandler
 
   def merge_train_rebuild_required?
     self.class.merge_train_rebuild_required?(reason)
+  end
+
+  def landing_start_blocker?
+    reason.match?(/\Alanding start blocked: /i)
   end
 
   def self.stale_merge_train_base?(reason)
@@ -87,7 +91,9 @@ class LandingFailureHandler
     log_run = run || job.current_run
     return unless log_run
 
-    message = if merge_train_rebuild_required?
+    message = if landing_start_blocker?
+      "landing_queue: deferred landing because the landing workflow could not start yet (#{reason.truncate(180)})"
+    elsif merge_train_rebuild_required?
       "landing_queue: deferred landing because the merge-train validation is stale or incomplete; Syrus will rebuild the train"
     else
       "landing_queue: deferred landing because the rebase cap was reached; run a manual rebase or wait for the PR head/base to change before retrying"

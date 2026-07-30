@@ -13,15 +13,17 @@ When disabled (default), approved Epic child Jobs land individually via `auto_me
 ## When a merge train fires
 
 1. An operator approves the last open child Job in an Epic.
-2. `LandingQueueProcessor` sees that all open sibling Jobs are `approved`.
+2. `LandingQueueProcessor` confirms the Epic has released its children for execution and all open sibling Jobs are `approved`.
 3. Syrus dispatches a `merge_train` workflow on the Epic.
 4. All member Jobs move to `landing` state until the train succeeds or fails.
 
 While waiting for siblings, Jobs show a blocked reason: "waiting for Epic merge-train."
+If the Epic itself is still blocked by an upstream Epic dependency, child Jobs show "waiting for Epic to release" and no merge train is dispatched.
 
 ## Assembly requirements
 
 `merge_train_assemble` validates:
+- The Epic has released its children for execution.
 - Every open child Job in the Epic is in `approved` state.
 - The member count does not exceed `AppSetting.merge_train_max_size` (default: 20).
 

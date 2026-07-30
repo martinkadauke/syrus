@@ -112,6 +112,11 @@ The reconciliation Job depends on every sibling Job in the Epic and holds
 siblings from landing until it finishes. Once it closes, sibling Jobs proceed
 to the landing queue normally.
 
+When merge trains are enabled, approved child Jobs land atomically only after
+the Epic has released its children and all open siblings are approved. Children
+blocked by an upstream Epic dependency stay in the queue with a
+`waiting for Epic to release` reason instead of dispatching a train early.
+
 Reconciliation is configured via `reconciliation_mode` in `.syrus.yml` or
 per-Epic:
 

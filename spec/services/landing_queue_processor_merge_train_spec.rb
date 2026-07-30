@@ -24,6 +24,15 @@ RSpec.describe LandingQueueProcessor, "merge-train integration" do
       expect(entry.blocked_reason).to eq("waiting for Epic merge-train")
     end
 
+    it "surfaces the Epic release gate before the merge-train wait" do
+      AppSetting.current.update!(merge_train_enabled: true)
+      epic.update_columns(state: "backlog")
+      child = approved_child(1)
+
+      entry = described_class.entries(Job.where(id: child.id)).first
+      expect(entry.blocked_reason).to eq("waiting for Epic to release")
+    end
+
     it "does not block Epic children for the merge-train reason when the flag is off" do
       AppSetting.current.update!(merge_train_enabled: false)
       child = approved_child(1)

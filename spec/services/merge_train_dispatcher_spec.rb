@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe MergeTrainDispatcher do
   let(:user) { Factories.user(github_token: "ghp_test") }
   let(:repository) { Factories.repository(user: user, auto_merge_enabled: true) }
-  let(:epic) { Factories.epic(user: user, repository: repository) }
+  let(:epic) { Factories.epic(user: user, repository: repository, reconciliation_mode: "none") }
 
   def approved_child(issue_number)
     Factories.job_record(
@@ -15,6 +15,8 @@ RSpec.describe MergeTrainDispatcher do
 
   before do
     AppSetting.current.update!(merge_train_enabled: true)
+    epic.update_columns(state: "in_progress")
+    epic.reload
     allow(StepDispatcher).to receive(:start_workflow)
   end
 
@@ -22,6 +24,7 @@ RSpec.describe MergeTrainDispatcher do
     a = approved_child(1)
     b = approved_child(2)
 
+    expect(described_class.blocker_reason(epic)).to be_nil
     workflow = described_class.try_dispatch!(epic)
 
     expect(workflow).to be_present
@@ -42,6 +45,17 @@ RSpec.describe MergeTrainDispatcher do
 
     expect(described_class.try_dispatch!(epic)).to be_nil
     expect(MergeTrain.count).to eq(0)
+  end
+
+  it "does nothing when the Epic has not released its children for execution" do
+    epic.update_columns(state: "backlog")
+    epic.reload
+    approved_child(1)
+
+    expect(described_class.try_dispatch!(epic)).to be_nil
+    expect(described_class.blocker_reason(epic)).to eq("waiting for Epic to release")
+    expect(MergeTrain.count).to eq(0)
+    expect(StepDispatcher).not_to have_received(:start_workflow)
   end
 
   it "does nothing when the Epic is not ready (a child is unapproved)" do
