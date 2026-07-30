@@ -13,7 +13,7 @@ import { Markdown } from "../lib/Markdown"
 import { translateBlockedReason } from "../lib/translateBlockedReason"
 import { workflowSlug } from "../lib/slugs"
 import { buttonClass } from "../lib/buttonClasses"
-import { applyPendingFeedback, createJobAttachments, deleteJobCommand, fetchJobDependencyOptions, fetchJobDetail, fetchJobTestResults, fetchJobWorkflows, ignorePendingFeedback, replacePendingFeedback, retryPendingFeedback, submitJobFeedback, updateJobPriority, updateJobProviderSetting, type JobApprovalRecord, type JobApprovalStatus, type JobDeploymentStage, type JobDetailPayload, type JobTestCase, type JobTestPlan, type JobTestRun, type JobTestSuite, type JobWorkflow, type PendingFeedbackComment } from "../api/jobs"
+import { applyPendingFeedback, createJobAttachments, deleteJobCommand, fetchJobDependencyOptions, fetchJobDetail, fetchJobTestResults, fetchJobWorkflows, ignorePendingFeedback, replacePendingFeedback, retryPendingFeedback, stopJobPreview, submitJobFeedback, updateJobPriority, updateJobProviderSetting, type JobApprovalRecord, type JobApprovalStatus, type JobDeploymentStage, type JobDetailPayload, type JobTestCase, type JobTestPlan, type JobTestRun, type JobTestSuite, type JobWorkflow, type PendingFeedbackComment } from "../api/jobs"
 import { CoverageCard } from "../components/CoverageCard"
 import { ProviderAvailabilityWarning } from "../components/ProviderAvailabilityWarning"
 import { SyrusTour } from "../components/SyrusTour"
@@ -23,6 +23,7 @@ import type { JobDetailQueryKey, JobTab, JobWorkflowsQueryKey } from "./jobDetai
 import { CommandButton, useJobCommand } from "./jobDetail/command"
 import { TagsPanel, NeedsAttentionBanner, FeedbackSourceBadge, EpicSummaryLink, TimelinePanel, AttachmentPreview, AttachmentCard, MergeablePill, JobStateBadge, PendingJobTitle, JobSourceLink, DependencyLink, JobDependencyTargetReference, PanelMessage, SmallPill, jobSourceLabel } from "./jobDetail/components"
 import { ChatBubbleIcon, HeaderActions, JobFeedbackPanel } from "./jobDetail/JobHeader"
+import { PreviewPanel, PreviewStopModal } from "./jobDetail/PreviewPanel"
 import { jobDetailQueryKey, jobDetailSearch, jobWorkflowsQueryKey, mergeJobWorkflowsPayload, tabFromLocation } from "./jobDetail/queryKeys"
 import { formatCurrency, jobSlug, withRoutePrefix } from "./jobDetail/formatting"
 import { latestWorkflowCoverage, workflowCreatedAtTime } from "./jobDetail/workflowArtifacts"
@@ -85,11 +86,33 @@ export function JobDetailView({ payload, queryKey, workflowsQueryKey, activeTab,
   const queryClient = useQueryClient()
   const [notice, setNotice] = useState<string | null>(payload.message || null)
   const [feedbackPanelOpen, setFeedbackPanelOpen] = useState(false)
+  const [previewStopModal, setPreviewStopModal] = useState<{ onProceed: () => void } | null>(null)
   const command = useJobCommand(payload.job.id, queryKey, workflowsQueryKey, setNotice)
   const bugReportTrigger = useBugReportTrigger()
   const title = payload.job.issue_title || jobSourceLabel(payload, t)
   const workflowAnchor = location.hash.startsWith("#workflow-") ? location.hash.slice(1) : null
   const renderedWorkflowIds = payload.workflows.map((workflow) => workflow.id).join(",")
+
+  const previewRunning = payload.preview?.state === "running"
+
+  function withPreviewStop(proceed: () => void) {
+    if (previewRunning) {
+      setPreviewStopModal({ onProceed: proceed })
+    } else {
+      proceed()
+    }
+  }
+
+  const stopPreview = useMutation({
+    mutationFn: () => stopJobPreview(payload.paths.app_preview_path),
+    onSettled: () => {
+      if (previewStopModal) {
+        previewStopModal.onProceed()
+        setPreviewStopModal(null)
+      }
+    }
+  })
+
   const feedback = useMutation({
     mutationFn: (body: string) => submitJobFeedback(payload.job.id, body),
     onSuccess: () => {
@@ -164,7 +187,8 @@ export function JobDetailView({ payload, queryKey, workflowsQueryKey, activeTab,
             <HeaderActions
               command={command}
               feedbackPanelOpen={feedbackPanelOpen}
-              onToggleFeedbackPanel={() => setFeedbackPanelOpen((current) => !current)}
+              onToggleFeedbackPanel={() => withPreviewStop(() => setFeedbackPanelOpen((current) => !current))}
+              onApprove={() => withPreviewStop(() => command.mutate({ method: "post", path: payload.paths.app_approve_path }))}
               payload={payload}
             />
           </div>
@@ -219,13 +243,19 @@ export function JobDetailView({ payload, queryKey, workflowsQueryKey, activeTab,
           error={feedback.error}
           isPending={feedback.isPending}
           onCancel={() => setFeedbackPanelOpen(false)}
-          onSubmit={(body) => feedback.mutate(body)}
+          onSubmit={(body) => withPreviewStop(() => feedback.mutate(body))}
+        />
+      ) : null}
+      {previewStopModal ? (
+        <PreviewStopModal
+          onKeepRunning={() => { previewStopModal.onProceed(); setPreviewStopModal(null) }}
+          onStop={() => stopPreview.mutate()}
         />
       ) : null}
 
       <TabNav active={activeTab} attachmentsCount={(payload.attachments ?? []).length} workflowsCount={payload.job.workflows_count} hasTestResults={payload.has_test_results} onSelect={onSelectTab} />
 
-      {activeTab === "summary" ? <SummaryTab command={command} payload={payload} prefix={prefix} queryKey={queryKey} /> : null}
+      {activeTab === "summary" ? <SummaryTab command={command} payload={payload} prefix={prefix} queryKey={queryKey} withPreviewStop={withPreviewStop} /> : null}
       {activeTab === "workflows" ? <WorkflowsTab command={command} payload={payload} prefix={prefix} /> : null}
       {activeTab === "attachments" ? <AttachmentsTab payload={payload} queryKey={queryKey} onNotice={setNotice} /> : null}
       {activeTab === "source" ? <SourceTab jobId={String(payload.job.id)} coverageInfo={latestWorkflowCoverage(payload.workflows)} /> : null}
@@ -296,7 +326,7 @@ function TabNav({ active, workflowsCount, attachmentsCount, hasTestResults, onSe
   )
 }
 
-function SummaryTab({ payload, command, prefix, queryKey }: { payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; prefix: string; queryKey: JobDetailQueryKey }) {
+function SummaryTab({ payload, command, prefix, queryKey, withPreviewStop }: { payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; prefix: string; queryKey: JobDetailQueryKey; withPreviewStop: (proceed: () => void) => void }) {
   const { t } = useT("jobs")
   const coverageInfo = latestWorkflowCoverage(payload.workflows)
   return (
@@ -371,6 +401,13 @@ function SummaryTab({ payload, command, prefix, queryKey }: { payload: JobDetail
             <TagsPanel canManageTags={payload.actions.can_manage_tags} embedded command={command} payload={payload} />
           </section>
 
+          <PreviewPanel
+            canStart={payload.actions.can_start_preview}
+            initialPreview={payload.preview}
+            jobId={payload.job.id}
+            previewPath={payload.paths.app_preview_path}
+            queryKey={queryKey}
+          />
           <ApprovalStatusPanel payload={payload} />
           <DependenciesPanel command={command} payload={payload} />
         </div>

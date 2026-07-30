@@ -472,5 +472,20 @@
   "aria_workflow_pagination": "Workflow pagination",
   "aria_new_direct_job": "New direct job",
   "tests_flaky_label": "Flaky",
-  "tests_flaky_tooltip": "{{failed}} of {{total}} recent runs failed"
+  "tests_flaky_tooltip": "{{failed}} of {{total}} recent runs failed",
+  "preview_start": "Start Preview",
+  "preview_open": "Open Preview",
+  "preview_stop": "Stop Preview",
+  "preview_restart": "Restart Preview",
+  "preview_starting": "Starting preview…",
+  "preview_seeding": "Seeding database…",
+  "preview_stopping": "Stopping…",
+  "preview_failed": "Preview failed",
+  "preview_expired": "Preview expired — restart?",
+  "preview_expires_in": "Expires in {{time}}",
+  "preview_section": "Preview",
+  "preview_stop_on_action_title": "A preview environment is running",
+  "preview_stop_on_action_body": "A preview environment is running for this job. Stop it now?",
+  "preview_stop_yes": "Yes, stop it",
+  "preview_keep_running": "Keep running"
 }

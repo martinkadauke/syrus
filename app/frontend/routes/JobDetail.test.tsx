@@ -1276,6 +1276,7 @@ function jobPayload(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload
     },
     epic: null,
     origin_chat: null,
+    preview: null,
     pinned: false,
     tags: [],
     tag_options: [],
@@ -1323,6 +1324,7 @@ function jobPayload(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload
       can_open_in_coding_mode: false,
       can_open_in_local_mode: false,
       can_cancel_local_mode: false,
+      can_start_preview: false,
       linked_chat_id: null,
       feedback_agent_options: [],
       rebase_agent_options: [],
@@ -1359,7 +1361,8 @@ function jobPayload(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload
       app_open_in_coding_mode_path: "/api/v1/app/jobs/1/open_in_coding_mode",
       app_open_in_local_mode_path: "/api/v1/app/jobs/1/open_in_local_mode",
       app_cancel_local_mode_path: "/api/v1/app/jobs/1/cancel_local_mode",
-      app_priority_path: "/api/v1/app/jobs/1/priority"
+      app_priority_path: "/api/v1/app/jobs/1/priority",
+      app_preview_path: "/api/v1/app/jobs/1/preview"
     },
     ...overrides
   }

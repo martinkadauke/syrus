@@ -33,7 +33,7 @@ export function ChatBubbleIcon() {
   )
 }
 
-export function HeaderActions({ payload, command, feedbackPanelOpen, onToggleFeedbackPanel }: { payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; feedbackPanelOpen: boolean; onToggleFeedbackPanel: () => void }) {
+export function HeaderActions({ payload, command, feedbackPanelOpen, onToggleFeedbackPanel, onApprove }: { payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; feedbackPanelOpen: boolean; onToggleFeedbackPanel: () => void; onApprove?: () => void }) {
   const { t } = useT("jobs")
   const [retryFeedbackOpen, setRetryFeedbackOpen] = useState(false)
   const [retryFeedbackInput, setRetryFeedbackInput] = useState<RetryPostInput | null>(null)
@@ -42,6 +42,14 @@ export function HeaderActions({ payload, command, feedbackPanelOpen, onToggleFee
   const visibleActions = visibleKeys.map((key) => actions.find((action) => action.key === key)).filter((action): action is HeaderAction => Boolean(action))
   const overflowActions = actions.filter((action) => !visibleKeys.includes(action.key))
   const canGiveFeedback = ["implemented", "failed", "no_change_needed"].includes(payload.job.state)
+
+  function handleActionClick(action: HeaderAction) {
+    if (action.key === "approve" && onApprove) {
+      onApprove()
+    } else {
+      command.mutate(action.input)
+    }
+  }
 
   return (
     <>
@@ -58,9 +66,22 @@ export function HeaderActions({ payload, command, feedbackPanelOpen, onToggleFee
           </button>
         ) : null}
         {visibleActions.map((action) => (
-          <CommandButton command={command} input={action.input} key={action.key} tone={action.tone}>{action.label}</CommandButton>
+          action.key === "approve" && onApprove
+            ? (
+              <button
+                className={buttonClass(action.tone)}
+                data-tour="job-approve"
+                disabled={command.isPending}
+                key={action.key}
+                onClick={onApprove}
+                type="button"
+              >
+                {action.label}
+              </button>
+            )
+            : <CommandButton command={command} input={action.input} key={action.key} tone={action.tone}>{action.label}</CommandButton>
         ))}
-        {overflowActions.length > 0 ? <HeaderActionsMenu actions={overflowActions} command={command} onRetryFeedback={(input) => { setRetryFeedbackInput(input); setRetryFeedbackOpen(true) }} /> : null}
+        {overflowActions.length > 0 ? <HeaderActionsMenu actions={overflowActions} command={command} onActionClick={handleActionClick} onRetryFeedback={(input) => { setRetryFeedbackInput(input); setRetryFeedbackOpen(true) }} /> : null}
       </div>
       {retryFeedbackOpen ? (
         <RetryFeedbackDialog
@@ -188,7 +209,7 @@ function primaryHeaderActionKeys(payload: JobDetailPayload, actions: HeaderActio
   return keys
 }
 
-function HeaderActionsMenu({ actions, command, onRetryFeedback }: { actions: HeaderAction[]; command: ReturnType<typeof useJobCommand>; onRetryFeedback: (input: RetryPostInput) => void }) {
+function HeaderActionsMenu({ actions, command, onActionClick, onRetryFeedback }: { actions: HeaderAction[]; command: ReturnType<typeof useJobCommand>; onActionClick: (action: HeaderAction) => void; onRetryFeedback: (input: RetryPostInput) => void }) {
   const [open, setOpen] = useState(false)
   const [alignRight, setAlignRight] = useState(true)
   const menuRef = useDismissiblePopup<HTMLDivElement>(open, () => setOpen(false))
@@ -239,7 +260,7 @@ function HeaderActionsMenu({ actions, command, onRetryFeedback }: { actions: Hea
                   onRetryFeedback(action.input as RetryPostInput)
                   return
                 }
-                command.mutate(action.input)
+                onActionClick(action)
               }}
               role="menuitem"
               type="button"
