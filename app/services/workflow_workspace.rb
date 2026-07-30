@@ -336,9 +336,10 @@ class WorkflowWorkspace
   # is attempted; the workflow posts a review comment instead.
   def checkout_external_pr!
     pr_number = @job.external_pr_number
+    pr_ref = "refs/pull/#{pr_number}/head"
     @git.run(
-      "fetch", authenticated_url,
-      "refs/pull/#{pr_number}/head:refs/heads/#{@branch_name}",
+      "fetch", "--no-tags", authenticated_url,
+      "+#{pr_ref}:refs/heads/#{@branch_name}",
       chdir: path.to_s, env: @env
     )
     @git.run("checkout", @branch_name, chdir: path.to_s)
