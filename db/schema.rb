@@ -741,6 +741,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_31_171000) do
     t.integer "issue_number"
     t.string "issue_title"
     t.string "kind", default: "issue", null: false
+    t.string "landed_sha"
     t.text "landing_failure_reason"
     t.string "landing_queue_blocked_reason"
     t.json "landing_queue_blocker_job_ids"
