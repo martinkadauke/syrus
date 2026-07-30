@@ -17,4 +17,8 @@ module SyrusRails
       path.join("config", "application.rb").exist? &&
       path.join("bin", "rails").exist?
   end
+
+  def self.register!
+    Syrus::PluginRegistry.register(:preview_provider, PreviewProvider.new)
+  end
 end
