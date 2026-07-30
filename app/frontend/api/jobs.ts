@@ -167,6 +167,15 @@ export type JobDependencyTarget = {
   job_path: string
 }
 
+export type JobDependencyEpicTarget = {
+  id: number
+  number: number
+  slug: string
+  title: string
+  state: string
+  epic_path: string
+}
+
 export type JobDependency = {
   id: number
   source: string
@@ -175,6 +184,7 @@ export type JobDependency = {
   succeeded: boolean
   unresolved_slug: string | null
   depends_on_job: JobDependencyTarget | null
+  depends_on_epic: JobDependencyEpicTarget | null
 }
 
 export type JobDependent = {
@@ -433,6 +443,7 @@ export type JobPaths = {
   app_claim_path: string
   app_dependencies_path: string
   app_dependency_override_path: string
+  app_epic_dependencies_path: string
   app_stack_base_path: string
   app_mark_valid_path: string
   app_attachments_path: string
@@ -457,6 +468,7 @@ export type JobDetailPayload = {
   dependents: JobDependent[]
   unsatisfied_dependencies: JobDependency[]
   dependency_target_options: JobOption[]
+  epic_dependency_target_options: Array<{ label: string; value: number }>
   attachments: JobAttachment[]
   summary: JobSummary | null
   test_plan: JobTestPlan | null
