@@ -289,7 +289,8 @@ RSpec.describe TerminalRelay do
 
   it "broadcasts PTY output to all simultaneous clients" do
     relay, child_output_write, pty_input_read, = build_relay
-    allow(relay).to receive(:pty_alive?).with(pid).and_return(true)
+    pty_alive = true
+    allow(relay).to receive(:pty_alive?).with(pid) { pty_alive }
     thread = run_relay(relay)
     thread[:terminal_relay_spec] = true
     socket1 = connect_and_auth
@@ -316,6 +317,7 @@ RSpec.describe TerminalRelay do
     expect(frame2["type"]).to eq("output")
     expect(Base64.decode64(frame2["data"])).to eq("broadcast")
 
+    pty_alive = false
     socket1.close
     socket2.close
     thread.join(2)
@@ -340,7 +342,8 @@ RSpec.describe TerminalRelay do
 
   it "sends the scrollback buffer as a replay frame to a late-joining client" do
     relay, child_output_write, _, = build_relay
-    allow(relay).to receive(:pty_alive?).with(pid).and_return(true)
+    pty_alive = true
+    allow(relay).to receive(:pty_alive?).with(pid) { pty_alive }
     thread = run_relay(relay)
     thread[:terminal_relay_spec] = true
     socket1 = connect_and_auth
@@ -354,6 +357,7 @@ RSpec.describe TerminalRelay do
     expect(replay["type"]).to eq("replay")
     expect(Base64.decode64(replay["data"])).to eq("scrollback data")
 
+    pty_alive = false
     socket1.close
     socket2.close
     thread.join(2)
@@ -365,7 +369,8 @@ RSpec.describe TerminalRelay do
 
   it "routes input from any connected client to the PTY" do
     relay, _, pty_input_read, = build_relay
-    allow(relay).to receive(:pty_alive?).with(pid).and_return(true)
+    pty_alive = true
+    allow(relay).to receive(:pty_alive?).with(pid) { pty_alive }
     thread = run_relay(relay)
     thread[:terminal_relay_spec] = true
     socket1 = connect_and_auth
@@ -379,6 +384,7 @@ RSpec.describe TerminalRelay do
     socket2.write("\n")
     expect(read_available(pty_input_read)).to eq("from socket2")
 
+    pty_alive = false
     socket1.close
     socket2.close
     thread.join(2)
@@ -390,7 +396,8 @@ RSpec.describe TerminalRelay do
 
   it "applies the minimum of all connected clients' sizes when resizing" do
     relay, _, _, pty_in = build_relay
-    allow(relay).to receive(:pty_alive?).with(pid).and_return(true)
+    pty_alive = true
+    allow(relay).to receive(:pty_alive?).with(pid) { pty_alive }
     thread = run_relay(relay)
     thread[:terminal_relay_spec] = true
     socket1 = connect_and_auth
@@ -406,6 +413,7 @@ RSpec.describe TerminalRelay do
     Timeout.timeout(2) { sleep 0.01 until pty_in.winsize_calls.size >= 2 }
     expect(pty_in.winsize_calls.last).to eq([ 24, 80 ])
 
+    pty_alive = false
     socket1.close
     socket2.close
     thread.join(2)

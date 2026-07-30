@@ -239,11 +239,14 @@ authorize one — needs a Claude Pro/Max/Team/Enterprise plan) or Codex.
 
 ```bash
 bin/dev          # foreman: web (rails s) + worker (bin/jobs) + tailwind + JS watch
-bin/rspec        # Ruby test suite
+bin/rspec        # Ruby test suite (local coverage off by default)
 bin/test-react   # React/Vitest suite + TypeScript typecheck
 bin/test         # Ruby and React suites together
 bin/test-docker  # integration tests against the Docker image (isolated stack)
 ```
+
+Use `COVERAGE=true bin/rspec` to generate `coverage/lcov.info` locally.
+CI enables Ruby coverage by default.
 
 `bin/test-docker` brings up a throwaway Compose stack (its own project,
 volume, and host port) and asserts the database, file uploads, the worker
