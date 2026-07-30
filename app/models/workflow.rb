@@ -102,6 +102,7 @@ class Workflow < ApplicationRecord
       transitions from: [ :queued, :running ], to: :cancelled, after: -> {
         self.finished_at = Time.current
         cancel_active_descendants!
+        propagate_cancel_to_job!
         cleanup_workspace!
         dispatch_hook(:after_cancel)
       }
@@ -228,6 +229,19 @@ class Workflow < ApplicationRecord
         job.mark_failed!
         job.save!
       end
+    end
+  end
+
+  def propagate_cancel_to_job!
+    return if landing_workflow?
+    return if coding_handoff_workflow?
+    return if local_mode_handoff_workflow?
+    return if infrastructure_workflow?
+    return unless job.running? && job.may_mark_failed?
+
+    StateTransition.with_source("propagate") do
+      job.mark_failed!
+      job.save!
     end
   end
 
