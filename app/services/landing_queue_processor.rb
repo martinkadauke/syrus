@@ -456,7 +456,7 @@ class LandingQueueProcessor
     end
     return blocked("repository archived") if job.repository.archived?
     if job.priority != "urgent" &&
-       job.repository.jobs.where(priority: "urgent").where.not(state: %w[closed]).exists?
+       job.repository.jobs.where(priority: "urgent").where.not(state: Job::TERMINAL_STATES).exists?
       return blocked("urgent job active")
     end
     return blocked("waiting for Epic to release") if job.blocked_by_epic_before_execution?
