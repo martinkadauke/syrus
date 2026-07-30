@@ -276,7 +276,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body.dig("repository", "main_branch_repair_enabled")).to eq(true)
     expect(body.dig("repository", "main_branch_repair_auto_approve")).to eq(false)
     expect(body.dig("repository", "treat_grader_timeouts_as_failures")).to eq(false)
-    expect(body.dig("repository", "epic_dependency_policy")).to eq("linear")
+    expect(body.dig("repository", "external_pr_ingestion_enabled")).to eq(false)
     expect(body["configured_agent_providers"]).to include(
       { "value" => "codex", "label" => "Codex" },
       { "value" => "claude", "label" => "Claude Code" }
@@ -332,6 +332,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       "main_branch_repair_enabled" => false,
       "main_branch_repair_auto_approve" => true,
       "treat_grader_timeouts_as_failures" => true,
+      "external_pr_ingestion_enabled" => false,
       "agent_provider" => "codex",
       "auto_approve_mode" => "if_graders_pass",
       "epic_dependency_policy" => "nonlinear",
@@ -1429,6 +1430,16 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(fork_repo.reload.fork_auto_sync_enabled).to be(true)
+    end
+
+    it "updates external_pr_ingestion_enabled through the update endpoint" do
+      sign_in_as(user)
+      repository = Factories.repository(user: user, owner: "acme", name: "widgets")
+
+      patch "/api/v1/app/repositories/#{repository.id}", params: { repository: { external_pr_ingestion_enabled: true } }
+
+      expect(response).to have_http_status(:ok)
+      expect(repository.reload.external_pr_ingestion_enabled).to be(true)
     end
   end
 end
