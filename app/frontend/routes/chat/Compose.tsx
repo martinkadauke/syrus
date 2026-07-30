@@ -546,6 +546,18 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
       return
     }
 
+    if (command.name === "/queue") {
+      navigate(withRoutePrefix("/admin/queue", prefix))
+      setText("")
+      return
+    }
+
+    if (command.name === "/spend") {
+      navigate(withRoutePrefix("/insights/spending", prefix))
+      setText("")
+      return
+    }
+
     if (command.name === "/proposals") {
       if (!scrollToLastProposalCard()) onNotice("No proposal cards found.")
       setText("")

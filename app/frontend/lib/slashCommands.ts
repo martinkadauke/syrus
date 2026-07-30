@@ -72,6 +72,18 @@ export const slashCommands = [
     description: "Open GitHub issues for the current repository."
   },
   {
+    name: "/queue",
+    kind: "system",
+    args: [],
+    description: "Open the landing queue."
+  },
+  {
+    name: "/spend",
+    kind: "system",
+    args: [],
+    description: "Open spending insights."
+  },
+  {
     name: "/proposals",
     kind: "system",
     args: [],
