@@ -460,16 +460,19 @@ top of the sidebar, and switches to unpinning when the chat is already pinned.
 Syrus report repository with the current chat as context. The `/share`
 system command copies a same-instance read-only chat link to the clipboard,
 and `/schedule [time] [message]` stores a one-shot operator message for later.
-Read-only skill
-commands include `/jobs [filter]`, `/job <id>`,
-`/epic <id>`, `/prs`, `/issues`, `/proposals`, `/canvas`, and
-`/bookmark <label>`; Syrus expands each one into a prompt that asks the agent
-to call the matching chat MCP tool and format the result. The `/propose` skill
-command starts a guided wizard: the agent asks for a Job title, description,
-and optional Epic, then creates a proposal card for operator confirmation.
-Mutating skill commands such as `/cancel`, `/retry`, `/feedback`, `/discard`,
-and `/clear-canvas` show an inline confirmation in the composer before Syrus
-sends the command to the agent.
+Navigation system commands include `/jobs [filter]`, `/job [id]`,
+`/epic [id]`, `/prs`, `/issues`, `/proposals`, and `/review [id]`; ID commands
+without an ID open a picker scoped to the attached repository when possible.
+`/review` opens the selected Job's pull request. `/bookmark <label>` stores a
+chat bookmark. Job action commands such as `/cancel [id]`, `/retry [id]`,
+`/approve [id]`, `/discard`, and `/clear-canvas` show an inline confirmation
+before they mutate anything. `/approve` accepts `JOB-123`, `job-123`, or `123`,
+opens a picker of implemented Jobs when no ID is provided, and approves the
+selected Job for landing after confirmation. Skill commands such as `/canvas`
+and `/feedback` are sent through the normal chat message path for the agent to
+interpret. The `/propose` skill command starts a guided wizard: the agent asks
+for a Job title, description, and optional Epic, then creates a proposal card
+for operator confirmation.
 
 Chat transcripts also surface MCP sidecar health. Syrus distinguishes
 available, pending, and unavailable chat tools so operators can tell when
