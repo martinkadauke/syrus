@@ -191,4 +191,27 @@ describe("slashCommands", () => {
     expect(match?.command.description).toBe("Approve a Job for landing.")
     expect(match ? slashCommandSignature(match.command) : "missing").toBe("[id]")
   })
+
+  it("registers /diff as a skill command with an optional id arg", () => {
+    const match = findSlashCommand("/diff")
+
+    expect(match?.command.kind).toBe("skill")
+    expect(match?.command.description).toBe("Show the diff for a Job's PR inline.")
+    expect(match?.command.args).toEqual([{ name: "id", required: false }])
+    expect(match ? slashCommandSignature(match.command) : "missing").toBe("[id]")
+  })
+
+  it("builds a direct get_job_diff prompt when an id is provided to /diff", () => {
+    expect(slashCommandPrompt("/diff 42")).toContain("get_job_diff")
+    expect(slashCommandPrompt("/diff 42")).toContain("42")
+    expect(slashCommandPrompt("/diff JOB-123")).toContain("JOB-123")
+    expect(slashCommandPrompt("/diff job-7")).toContain("job-7")
+  })
+
+  it("builds an ask-first prompt when /diff is used without an id", () => {
+    const prompt = slashCommandPrompt("/diff")
+
+    expect(prompt).toContain("get_job_diff")
+    expect(prompt).toContain("Ask the operator")
+  })
 })
