@@ -168,8 +168,8 @@ RSpec.describe Workflows::ExternalPrMerge do
       it "does not post a review" do
         described_class.after_fail(workflow)
 
-        expect(client).not_to have_received(:create_pr_review)
-      end
+      expect(client).not_to have_received(:create_pr_review)
+    end
     end
   end
 
