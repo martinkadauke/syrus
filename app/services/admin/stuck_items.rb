@@ -4,7 +4,7 @@ module Admin
   # source of truth so the two views can't drift.
   #
   # Returns Items, each with:
-  #   :kind      — :stale_heartbeat | :reaper_starved | :nearly_pruned
+  #   :kind      — :stale_heartbeat | :reaper_starved | :queued_workflow_no_run | :nearly_pruned
   #   :severity  — :warn | :alarm
   #   :detail    — short human description
   #   :run       — Run record, when applicable
@@ -26,7 +26,7 @@ module Admin
     end
 
     def all
-      stale_runs + nearly_pruned_workflows
+      stale_runs + queued_workflows_without_runs + nearly_pruned_workflows
     end
 
     private
@@ -70,6 +70,29 @@ module Admin
           severity:  :warn,
           detail:    "#{wf.slug} (#{wf.trigger_kind}) failed — workspace about to be pruned",
           age_label: age_label_for(wf.finished_at),
+          run:       nil,
+          workflow:  wf,
+          job:       wf.job
+        )
+      end
+    end
+
+    def queued_workflows_without_runs
+      cutoff = ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD.ago
+      Workflow.where(state: "queued")
+              .where("created_at < ?", cutoff)
+              .includes(:job, :steps)
+              .filter_map do |wf|
+        first = wf.steps.find { |step| step.position.zero? }
+        next unless first&.queued?
+        next if first.runs.exists?
+        next unless wf.job&.open?
+
+        Item.new(
+          kind:      :queued_workflow_no_run,
+          severity:  wf.landing_workflow? ? :alarm : :warn,
+          detail:    "#{wf.slug} (#{wf.trigger_kind}) queued for #{age_label_for(wf.created_at)} with no first Run",
+          age_label: age_label_for(wf.created_at),
           run:       nil,
           workflow:  wf,
           job:       wf.job

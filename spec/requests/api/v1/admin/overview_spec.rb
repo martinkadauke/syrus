@@ -61,6 +61,27 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
       expect(stuck.first["run_id"]).to eq(run.id)
     end
 
+    it "surfaces an old queued workflow whose first Run was never created" do
+      job = Factories.job_record(user: admin, state: "landing")
+      workflow = Workflow.create!(job: job, trigger_kind: "auto_merge")
+      workflow.update_columns(
+        created_at: (ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 1.minute).ago,
+        updated_at: (ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 1.minute).ago
+      )
+      Step.create!(workflow: workflow, kind: "mergeability_preflight", position: 0)
+
+      get "/api/v1/admin/stuck", headers: auth
+
+      item = parse_body["items"].find { |row| row["workflow_id"] == workflow.id }
+      expect(item).to include(
+        "kind" => "queued_workflow_no_run",
+        "severity" => "alarm",
+        "job_id" => job.id,
+        "workflow_trigger_kind" => "auto_merge",
+        "step_kind" => "mergeability_preflight"
+      )
+    end
+
     it "surfaces users whose GitHub API access is blocked" do
       blocked = Factories.user(email_address: "blocked@example.com",
                                gh_api_blocked_at: Time.current,
