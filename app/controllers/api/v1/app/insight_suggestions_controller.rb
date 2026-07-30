@@ -29,6 +29,8 @@ module Api
             handle_accept(suggestion)
           when "dismiss"
             handle_dismiss(suggestion)
+          when "undismiss"
+            handle_undismiss(suggestion)
           when "save_memory"
             handle_save_memory(suggestion)
           else
@@ -111,6 +113,18 @@ module Api
 
           render json: {
             message: "Suggestion dismissed.",
+            suggestion: suggestion_json(suggestion.reload)
+          }
+        end
+
+        def handle_undismiss(suggestion)
+          unless suggestion.undismiss!
+            render_error("validation_failed", "Suggestion cannot be undismissed (not currently dismissed).", status: :unprocessable_content)
+            return
+          end
+
+          render json: {
+            message: "Suggestion restored to pending.",
             suggestion: suggestion_json(suggestion.reload)
           }
         end
