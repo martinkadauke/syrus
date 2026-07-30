@@ -264,8 +264,8 @@ Rails.application.routes.draw do
         patch "repositories/:id/insight_schedule_config", to: "insight_schedule_configs#update", constraints: { id: /\d+/ }
         get "workflows/:workflow_id/coverage_hit_map", to: "workflows#coverage_hit_map", constraints: { workflow_id: /\d+/ }
         get "linear/teams", to: "linear#teams"
-        get "repositories/:repository_id/input_sources/linear", to: "input_sources#linear_show"
-        patch "repositories/:repository_id/input_sources/linear", to: "input_sources#linear_update"
+        get "repositories/:repository_id/input_sources/:type", to: "input_sources#show"
+        patch "repositories/:repository_id/input_sources/:type", to: "input_sources#update"
         get "repositories/:repository_id/documents", to: "repository_documents#index"
         post "repositories/:repository_id/documents", to: "repository_documents#create"
         delete "repository_documents/:id", to: "repository_documents#destroy"
