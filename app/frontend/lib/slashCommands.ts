@@ -127,6 +127,13 @@ export const slashCommands = [
         ? `Call the get_job_diff MCP tool for job ${id} and display the diff in a readable summary. Highlight notable changes and call out any concerns.`
         : `Ask the operator which job they want to diff, then call get_job_diff and display a readable summary.`
     }
+  },
+  {
+    name: "/remind",
+    kind: "skill",
+    args: [{ name: "message", required: false }],
+    description: "Ask the agent to set a reminder.",
+    toPrompt: (args) => `The operator wants to set a reminder${args.trim() ? `: ${args.trim()}` : "."} Use the schedule_wakeup MCP tool to schedule a wakeup at the time they specify. If no time is specified, ask for one before calling the tool. Confirm the wakeup time back to the operator after scheduling.`
   }
 ] as const satisfies readonly SlashCommand[]
 
