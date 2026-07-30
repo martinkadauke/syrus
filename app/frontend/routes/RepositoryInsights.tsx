@@ -11,7 +11,8 @@ import {
   undismissInsightSuggestion,
   fetchInsightSuggestions,
   saveInsightMemory,
-  type InsightSuggestion
+  type InsightSuggestion,
+  type PaginationMeta
 } from "../api/insights"
 import { errorMessage } from "../lib/errorMessage"
 
@@ -23,10 +24,11 @@ export function RepositoryInsightsRoute() {
   const location = useLocation()
   const repositoryId = params.id || ""
   const prefix = routePrefix(location.pathname)
+  const [page, setPage] = useState(1)
 
   const query = useQuery({
-    queryKey: ["repositories", repositoryId, "insight_suggestions"],
-    queryFn: () => fetchInsightSuggestions(repositoryId),
+    queryKey: ["repositories", repositoryId, "insight_suggestions", page],
+    queryFn: () => fetchInsightSuggestions(repositoryId, page),
     enabled: repositoryId.length > 0
   })
 
@@ -46,7 +48,7 @@ export function RepositoryInsightsRoute() {
     )
   }
 
-  const { repository, tabs, suggestions } = query.data
+  const { repository, tabs, suggestions, meta } = query.data
 
   return (
     <main aria-label={t("aria_insights")} className="mx-auto max-w-[96rem] space-y-6 p-6">
@@ -63,6 +65,9 @@ export function RepositoryInsightsRoute() {
       <InsightSuggestionsList
         repositoryId={repositoryId}
         suggestions={suggestions}
+        meta={meta}
+        page={page}
+        onPageChange={setPage}
         prefix={prefix}
       />
     </main>
@@ -72,14 +77,25 @@ export function RepositoryInsightsRoute() {
 function InsightSuggestionsList({
   repositoryId,
   suggestions,
+  meta,
+  page,
+  onPageChange,
   prefix
 }: {
   repositoryId: string
   suggestions: InsightSuggestion[]
+  meta: PaginationMeta
+  page: number
+  onPageChange: (page: number) => void
   prefix: string
 }) {
   const { t } = useT("insights")
   const [stateFilter, setStateFilter] = useState<StateFilter>("pending")
+
+  function handleFilterChange(filter: StateFilter) {
+    setStateFilter(filter)
+    onPageChange(1)
+  }
 
   const filtered = suggestions.filter((s) => stateFilter === "all" || s.state === stateFilter)
   const counts = {
@@ -95,6 +111,9 @@ function InsightSuggestionsList({
     { key: "all", label: t("filter_all"), count: suggestions.length }
   ]
 
+  const firstItem = meta.total === 0 ? 0 : (page - 1) * meta.per_page + 1
+  const lastItem = Math.min(page * meta.per_page, meta.total)
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
@@ -104,7 +123,7 @@ function InsightSuggestionsList({
             <button
               className={`rounded px-3 py-1 text-sm font-medium transition-colors ${stateFilter === tab.key ? "bg-terracotta-600 text-white" : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"}`}
               key={tab.key}
-              onClick={() => setStateFilter(tab.key)}
+              onClick={() => handleFilterChange(tab.key)}
               type="button"
             >
               {tab.label}
@@ -129,6 +148,40 @@ function InsightSuggestionsList({
               suggestion={suggestion}
             />
           ))}
+        </div>
+      )}
+
+      {meta.total_pages > 1 && (
+        <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+          <span>{t("pagination_showing", { first: firstItem, last: lastItem, total: meta.total })}</span>
+          <div className="flex gap-2">
+            {page > 1 ? (
+              <button
+                className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800"
+                onClick={() => onPageChange(page - 1)}
+                type="button"
+              >
+                {t("pagination_previous")}
+              </button>
+            ) : (
+              <span className="rounded border border-gray-200 px-3 py-1 text-gray-300 dark:border-gray-700 dark:text-gray-600">
+                {t("pagination_previous")}
+              </span>
+            )}
+            {page < meta.total_pages ? (
+              <button
+                className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800"
+                onClick={() => onPageChange(page + 1)}
+                type="button"
+              >
+                {t("pagination_next")}
+              </button>
+            ) : (
+              <span className="rounded border border-gray-200 px-3 py-1 text-gray-300 dark:border-gray-700 dark:text-gray-600">
+                {t("pagination_next")}
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>
