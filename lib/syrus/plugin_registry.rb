@@ -1,12 +1,13 @@
 module Syrus
   class PluginRegistry
-    EXTENSION_POINTS = %i[agent_provider mcp_tool_set input_source].freeze
+    EXTENSION_POINTS = %i[agent_provider mcp_tool_set input_source test_result_parser].freeze
 
     # Lambdas defer constant resolution until call time (autoload-friendly).
     INTERFACE_FOR = {
-      agent_provider: -> { Syrus::Plugin::AgentProvider },
-      mcp_tool_set:   -> { Syrus::Plugin::McpToolSet },
-      input_source:   -> { Syrus::Plugin::InputSource }
+      agent_provider:     -> { Syrus::Plugin::AgentProvider },
+      mcp_tool_set:       -> { Syrus::Plugin::McpToolSet },
+      input_source:       -> { Syrus::Plugin::InputSource },
+      test_result_parser: -> { Syrus::Plugin::TestResultParser }
     }.freeze
 
     RegistrationError = Class.new(StandardError)
@@ -38,7 +39,7 @@ module Syrus
           PluginRecord.find_or_create_by!(name: name)
         rescue ActiveRecord::ActiveRecordError
           # Table/database not available (e.g. asset precompile or
-          # db:schema:load in progress). Ignore — the registry operates in
+          # db:schema:load in progress). Ignore - the registry operates in
           # memory; the DB record will be created on first boot with DB access.
         end
       end
@@ -50,9 +51,9 @@ module Syrus
         plugins = @mutex.synchronize { @plugins.dup }
 
         begin
-          enabled_names = PluginRecord.where(enabled: true).pluck(:name).to_set
+          records = PluginRecord.where(name: plugins.map(&:name)).index_by(&:name)
           plugins
-            .select { |m| enabled_names.include?(m.name) }
+            .select { |m| records.fetch(m.name, nil)&.enabled? || !records.key?(m.name) }
             .flat_map { |m| Array(m.provides[extension_point]) }
         rescue ActiveRecord::ActiveRecordError
           plugins.flat_map { |m| Array(m.provides[extension_point]) }
@@ -104,7 +105,7 @@ module Syrus
       end
 
       # Called inside the mutex so it sees the current @plugins snapshot.
-      # Only checks tool sets that already implement .tool_definitions — stubs
+      # Only checks tool sets that already implement .tool_definitions - stubs
       # that include the interface module without implementing the full API
       # (common in unit tests) are skipped.
       def validate_mcp_tool_name_uniqueness!(provides)

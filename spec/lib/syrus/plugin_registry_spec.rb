@@ -19,6 +19,10 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
     Class.new { include Syrus::Plugin::InputSource }
   end
 
+  let(:test_result_parser_class) do
+    Class.new { include Syrus::Plugin::TestResultParser }
+  end
+
   describe ".register" do
     it "stores the plugin manifest" do
       described_class.register(name: "test_plugin", version: "1.0.0")
@@ -58,9 +62,10 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
         described_class.register(
           name: "full_plugin", version: "1.0.0",
           provides: {
-            agent_provider: agent_provider_class,
-            mcp_tool_set:   mcp_tool_set_class,
-            input_source:   input_source_class
+            agent_provider:     agent_provider_class,
+            mcp_tool_set:       mcp_tool_set_class,
+            input_source:       input_source_class,
+            test_result_parser: test_result_parser_class
           }
         )
       }.not_to raise_error
@@ -108,6 +113,17 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
       }.to raise_error(described_class::RegistrationError, /must include Syrus::Plugin::InputSource/)
     end
 
+    it "raises RegistrationError when test_result_parser class lacks the interface module" do
+      plain_class = Class.new
+
+      expect {
+        described_class.register(
+          name: "bad_plugin", version: "1.0.0",
+          provides: { test_result_parser: plain_class }
+        )
+      }.to raise_error(described_class::RegistrationError, /must include Syrus::Plugin::TestResultParser/)
+    end
+
     it "allows the same extension point to be provided by multiple plugins" do
       second_provider = Class.new { include Syrus::Plugin::AgentProvider }
 
@@ -131,7 +147,7 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
 
       it "raises RegistrationError when a second tool set registers a name already claimed by a first" do
         set_a = make_tool_set("tool_one", "tool_two")
-        set_b = make_tool_set("tool_three", "tool_one")  # "tool_one" collides
+        set_b = make_tool_set("tool_three", "tool_one")
 
         described_class.register(name: "plugin_a", version: "1.0.0", provides: { mcp_tool_set: set_a })
 
@@ -163,7 +179,7 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
           nil
         end
 
-        expect(described_class.all_plugins.map(&:name)).to eq(["plugin_a"])
+        expect(described_class.all_plugins.map(&:name)).to eq([ "plugin_a" ])
       end
     end
 
@@ -203,8 +219,17 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
         provides: { agent_provider: agent_provider_class, mcp_tool_set: mcp_tool_set_class }
       )
 
-      expect(described_class.providers_for(:agent_provider)).to eq([agent_provider_class])
-      expect(described_class.providers_for(:mcp_tool_set)).to eq([mcp_tool_set_class])
+      expect(described_class.providers_for(:agent_provider)).to eq([ agent_provider_class ])
+      expect(described_class.providers_for(:mcp_tool_set)).to eq([ mcp_tool_set_class ])
+    end
+
+    it "returns test result parser providers" do
+      described_class.register(
+        name: "test_parser_plugin", version: "1.0.0",
+        provides: { test_result_parser: test_result_parser_class }
+      )
+
+      expect(described_class.providers_for(:test_result_parser)).to eq([ test_result_parser_class ])
     end
 
     it "returns an empty array when no plugin provides the requested extension point" do
@@ -232,21 +257,21 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
       described_class.register(name: "disabled_plugin", version: "1.0.0", provides: { agent_provider: disabled_provider })
       PluginRecord.find_by!(name: "disabled_plugin").update!(enabled: false)
 
-      expect(described_class.providers_for(:agent_provider)).to eq([enabled_provider])
+      expect(described_class.providers_for(:agent_provider)).to eq([ enabled_provider ])
     end
 
     it "returns all plugins when the plugin_records table does not exist" do
       described_class.register(name: "plugin_a", version: "1.0.0", provides: { agent_provider: agent_provider_class })
       allow(PluginRecord).to receive(:where).and_raise(ActiveRecord::StatementInvalid)
 
-      expect(described_class.providers_for(:agent_provider)).to eq([agent_provider_class])
+      expect(described_class.providers_for(:agent_provider)).to eq([ agent_provider_class ])
     end
 
     it "returns all plugins when the database is unavailable" do
       described_class.register(name: "plugin_a", version: "1.0.0", provides: { agent_provider: agent_provider_class })
       allow(PluginRecord).to receive(:where).and_raise(ActiveRecord::ConnectionNotEstablished)
 
-      expect(described_class.providers_for(:agent_provider)).to eq([agent_provider_class])
+      expect(described_class.providers_for(:agent_provider)).to eq([ agent_provider_class ])
     end
   end
 
