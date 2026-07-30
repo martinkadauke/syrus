@@ -25,6 +25,14 @@ module Steps
       command = definition.fetch("command") { raise StepFailed, "grader Step missing details[command]" }
       timeout_minutes = (definition["timeout_minutes"] || 15).to_i
 
+      # Augment rspec commands with a structured output file so failure
+      # details survive even when stdout is cut off mid-output (OOM, signal).
+      json_results_path = nil
+      if command.include?("rspec") && !command.include?("--format json")
+        json_results_path = Rails.root.join("tmp", "rspec_grade_#{SecureRandom.hex(8)}.json").to_s
+        command = "#{command} --format json --out #{json_results_path}"
+      end
+
       log("[grader:#{name}] $ #{command}")
 
       log_path = grader_log_path(name)
@@ -83,6 +91,28 @@ module Steps
         "log_bytes" => absolute_log_path.size,
         "output" => output_excerpt
       ))
+
+      # When RSpec exits with failures, supplement the transcript with
+      # structured details from the JSON formatter — available even if
+      # stdout was cut off before the summary printed.
+      if !passed && json_results_path && File.exist?(json_results_path)
+        begin
+          results = JSON.parse(File.read(json_results_path))
+          failures = results.dig("examples")&.select { |e| e["status"] == "failed" } || []
+          if failures.any?
+            log("[rspec failures from JSON output]\n", kind: "grade_log")
+            failures.each do |f|
+              log("#{f["full_description"]}\n", kind: "grade_log")
+              log("  #{f.dig("exception", "message")}\n", kind: "grade_log") if f.dig("exception", "message")
+              log("  #{f["location"]}\n", kind: "grade_log") if f["location"]
+            end
+          end
+        rescue JSON::ParserError
+          # partial write — ignore
+        ensure
+          File.delete(json_results_path) rescue nil
+        end
+      end
 
       raise StepFailed, "grader #{name} failed (exit #{exit_code})" unless passed
     end
