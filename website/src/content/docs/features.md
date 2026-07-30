@@ -234,6 +234,9 @@ delegating GitHub issues, firing scheduled tasks, changing repository
 documents, or pausing and resuming the landing queue, also render as inline
 confirmation cards in the message stream so operators can review the target
 before confirming or rejecting them.
+On the Job detail page, implementation retries can also be enqueued with any
+other agent provider the operator has configured, which updates the Job's
+provider for that retry and later attempts.
 Proposal cards show dependency status before the title: either dependency
 proposal links with confirmed or pending badges, resolved Epic proposal links,
 or an explicit no-dependencies note.

@@ -17,6 +17,8 @@
   "check_mergeability": "Mergebarkeit prüfen",
   "retry": "Erneut versuchen",
   "retry_with_feedback": "Mit Feedback erneut versuchen",
+  "retry_with_agent": "Mit {{provider}} erneut versuchen",
+  "retry_with_agent_feedback": "Mit {{provider}} und Feedback erneut versuchen",
   "retrying": "Wird erneut versucht...",
   "start_over": "Neu beginnen",
   "approve": "Genehmigen",

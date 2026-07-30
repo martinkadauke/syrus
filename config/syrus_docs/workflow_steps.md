@@ -12,6 +12,12 @@ Present in: `initial`, `pr_comment`, `chat_feedback`, `ci_failure`, `retry`, `au
 
 ## Agentic implementation steps
 
+Operator-triggered implementation retries normally reuse the Job's current
+agent provider. When the user has another configured provider, the Job detail
+action menu can enqueue the retry with that provider instead. Syrus persists
+the selected provider on the Job and the new retry Workflow, so subsequent
+workflow steps and future attempts use the switched agent unless changed again.
+
 ### implement
 
 Agentic. The primary coding step: the agent reads the issue, explores the repo, writes code, and commits. Used in initial and retry workflows.

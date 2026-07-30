@@ -46,6 +46,25 @@ RSpec.describe "App API job lifecycle commands", type: :request do
     expect(parse_body.dig("paths", "job_path")).to eq(job_path(job, tab: "workflows"))
   end
 
+  it "retries a completed job with another configured agent provider" do
+    user.update!(claude_oauth_token: "claude-token", codex_auth_mode: "api_key", codex_api_key: "sk-test")
+    job.update!(agent_provider: "claude")
+    job.initial_run.tap { |run| run.update!(agent_provider: "claude"); run.start!; run.succeed!; run.save! }
+    job.latest_workflow.update!(state: "succeeded", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+
+    expect {
+      post app_job_path(job, "run_again"), params: { agent_provider: "codex" }, as: :json
+    }.to change { job.reload.workflows.where(trigger_kind: "retry").count }.by(1)
+      .and have_enqueued_job(RunJob)
+
+    workflow = job.workflows.where(trigger_kind: "retry").last
+    expect(response).to have_http_status(:ok)
+    expect(parse_body).to include("message" => "Retry workflow enqueued with Codex.")
+    expect(job.reload.agent_provider).to eq("codex")
+    expect(workflow.agent_provider).to eq("codex")
+    expect(workflow.first_step.runs.last.agent_provider).to eq("codex")
+  end
+
   it "retries a completed job with bearer token auth when forgery protection is enabled", :skip_sign_in do
     token = user.generate_api_token!
     job.initial_run.tap { |run| run.start!; run.succeed!; run.save! }
