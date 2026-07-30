@@ -1,4 +1,5 @@
 import { deleteJson, getJson, patchJson, postJson } from "./client"
+import type { DashboardGraphEdge, DashboardGraphNode } from "./dashboard"
 
 export type EpicRepositoryOption = {
   id: number
@@ -101,11 +102,12 @@ export type EpicStateTransition = {
 
 export type EpicGraph = {
   empty: boolean
-  definition: string
   node_count: number
   epic_dependency_count: number
   job_blocker_count: number
   initially_open: boolean
+  nodes: DashboardGraphNode[]
+  edges: DashboardGraphEdge[]
 }
 
 export type EpicDependencyRecord = {

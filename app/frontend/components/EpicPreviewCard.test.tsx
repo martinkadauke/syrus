@@ -1,10 +1,10 @@
 import { jsonResponse } from "../testSupport"
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { EpicDetailJob } from "../api/epics"
-import { EpicPreviewCard, EpicPreviewSkeleton } from "./EpicPreviewCard"
+import { EpicCompactCard, EpicPreviewCard, EpicPreviewSkeleton } from "./EpicPreviewCard"
 
 function client() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -149,11 +149,84 @@ describe("EpicPreviewCard", () => {
     await waitFor(() => expect(screen.getByRole("link", { name: "See more" })).toBeInTheDocument())
     expect(screen.getByRole("link", { name: "See more" })).toHaveAttribute("href", "/epics/7")
   })
+
+  it("compact: applies line-clamp-1 to title and hides progress bar, description, child jobs, and see-more link", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse(epicPayload()))
+    render(
+      <QueryClientProvider client={client()}>
+        <MemoryRouter>
+          <EpicPreviewCard compact id={7} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+    await waitFor(() => expect(screen.getByText("Onboarding flow")).toBeInTheDocument())
+    const titleLink = screen.getByRole("link", { name: "Onboarding flow" })
+    expect(titleLink.className).toContain("line-clamp-1")
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
+    expect(screen.queryByText("Make onboarding easy.")).not.toBeInTheDocument()
+    expect(screen.queryByRole("listitem")).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "See more" })).not.toBeInTheDocument()
+  })
+
+  it("compact: still shows display number and state badge", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse(epicPayload()))
+    render(
+      <QueryClientProvider client={client()}>
+        <MemoryRouter>
+          <EpicPreviewCard compact id={7} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "Copy EPIC-7 to clipboard" })).toBeInTheDocument())
+    expect(screen.getByText("in progress")).toBeInTheDocument()
+  })
 })
 
 describe("EpicPreviewSkeleton", () => {
   it("renders a pulsing placeholder", () => {
     render(<EpicPreviewSkeleton />)
     expect(document.querySelector(".animate-pulse")).toBeInTheDocument()
+  })
+})
+
+describe("EpicCompactCard", () => {
+  it("renders the slug (first word) and title from the label", () => {
+    render(<EpicCompactCard label="EPIC-7 Big feature" state="open" />)
+    expect(screen.getByText("EPIC-7")).toBeInTheDocument()
+    expect(screen.getByText("Big feature")).toBeInTheDocument()
+  })
+
+  it("renders the state pill", () => {
+    render(<EpicCompactCard label="EPIC-1 Title" state="merged" />)
+    expect(screen.getByText("merged")).toBeInTheDocument()
+  })
+
+  it("applies focal ring styling when isFocal is true", () => {
+    render(<EpicCompactCard isFocal label="EPIC-1 Title" state="open" />)
+    expect(screen.getByRole("button").className).toContain("ring-2")
+  })
+
+  it("does not apply ring styling when isFocal is false", () => {
+    render(<EpicCompactCard label="EPIC-1 Title" state="open" />)
+    expect(screen.getByRole("button").className).not.toContain("ring-2")
+  })
+
+  it("calls onClick when the button is clicked", () => {
+    const onClick = vi.fn()
+    render(<EpicCompactCard label="EPIC-1 Title" onClick={onClick} state="open" />)
+    fireEvent.click(screen.getByRole("button"))
+    expect(onClick).toHaveBeenCalledOnce()
+  })
+
+  it("omits the title paragraph when the label has no space", () => {
+    render(<EpicCompactCard label="EPIC-1" state="open" />)
+    expect(screen.getByText("EPIC-1")).toBeInTheDocument()
+    expect(screen.queryByRole("paragraph")).not.toBeInTheDocument()
+  })
+
+  it("renders a multi-word title correctly", () => {
+    render(<EpicCompactCard label="EPIC-42 Add dark mode to dashboard" state="in_progress" />)
+    expect(screen.getByText("EPIC-42")).toBeInTheDocument()
+    expect(screen.getByText("Add dark mode to dashboard")).toBeInTheDocument()
   })
 })

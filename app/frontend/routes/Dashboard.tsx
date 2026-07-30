@@ -20,7 +20,8 @@ import { FilterBar } from "../components/FilterBar"
 import { SyrusTour } from "../components/SyrusTour"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { useTour } from "../hooks/useTour"
-import { dashboardApiSearch, fetchDashboardChrome, fetchDashboardRows, mergeDashboardPayload, recordDashboardFilterUsage, requestDashboardMainBranchRepair, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardEpicItem, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { dashboardApiSearch, fetchDashboardChrome, fetchDashboardRows, fetchEpicsGraph, fetchJobsGraph, mergeDashboardPayload, recordDashboardFilterUsage, requestDashboardMainBranchRepair, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardEpicItem, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { TopoDepGraph } from "../components/TopoDepGraph"
 import { errorMessage } from "../lib/errorMessage"
 
 export function DashboardRoute() {
@@ -296,14 +297,73 @@ function MobileDashboardControls({ payload, pathname, prefix, search }: { payloa
   )
 }
 
+export function graphSearchWithSmartFolder(rawSearch: string, activeSfId: number | null): string {
+  const params = new URLSearchParams(rawSearch.startsWith("?") ? rawSearch.slice(1) : rawSearch)
+  if (!params.has("smart_folder_id") && !params.has("q") && activeSfId != null) {
+    params.set("smart_folder_id", String(activeSfId))
+  }
+  const str = params.toString()
+  return str ? `?${str}` : ""
+}
+
 function DashboardContent({ payload, pathname, prefix, search }: { payload: DashboardPayload; pathname: string; prefix: string; search: string }) {
   const setupStatus = useSetupStatus()
+
+  if (payload.view === "dependencies") {
+    const graphSearch = graphSearchWithSmartFolder(
+      dashboardApiSearch(pathname, search),
+      payload.active_smart_folder_id
+    )
+    return (
+      <section className="min-w-0 space-y-4">
+        <DashboardDependencyView payload={payload} graphSearch={graphSearch} />
+      </section>
+    )
+  }
 
   return (
     <section className="min-w-0 space-y-4" data-tour="dashboard-table">
       <DashboardTable payload={payload} prefix={prefix} setupStatus={setupStatus} />
       {payload.view === "list" ? <Pagination pathname={pathname} search={search} payload={payload} /> : null}
     </section>
+  )
+}
+
+export function DashboardDependencyView({ payload, graphSearch }: { payload: DashboardPayload; graphSearch: string }) {
+  const { t } = useT("dashboard")
+  const subject = payload.subject
+
+  const graphQuery = useQuery({
+    queryKey: ["dashboard", "graph", subject, graphSearch],
+    queryFn: ({ signal }) =>
+      subject === "job" ? fetchJobsGraph(graphSearch, { signal }) : fetchEpicsGraph(graphSearch, { signal }),
+    enabled: subject === "job" || subject === "epic",
+    placeholderData: (previousData) => previousData
+  })
+
+  if (subject === "workflow") return null
+
+  if (graphQuery.isPending) {
+    return <div className="rounded border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400">{t("loading")}</div>
+  }
+
+  if (graphQuery.isError) {
+    return <div className="rounded border border-gray-200 bg-white p-6 text-sm text-red-700 dark:border-gray-700 dark:bg-gray-900 dark:text-red-300" role="alert">{t("load_error")}</div>
+  }
+
+  const { nodes, edges } = graphQuery.data ?? { nodes: [], edges: [] }
+
+  if (nodes.length === 0) {
+    return <div className="rounded border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400">{t("no_match", { subject: subjectLabel(subject, 2) })}</div>
+  }
+
+  return (
+    <div className="overflow-x-auto rounded border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+      {edges.length === 0 && (
+        <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">{t("no_dependency_edges")}</p>
+      )}
+      <TopoDepGraph nodes={nodes} edges={edges} />
+    </div>
   )
 }
 

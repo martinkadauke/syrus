@@ -142,7 +142,12 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
       "job_blocker_count" => 0,
       "initially_open" => true
     )
-    expect(body.dig("graph", "definition")).to include("flowchart LR", "Deliver marble")
+    expect(body.dig("graph", "nodes")).to include(
+      hash_including("kind" => "epic", "label" => include("Deliver marble"), "is_focal" => false)
+    )
+    expect(body.dig("graph", "edges")).to contain_exactly(
+      hash_including("from_id" => "epic_#{epic.id}", "to_id" => "epic_#{blocker.id}")
+    )
     expect(body["dependencies"]).to contain_exactly(include(
       "epic_id" => blocker.id,
       "title" => "Deliver marble",
@@ -1222,6 +1227,165 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
       expect(epic_data["max_commits_behind_base"]).to be_nil
       expect(epic_data["furthest_behind_job_id"]).to be_nil
       expect(epic_data["furthest_behind_job_path"]).to be_nil
+    end
+  end
+
+  describe "GET /api/v1/app/epics/graph" do
+    let(:epic_a) { Factories.epic(user: user, repository: repository, title: "Alpha") }
+    let(:epic_b) { Factories.epic(user: user, repository: repository, title: "Beta") }
+
+    before { sign_in_as(user) }
+
+    it "returns nodes and edges for all accessible epics" do
+      epic_a
+      epic_b
+      EpicDependency.create!(epic: epic_b, depends_on_epic: epic_a)
+
+      get "/api/v1/app/epics/graph"
+
+      expect(response).to have_http_status(:ok)
+      body = parse_body
+      node_ids = body["nodes"].map { |n| n["id"] }
+      expect(node_ids).to include("epic_#{epic_a.id}", "epic_#{epic_b.id}")
+      expect(body["edges"]).to contain_exactly(
+        { "from_id" => "epic_#{epic_b.id}", "to_id" => "epic_#{epic_a.id}" }
+      )
+    end
+
+    it "returns only nodes with no edges when epics have no dependencies" do
+      epic_a
+      epic_b
+
+      get "/api/v1/app/epics/graph"
+
+      expect(response).to have_http_status(:ok)
+      body = parse_body
+      expect(body["nodes"].size).to eq(2)
+      expect(body["edges"]).to be_empty
+    end
+
+    it "filters by repository_id param" do
+      epic_a
+      other_repo = Factories.repository(user: user, owner: "acme", name: "other")
+      Factories.epic(user: user, repository: other_repo, title: "Other repo epic")
+
+      get "/api/v1/app/epics/graph", params: { repository_id: repository.id }
+
+      expect(response).to have_http_status(:ok)
+      node_ids = parse_body["nodes"].map { |n| n["id"] }
+      expect(node_ids).to contain_exactly("epic_#{epic_a.id}")
+    end
+
+    it "excludes edges that cross out of the filtered set" do
+      epic_a
+      epic_b
+      EpicDependency.create!(epic: epic_b, depends_on_epic: epic_a)
+      other_repo = Factories.repository(user: user, owner: "acme", name: "other")
+      Factories.epic(user: user, repository: other_repo, title: "Other")
+
+      get "/api/v1/app/epics/graph", params: { repository_id: repository.id }
+
+      body = parse_body
+      expect(body["edges"]).to contain_exactly(
+        { "from_id" => "epic_#{epic_b.id}", "to_id" => "epic_#{epic_a.id}" }
+      )
+    end
+
+    it "excludes epics belonging to inaccessible repositories" do
+      epic_a
+      other_user = Factories.user
+      Factories.epic(user: other_user, repository: Factories.repository(user: other_user, owner: "private", name: "repo"), title: "Private")
+
+      get "/api/v1/app/epics/graph"
+
+      node_ids = parse_body["nodes"].map { |n| n["id"] }
+      expect(node_ids).to contain_exactly("epic_#{epic_a.id}")
+    end
+
+    it "includes kind, state, label, url, epic_id, and is_focal fields on each node" do
+      epic_a
+
+      get "/api/v1/app/epics/graph"
+
+      node = parse_body["nodes"].first
+      expect(node).to include(
+        "id" => "epic_#{epic_a.id}",
+        "kind" => "epic",
+        "state" => epic_a.state,
+        "label" => "EPIC-#{epic_a.number} Alpha",
+        "url" => "/epics/EPIC-#{epic_a.number}",
+        "epic_id" => epic_a.id,
+        "is_focal" => false
+      )
+    end
+
+    it "filters graph nodes by smart_folder_id" do
+      epic_a
+      epic_b
+      epic_b.update!(state: "ready")
+      folder = SmartFolder.create!(
+        user: user,
+        subject_type: "epic",
+        name: "Backlog epics",
+        kind: "user_defined",
+        filter: { "and" => [ { "field" => "state", "op" => "is", "value" => "backlog" } ] }
+      )
+
+      get "/api/v1/app/epics/graph", params: { smart_folder_id: folder.id }
+
+      expect(response).to have_http_status(:ok)
+      body = parse_body
+      node_ids = body["nodes"].map { |n| n["id"] }
+      expect(node_ids).to contain_exactly("epic_#{epic_a.id}")
+    end
+
+    it "ignores a smart_folder_id belonging to another user" do
+      epic_a
+      other_user = Factories.user
+      folder = SmartFolder.create!(
+        user: other_user,
+        subject_type: "epic",
+        name: "Private folder",
+        kind: "user_defined",
+        filter: { "and" => [ { "field" => "state", "op" => "is", "value" => "ready" } ] }
+      )
+
+      get "/api/v1/app/epics/graph", params: { smart_folder_id: folder.id }
+
+      expect(response).to have_http_status(:ok)
+      node_ids = parse_body["nodes"].map { |n| n["id"] }
+      expect(node_ids).to contain_exactly("epic_#{epic_a.id}")
+    end
+
+    it "applies a q param as a base64-encoded AST filter tree" do
+      epic_a
+      epic_b
+      epic_b.update!(state: "ready")
+      q = Filters::QueryParam.encode({ "and" => [ { "field" => "state", "op" => "is", "value" => "backlog" } ] })
+
+      get "/api/v1/app/epics/graph", params: { q: q }
+
+      node_ids = parse_body["nodes"].map { |n| n["id"] }
+      expect(node_ids).to contain_exactly("epic_#{epic_a.id}")
+    end
+
+    it "suppresses smart folder filter when q filter is active" do
+      epic_a
+      epic_b
+      epic_b.update!(state: "ready")
+      folder = SmartFolder.create!(
+        user: user,
+        subject_type: "epic",
+        name: "Ready only",
+        kind: "user_defined",
+        filter: { "and" => [ { "field" => "state", "op" => "is", "value" => "ready" } ] }
+      )
+      q = Filters::QueryParam.encode({ "and" => [ { "field" => "state", "op" => "is", "value" => "backlog" } ] })
+
+      get "/api/v1/app/epics/graph", params: { smart_folder_id: folder.id, q: q }
+
+      node_ids = parse_body["nodes"].map { |n| n["id"] }
+      expect(node_ids).to contain_exactly("epic_#{epic_a.id}")
     end
   end
 end

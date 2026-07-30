@@ -188,18 +188,22 @@ module App
     end
 
     def view
-      @view ||= params[:view].to_s.presence_in(VIEWS) ||
+      @view ||= params[:view].to_s.presence_in(available_views) ||
                 folder_pref_view ||
-                user.dashboard_preferences.dig(subject.pluralize, "last_view").to_s.presence_in(VIEWS) ||
-                user.dashboard_preferences["last_view"].to_s.presence_in(VIEWS) ||
+                user.dashboard_preferences.dig(subject.pluralize, "last_view").to_s.presence_in(available_views) ||
+                user.dashboard_preferences["last_view"].to_s.presence_in(available_views) ||
                 DEFAULT_VIEW
+    end
+
+    def available_views
+      subject == "workflow" ? VIEWS : VIEWS + %w[dependencies]
     end
 
     def folder_pref_view
       slot = active_folder_preference_slot
-      return slot["view"].to_s.presence_in(VIEWS) if slot.key?("view")
+      return slot["view"].to_s.presence_in(available_views) if slot.key?("view")
 
-      folder_preference_default("view").to_s.presence_in(VIEWS)
+      folder_preference_default("view").to_s.presence_in(available_views)
     end
 
     def page

@@ -1,3 +1,4 @@
+import { forwardRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
 import type { EpicDetailJob } from "../api/epics"
@@ -33,7 +34,7 @@ function attentionPriority(state: string): number {
   return ATTENTION_ORDER[state] ?? 3
 }
 
-export function EpicPreviewCard({ id }: { id: number }) {
+export function EpicPreviewCard({ id, compact = false }: { id: number; compact?: boolean }) {
   const { t } = useT("epics")
   const { data, isPending } = useQuery({
     queryKey: ["epics", String(id)],
@@ -53,15 +54,15 @@ export function EpicPreviewCard({ id }: { id: number }) {
   const previewJobs = sortedJobs.slice(0, 5)
 
   return (
-    <div className="w-80 rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+    <div className={compact ? "w-40 min-h-14 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900" : "w-80 rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900"}>
       <div className="mb-2 flex items-center gap-2">
         <CopyableSlug className="text-xs" slug={epic.display_number} />
         <StatusPill state={epic.state} />
       </div>
-      <Link className="mb-2 block text-sm font-medium text-gray-900 hover:underline dark:text-gray-100" to={`/epics/${id}`}>
+      <Link className={`mb-2 block text-sm font-medium text-gray-900 hover:underline dark:text-gray-100 ${compact ? "line-clamp-1" : "line-clamp-2"}`} to={`/epics/${id}`}>
         {epic.title}
       </Link>
-      {totalCount > 0 && (
+      {!compact && totalCount > 0 && (
         <div
           aria-label={t("job_progress_label")}
           className="mb-3 flex h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
@@ -76,12 +77,12 @@ export function EpicPreviewCard({ id }: { id: number }) {
           })}
         </div>
       )}
-      {truncatedDesc && (
+      {!compact && truncatedDesc && (
         <p className="mb-3 line-clamp-4 whitespace-pre-wrap text-xs text-gray-600 dark:text-gray-400">
           {truncatedDesc}
         </p>
       )}
-      {previewJobs.length > 0 && (
+      {!compact && previewJobs.length > 0 && (
         <ul className="mb-3 space-y-1">
           {previewJobs.map((job: EpicDetailJob) => (
             <li key={job.id}>
@@ -96,12 +97,45 @@ export function EpicPreviewCard({ id }: { id: number }) {
           ))}
         </ul>
       )}
-      <Link className="text-xs text-blue-600 hover:underline dark:text-blue-400" to={`/epics/${id}`}>
-        {t("preview_see_more")}
-      </Link>
+      {!compact && (
+        <Link className="text-xs text-blue-600 hover:underline dark:text-blue-400" to={`/epics/${id}`}>
+          {t("preview_see_more")}
+        </Link>
+      )}
     </div>
   )
 }
+
+// Compact variant for use in graph/dependency views. Fixed width, 1-line
+// title and state badge only — no data fetching required.
+export const EpicCompactCard = forwardRef<
+  HTMLButtonElement,
+  { label: string; state: string; isFocal?: boolean; onClick?: () => void }
+>(({ label, state, isFocal = false, onClick }, ref) => {
+  const spaceIdx = label.indexOf(" ")
+  const slug = spaceIdx === -1 ? label : label.slice(0, spaceIdx)
+  const title = spaceIdx === -1 ? "" : label.slice(spaceIdx + 1)
+
+  return (
+    <button
+      className={[
+        "w-48 rounded-lg border bg-white p-3 text-left shadow-sm transition-shadow hover:shadow-md dark:bg-gray-900",
+        isFocal
+          ? "border-gray-900 ring-2 ring-gray-900 dark:border-gray-100 dark:ring-gray-100"
+          : "border-gray-200 dark:border-gray-700",
+      ].join(" ")}
+      onClick={onClick}
+      ref={ref}
+    >
+      <div className="mb-1 flex items-center gap-1.5 overflow-hidden">
+        <span className="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{slug}</span>
+        <StatusPill state={state} />
+      </div>
+      {title && <p className="truncate text-xs text-gray-700 dark:text-gray-300">{title}</p>}
+    </button>
+  )
+})
+EpicCompactCard.displayName = "EpicCompactCard"
 
 export function EpicPreviewSkeleton() {
   return (

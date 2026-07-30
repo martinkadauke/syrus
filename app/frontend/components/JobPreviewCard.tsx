@@ -1,3 +1,4 @@
+import { forwardRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
 import { fetchJobDetail } from "../api/jobs"
@@ -6,7 +7,7 @@ import { Markdown } from "../lib/Markdown"
 import { CopyableSlug } from "./CopyableSlug"
 import { StatusPill } from "./StatusPill"
 
-export function JobPreviewCard({ id }: { id: number }) {
+export function JobPreviewCard({ id, compact = false }: { id: number; compact?: boolean }) {
   const { t } = useT("jobs")
   const { data, isPending } = useQuery({
     queryKey: ["jobs", String(id)],
@@ -23,7 +24,7 @@ export function JobPreviewCard({ id }: { id: number }) {
   const title = job.issue_title ?? (job.title_pending ? t("preview_generating_title") : "")
 
   return (
-    <div className="w-80 rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+    <div className={compact ? "w-40 min-h-14 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900" : "w-80 rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900"}>
       <div className="mb-2 flex items-center gap-2">
         <CopyableSlug className="text-xs" slug={`JOB-${id}`} />
         <StatusPill state={job.state} />
@@ -31,22 +32,64 @@ export function JobPreviewCard({ id }: { id: number }) {
       {title && (
         <Link
           to={`/jobs/${id}`}
-          className="mb-2 block text-sm font-medium text-gray-900 hover:underline dark:text-gray-100"
+          className={`mb-2 block text-sm font-medium text-gray-900 hover:underline dark:text-gray-100 ${compact ? "line-clamp-1" : "line-clamp-2"}`}
         >
           {title}
         </Link>
       )}
-      {truncatedBody && (
+      {!compact && truncatedBody && (
         <div className="mb-3 line-clamp-6 text-xs text-gray-600 dark:text-gray-400 [&_code]:rounded [&_code]:bg-gray-100 [&_code]:px-0.5 [&_code]:font-mono dark:[&_code]:bg-gray-800 [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_pre]:rounded [&_pre]:bg-gray-100 [&_pre]:p-1.5 [&_pre]:font-mono dark:[&_pre]:bg-gray-800 [&_pre_code]:bg-transparent [&_pre_code]:px-0">
           <Markdown text={truncatedBody} />
         </div>
       )}
-      <Link className="text-xs text-blue-600 hover:underline dark:text-blue-400" to={`/jobs/${id}`}>
-        {t("preview_see_more")}
-      </Link>
+      {!compact && (
+        <Link className="text-xs text-blue-600 hover:underline dark:text-blue-400" to={`/jobs/${id}`}>
+          {t("preview_see_more")}
+        </Link>
+      )}
     </div>
   )
 }
+
+// Compact variant for use in graph/dependency views. Fixed width, 1-line
+// title and state badge only — no data fetching required.
+// Job labels from the backend follow "EPIC-N / source title" format;
+// this variant extracts the source identifier (e.g. "#123" or "JOB-42")
+// and the title from that structure.
+// Epicless jobs (epicId === null) get a gray left accent.
+export const JobCompactCard = forwardRef<
+  HTMLButtonElement,
+  { label: string; state: string; epicId?: number | null; isFocal?: boolean; onClick?: () => void }
+>(({ label, state, epicId = null, isFocal = false, onClick }, ref) => {
+  const slashIdx = label.indexOf(" / ")
+  const jobPart = slashIdx === -1 ? label : label.slice(slashIdx + 3)
+  const spaceInJob = jobPart.indexOf(" ")
+  const slug = spaceInJob === -1 ? jobPart : jobPart.slice(0, spaceInJob)
+  const title = spaceInJob === -1 ? "" : jobPart.slice(spaceInJob + 1)
+
+  return (
+    <button
+      className={[
+        "w-48 rounded-lg border bg-white p-3 text-left shadow-sm transition-shadow hover:shadow-md dark:bg-gray-900",
+        isFocal
+          ? "border-gray-900 ring-2 ring-gray-900 dark:border-gray-100 dark:ring-gray-100"
+          : "border-gray-200 dark:border-gray-700",
+        epicId === null ? "border-l-4 border-l-gray-400 dark:border-l-gray-600" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      onClick={onClick}
+      ref={ref}
+    >
+      <div className="mb-1 flex items-center gap-1.5 overflow-hidden">
+        <span className="shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{slug}</span>
+        <StatusPill state={state} />
+      </div>
+      {title && <p className="truncate text-xs text-gray-700 dark:text-gray-300">{title}</p>}
+    </button>
+  )
+})
+JobCompactCard.displayName = "JobCompactCard"
 
 export function JobPreviewSkeleton() {
   return (

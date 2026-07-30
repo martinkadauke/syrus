@@ -108,7 +108,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body["items"].map { |item| item.fetch("id") }).not_to include(archived_job.id, other_job.id)
       expect(body.dig("preferences", "sort")).to include("column" => "title", "direction" => "asc")
       expect(body["controls"]).to include(
-        "views" => %w[list kanban],
+        "views" => %w[list kanban dependencies],
         "sort_columns" => %w[title state repository landing_queue_position created_at started_at priority commits_behind_base],
         "sort_directions" => %w[asc desc],
         "columns" => {
@@ -161,7 +161,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(chrome).to include(
         "subject" => "job",
         "counts" => include("jobs" => 1),
-        "controls" => include("views" => %w[list kanban]),
+        "controls" => include("views" => %w[list kanban dependencies]),
         "smart_folders" => be_an(Array)
       )
       expect(chrome).not_to have_key("items")
@@ -1408,6 +1408,26 @@ RSpec.describe "App API dashboard commands", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(parse_body["view"]).to eq("kanban")
+    end
+
+    it "restores a saved dependencies view preference for a folder when the URL omits view" do
+      folder = SmartFolder.create!(
+        user: user,
+        subject_type: "job",
+        name: "Graph jobs",
+        kind: "user_defined",
+        filter: { "and" => [ { "field" => "state", "op" => "is", "value" => "open" } ] }
+      )
+      user.update_dashboard_folder_preferences!(
+        subject: "job",
+        smart_folder_id: folder.id,
+        view: "dependencies"
+      )
+
+      get "/api/v1/app/dashboard", params: { subject: "job", smart_folder_id: folder.id }
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body["view"]).to eq("dependencies")
     end
 
     it "falls back to subject-level sort when a folder has no saved or built-in preference" do
