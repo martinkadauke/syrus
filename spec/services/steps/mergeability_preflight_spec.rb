@@ -360,13 +360,16 @@ RSpec.describe Steps::MergeabilityPreflight do
 
     it "proceeds when the external PR is open and mergeable" do
       allow(client).to receive(:pull_request).with("acme/widgets", 99, anything).and_return(
-        pr(state: "open", mergeable_state: "clean")
+        pr(state: "open", mergeable_state: "clean", head_sha: "abc123", head_ref: "feature-branch", head_repo: "acme/widgets")
       )
 
       described_class.new(external_run).call
 
       expect(external_run.reload).to be_running
       expect(external_workflow.reload).to be_running
+      expect(external_workflow.artifact("external_pr_head_repo")).to eq("acme/widgets")
+      expect(external_workflow.artifact("external_pr_head_ref")).to eq("feature-branch")
+      expect(external_workflow.artifact("external_pr_head_sha")).to eq("abc123")
     end
 
     it "proceeds when GitHub reports unstable (non-required check failing)" do
