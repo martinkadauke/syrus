@@ -101,6 +101,66 @@ Admins can expand rows to see the full suggested prompt and memory suggestion, a
 
 Syrus enforces at-most-one active insight job per repository. If an insight job is already running when "Run insight analysis" is clicked, a notice is shown and no new job is created. Once the active job closes (success or failure), a new run can be triggered.
 
+## Adaptive Scheduling
+
+In addition to on-demand runs, Syrus can automatically schedule insight jobs based on coding job activity. This eliminates the need for fixed time intervals: insight jobs fire when there is genuinely new work to analyze, not on a calendar.
+
+### Settings UI
+
+When the `agent_insights` feature flag is on, an **Insight Scheduling** section appears at the bottom of each repository's edit page (`/repositories/:id/edit`). It has its own Save and Discard buttons separate from the main repository form:
+
+- **Enable automatic insights** — toggle to enable or disable adaptive scheduling for this repository.
+- **Minimum jobs** — integer ≥ 1 (default 5). The periodic sweep threshold: `InsightSweepJob` runs every 6 hours and fires an insight job if the count of closed coding jobs since the last insight run is ≥ this value.
+- **Maximum jobs** — integer ≥ 2, must be greater than Minimum (default 10). The immediate trigger threshold: fires an insight job right away when a coding job closes and the count reaches this value.
+
+Validation requires `min < max`; the form enforces this client-side before submitting and the server validates it as well.
+
+### API
+
+- `GET /api/v1/app/repositories/:id/insight_schedule_config` — returns the current config (`enabled`, `min_jobs_since_last_run`, `max_jobs_since_last_run`). Returns defaults if no record exists yet.
+- `PATCH /api/v1/app/repositories/:id/insight_schedule_config` — updates `enabled`, `min_jobs_since_last_run`, and/or `max_jobs_since_last_run`. Returns 422 on validation failure.
+
+Both endpoints return 403 if the `agent_insights` feature flag is off.
+
+### Status badge
+
+On the repository overview page, a small status badge appears next to the "Run insight analysis" button:
+
+- **Auto: off** — automatic scheduling is disabled.
+- **Auto: on (min 5 / max 10)** — automatic scheduling is enabled, showing the configured thresholds.
+
+### Console / Rails
+
+Adaptive scheduling is also configurable via Rails:
+
+```ruby
+repo = Repository.find_by!(owner: "acme", name: "widgets")
+config = repo.insight_schedule_config || repo.build_insight_schedule_config
+config.update!(
+  enabled: true,
+  min_jobs_since_last_run: 5,   # sweep threshold
+  max_jobs_since_last_run: 10   # immediate trigger threshold
+)
+```
+
+### Thresholds
+
+Two thresholds control when insight jobs fire automatically:
+
+- **`min_jobs_since_last_run`** (default: 5) — the periodic sweep threshold. `InsightSweepJob` runs every 6 hours and fires an insight job for any enabled repository whose count of closed coding jobs since the last insight run is ≥ `min`.
+- **`max_jobs_since_last_run`** (default: 10) — the immediate trigger threshold. Whenever any coding job closes, if the count of closed coding jobs since the last insight run reaches ≥ `max`, an insight job is enqueued immediately without waiting for the next sweep.
+
+Both thresholds count closed jobs of any kind except `agent_insight`, measured from the `finished_at` of the most recently created `agent_insight` job (or from the beginning of time if none exists). Weekends and idle periods are skipped naturally: the count only crosses `min` if real work has occurred.
+
+### Deduplication
+
+Both the sweep and the immediate trigger call `InsightScheduler.enqueue_if_idle!`, which first checks whether a non-closed `agent_insight` job already exists for the repository. If one is queued or running, no new job is created.
+
+### Validation
+
+- Both `min_jobs_since_last_run` and `max_jobs_since_last_run` must be ≥ 1.
+- `min_jobs_since_last_run` must be strictly less than `max_jobs_since_last_run`.
+
 ## Job Lifecycle
 
 - **Branch:** Insight jobs do not create a branch — they operate on a shallow clone of the default branch read-only.
