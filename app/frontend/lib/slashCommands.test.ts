@@ -24,6 +24,7 @@ describe("slashCommands", () => {
     "/retry",
     "/review",
     "/clear-canvas",
+    "/approve",
     "/schedule"
   ]
 
@@ -178,6 +179,16 @@ describe("slashCommands", () => {
     expect(match?.command.args).toEqual([{ name: "id", required: false }])
     expect(match?.command.requiresConfirmation).toBeFalsy()
     expect(match?.command.description).toBe("Open a Job's pull request in a new tab.")
+    expect(match ? slashCommandSignature(match.command) : "missing").toBe("[id]")
+  })
+
+  it("registers /approve with an optional id arg and requiresConfirmation", () => {
+    const match = findSlashCommand("/approve")
+
+    expect(match?.command.kind).toBe("system")
+    expect(match?.command.args).toEqual([{ name: "id", required: false }])
+    expect(match?.command.requiresConfirmation).toBe(true)
+    expect(match?.command.description).toBe("Approve a Job for landing.")
     expect(match ? slashCommandSignature(match.command) : "missing").toBe("[id]")
   })
 })

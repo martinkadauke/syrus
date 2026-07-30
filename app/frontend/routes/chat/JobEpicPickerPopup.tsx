@@ -31,12 +31,14 @@ export function JobEpicPickerPopup({
   kind,
   repositorySlug,
   filterByPr,
+  jobState,
   onSelect,
   onCancel
 }: {
   kind: "job" | "epic"
   repositorySlug: string | null
   filterByPr?: boolean
+  jobState?: string
   onSelect: (id: string) => void
   onCancel: () => void
 }) {
@@ -46,8 +48,8 @@ export function JobEpicPickerPopup({
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   const jobsQuery = useQuery({
-    queryKey: ["picker-jobs", repositorySlug],
-    queryFn: () => fetchPickerJobs({ repo: repositorySlug ?? undefined, limit: 50 }),
+    queryKey: ["picker-jobs", repositorySlug, jobState],
+    queryFn: () => fetchPickerJobs({ ...(jobState ? { state: jobState } : {}), repo: repositorySlug ?? undefined, limit: 50 }),
     enabled: kind === "job",
     staleTime: 30_000
   })
