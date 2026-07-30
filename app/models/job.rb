@@ -496,7 +496,7 @@ class Job < ApplicationRecord
     return false unless epic
     return false if epic.releases_jobs_for_execution?
 
-    !epic.releases_jobs_for_execution?
+    true
   end
 
   def prepare_skip_reason
