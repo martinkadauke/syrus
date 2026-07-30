@@ -491,4 +491,44 @@ RSpec.describe App::ChatMessagePayload do
     expect(payload.fetch(:has_dependencies)).to be(true)
     expect(payload.fetch(:dependencies)).to include(hash_including(slug: "upstream-task"))
   end
+
+  it "includes media_ids in proposal JSON" do
+    snapshot = WhiteboardSnapshot.create!(
+      chat_session: chat,
+      name: "Board snapshot",
+      scene_json: { "elements" => [], "appState" => {} },
+      snapshot_kind: "manual",
+      element_count: 0
+    )
+    proposal = chat.proposals.create!(
+      repository: repository,
+      kind: "job",
+      state: "proposed",
+      slug: "media-job",
+      title: "Media job",
+      body: "Has media.",
+      media_ids: [ "snapshot:#{snapshot.id}" ]
+    )
+    message = chat.messages.create!(role: "assistant", proposal: proposal, content: { "text" => "Proposed." })
+
+    payload = described_class.messages([ message ], repository: repository).first.fetch(:proposal)
+
+    expect(payload.fetch(:media_ids)).to eq([ "snapshot:#{snapshot.id}" ])
+  end
+
+  it "returns an empty array for media_ids when none are set" do
+    proposal = chat.proposals.create!(
+      repository: repository,
+      kind: "job",
+      state: "proposed",
+      slug: "no-media-job",
+      title: "No media job",
+      body: "No media."
+    )
+    message = chat.messages.create!(role: "assistant", proposal: proposal, content: { "text" => "Proposed." })
+
+    payload = described_class.messages([ message ], repository: repository).first.fetch(:proposal)
+
+    expect(payload.fetch(:media_ids)).to eq([])
+  end
 end
