@@ -161,6 +161,10 @@ Non-agentic. Calls the GitHub merge API. Transient failures defer the Job back t
 
 When a merge succeeds and GitHub returns a merge commit SHA, Syrus stores it as `Job#landed_sha`. `PollAllDeploymentStagesJob` later uses that SHA to detect configured deployment stages from repository tags.
 
+### external_pr_merge
+
+Non-agentic. Calls the GitHub merge API for an `external_pr` Job's `external_pr_number`. If same-repository landing repair produced commits in the workflow workspace, pushes those commits to the PR's actual head branch before merging. Fork PRs are never pushed by this step.
+
 ### merge_train_assemble
 
 Non-agentic. Validates that all open Epic child Jobs are approved and the member count is within `AppSetting.merge_train_max_size`.

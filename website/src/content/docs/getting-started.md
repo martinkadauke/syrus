@@ -276,6 +276,9 @@ same priority; dependencies and Epic merge trains still keep required landing
 order intact. Merge-train rows also surface group-level start blockers, such
 as an urgent Job holding a queued train, and state drift when a landing Job
 has no active workflow.
+Externally filed PRs follow the same approval gate: Syrus reruns required
+checks before merge, can repair same-repository PR branches, and requests
+changes on fork PRs when contributors need to push fixes themselves.
 
 The first-run guide is complete when your first Epic lands (all of its
 child Jobs merge); the **Setup** tab then drops off the navigation.
