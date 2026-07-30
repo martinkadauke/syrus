@@ -769,7 +769,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_02_023000) do
     t.string "kind", default: "issue", null: false
     t.string "landed_sha"
     t.text "landing_failure_reason"
-    t.string "landing_queue_blocked_reason"
+    t.json "landing_queue_blocked_reason"
     t.json "landing_queue_blocker_job_ids"
     t.datetime "landing_queue_cached_at"
     t.json "landing_queue_dependency_edges"
