@@ -9,8 +9,6 @@ class ChatSession < ApplicationRecord
 
   TRIGGER_POLICIES = %w[speak_when_spoken_to].freeze
 
-  TRIGGER_POLICIES = %w[speak_when_spoken_to].freeze
-
   belongs_to :user
 
   has_many :chat_participants, dependent: :destroy
