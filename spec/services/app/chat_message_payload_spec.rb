@@ -453,13 +453,13 @@ RSpec.describe App::ChatMessagePayload do
     expect(payload.fetch(:has_dependencies)).to be(true)
     expect(payload.fetch(:dependencies)).to include(
       hash_including(
-        slug: "epic:\#{epic.id}",
+        slug: "epic:#{epic.id}",
         title: epic.slug,
         display_label: epic.slug,
         state: epic.state,
         confirmed: true,
         anchor_message_id: nil,
-        materialized_path: "/epics/\#{epic.id}"
+        materialized_path: "/epics/#{epic.id}"
       )
     )
   end
@@ -507,13 +507,13 @@ RSpec.describe App::ChatMessagePayload do
       slug: "media-job",
       title: "Media job",
       body: "Has media.",
-      media_ids: [ "snapshot:\#{snapshot.id}" ]
+      media_ids: [ "snapshot:#{snapshot.id}" ]
     )
     message = chat.messages.create!(role: "assistant", proposal: proposal, content: { "text" => "Proposed." })
 
     payload = described_class.messages([ message ], repository: repository).first.fetch(:proposal)
 
-    expect(payload.fetch(:media_ids)).to eq([ "snapshot:\#{snapshot.id}" ])
+    expect(payload.fetch(:media_ids)).to eq([ "snapshot:#{snapshot.id}" ])
   end
 
   it "returns an empty array for media_ids when none are set" do
