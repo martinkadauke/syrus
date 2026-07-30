@@ -18,20 +18,16 @@ module ChatProviders
         source: "codex_chat",
         sink: method(:log_startup_timing)
       )
-      lock_started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      CodexAuth.with_refresh_lock(user: chat.user) do
-        timing.record("auth_refresh_lock", started_at: lock_started_at, mode: chat.user.codex_auth_mode)
-        invoke_with_auth(
-          workspace_path: workspace_path,
-          prompt: prompt,
-          log_sink: log_sink,
-          mcp_config: mcp_config,
-          resume_session_id: resume_session_id,
-          stop_requested: stop_requested,
-          process_started: process_started,
-          startup_timing: timing
-        )
-      end
+      invoke_with_auth(
+        workspace_path: workspace_path,
+        prompt: prompt,
+        log_sink: log_sink,
+        mcp_config: mcp_config,
+        resume_session_id: resume_session_id,
+        stop_requested: stop_requested,
+        process_started: process_started,
+        startup_timing: timing
+      )
     end
 
     private
@@ -40,7 +36,11 @@ module ChatProviders
                          resume_session_id:, stop_requested:, process_started:, startup_timing:)
       codex_home = ChatWorkspace.agent_home_for(chat, provider)
       codex_auth = CodexAuth.new(user: chat.user, codex_home: codex_home)
-      auth = startup_timing.measure("auth_prepare", mode: chat.user.codex_auth_mode) { codex_auth.prepare! }
+      lock_started_at = startup_timing.now
+      auth = CodexAuth.with_refresh_lock(user: chat.user) do
+        startup_timing.record("auth_refresh_lock", started_at: lock_started_at, mode: chat.user.codex_auth_mode)
+        startup_timing.measure("auth_prepare", mode: chat.user.codex_auth_mode) { codex_auth.prepare! }
+      end
 
       begin
         CodexInvocation.new(

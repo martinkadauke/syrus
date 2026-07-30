@@ -72,8 +72,17 @@ RSpec.describe AgentProviders::Codex do
       user.update!(codex_auth_mode: "chatgpt_login",
                    codex_auth_json: Factories.codex_auth_json(access_token: "access-token"))
       received = nil
+      runner_lock_depth = nil
+      lock_depth = 0
+      allow(CodexAuth).to receive(:with_refresh_lock) do |user:, timeout: CodexAuth::DEFAULT_REFRESH_LOCK_TIMEOUT_SECONDS, &block|
+        lock_depth += 1
+        block.call
+      ensure
+        lock_depth -= 1
+      end
       RunJob.agent_runner = ->(**kwargs) {
         received = kwargs
+        runner_lock_depth = lock_depth
         File.write(File.join(kwargs.fetch(:codex_home), "auth.json"),
                    Factories.codex_auth_json(access_token: "refreshed-token"))
         AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false,
@@ -85,6 +94,7 @@ RSpec.describe AgentProviders::Codex do
 
       expect(result).to be_success
       expect(received[:api_key]).to be_nil
+      expect(runner_lock_depth).to eq(0)
       auth_path = File.join(WorkflowWorkspace.agent_home_for(workflow, "codex"), "auth.json")
       expect(JSON.parse(File.read(auth_path))["tokens"]["access_token"]).to eq("refreshed-token")
       expect(user.reload.codex_auth_json).to include("refreshed-token")

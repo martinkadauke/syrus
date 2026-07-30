@@ -82,8 +82,16 @@ class CodexAuth
     return unless File.exist?(auth_path)
 
     auth_json = normalized_auth_json(File.read(auth_path))
-    @user.reload
-    @user.update!(codex_auth_json: auth_json) if @user.codex_auth_json != auth_json
+    self.class.with_refresh_lock(user: @user) do
+      if stale_prepared_auth?
+        Rails.logger.info(
+          "Skipped persisting refreshed Codex auth.json for user #{@user.id}: stored credential changed during invocation"
+        )
+        return
+      end
+
+      @user.update!(codex_auth_json: auth_json) if @user.codex_auth_json != auth_json
+    end
   rescue StandardError => e
     Rails.logger.warn(
       "Failed to persist refreshed Codex auth.json for user #{@user.id}: #{e.message}"
@@ -101,10 +109,12 @@ class CodexAuth
   def prepare_chatgpt_login
     raise Error, "Codex auth.json is not configured" if @user.codex_auth_json.blank?
 
+    auth_json = normalized_auth_json(@user.codex_auth_json)
+    @prepared_auth_json = auth_json
     FileUtils.mkdir_p(@codex_home)
     @runner.call(
       codex_home: @codex_home,
-      auth_json: normalized_auth_json(@user.codex_auth_json)
+      auth_json: auth_json
     )
     Result.new(api_key: nil)
   end
@@ -140,5 +150,11 @@ class CodexAuth
 
   def auth_path
     File.join(@codex_home, "auth.json")
+  end
+
+  def stale_prepared_auth?
+    @prepared_auth_json.present? &&
+      @user.codex_auth_json.present? &&
+      normalized_auth_json(@user.codex_auth_json) != @prepared_auth_json
   end
 end

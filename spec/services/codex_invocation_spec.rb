@@ -401,41 +401,50 @@ RSpec.describe CodexInvocation do
       turn_completed_line = {
         type: "turn.completed", usage: { input_tokens: 5, output_tokens: 10 }
       }.to_json
-      invocation = described_class.new("/tmp/wkt", prompt: "x", api_key: "sk-test",
-                                       log_sink: null_sink)
-      stub_process_runner(silent_timeout_result, emit_line: turn_completed_line)
+      Dir.mktmpdir do |home|
+        invocation = described_class.new("/tmp/wkt", prompt: "x", api_key: "sk-test",
+                                         codex_home: home,
+                                         log_sink: null_sink)
+        stub_process_runner(silent_timeout_result, emit_line: turn_completed_line)
 
-      result = invocation.run
+        result = invocation.run
 
-      expect(result).to be_success
-      expect(result.timed_out).to be false
-      expect(result.exit_status).to eq(0)
-      expect(result.outcome).to eq("success")
+        expect(result).to be_success
+        expect(result.timed_out).to be false
+        expect(result.exit_status).to eq(0)
+        expect(result.outcome).to eq("success")
+      end
     end
 
     it "still surfaces a silent timeout when no provider result was received" do
-      invocation = described_class.new("/tmp/wkt", prompt: "x", api_key: "sk-test",
-                                       log_sink: null_sink)
-      stub_process_runner(silent_timeout_result)
+      Dir.mktmpdir do |home|
+        invocation = described_class.new("/tmp/wkt", prompt: "x", api_key: "sk-test",
+                                         codex_home: home,
+                                         log_sink: null_sink)
+        stub_process_runner(silent_timeout_result)
 
-      result = invocation.run
+        result = invocation.run
 
-      expect(result).not_to be_success
-      expect(result.timed_out).to be true
-      expect(result.exit_status).to be_nil
+        expect(result).not_to be_success
+        expect(result.timed_out).to be true
+        expect(result.exit_status).to be_nil
+      end
     end
 
     it "still surfaces a timeout when the provider result was an error" do
       turn_failed_line = { type: "turn.failed", error: "context window exceeded" }.to_json
-      invocation = described_class.new("/tmp/wkt", prompt: "x", api_key: "sk-test",
-                                       log_sink: null_sink)
-      stub_process_runner(silent_timeout_result, emit_line: turn_failed_line)
+      Dir.mktmpdir do |home|
+        invocation = described_class.new("/tmp/wkt", prompt: "x", api_key: "sk-test",
+                                         codex_home: home,
+                                         log_sink: null_sink)
+        stub_process_runner(silent_timeout_result, emit_line: turn_failed_line)
 
-      result = invocation.run
+        result = invocation.run
 
-      expect(result).not_to be_success
-      expect(result.timed_out).to be true
-      expect(result.is_error).to be true
+        expect(result).not_to be_success
+        expect(result.timed_out).to be true
+        expect(result.is_error).to be true
+      end
     end
   end
 

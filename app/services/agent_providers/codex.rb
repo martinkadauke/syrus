@@ -4,44 +4,40 @@ module AgentProviders
 
     def self.invoke_one_shot(workspace_path:, user:, runner:, scope:, prompt:, log_sink:, timeout:, max_turns:)
       codex_home = File.join(WorkflowWorkspace.data_root, "agent_homes", scope, user.id.to_s, "codex")
-      CodexAuth.with_refresh_lock(user: user) do
-        codex_auth = CodexAuth.new(user: user, codex_home: codex_home)
-        auth = codex_auth.prepare!
-        begin
-          CodexInvocation.new(
-            workspace_path,
-            prompt: prompt,
-            api_key: auth.api_key,
-            log_sink: log_sink,
-            runner: runner,
-            timeout: timeout,
-            codex_home: codex_home
-          ).run
-        ensure
-          codex_auth.persist_updated_auth_json
-        end
+      codex_auth = CodexAuth.new(user: user, codex_home: codex_home)
+      auth = CodexAuth.with_refresh_lock(user: user) { codex_auth.prepare! }
+      begin
+        CodexInvocation.new(
+          workspace_path,
+          prompt: prompt,
+          api_key: auth.api_key,
+          log_sink: log_sink,
+          runner: runner,
+          timeout: timeout,
+          codex_home: codex_home
+        ).run
+      ensure
+        codex_auth.persist_updated_auth_json
       end
     end
 
     private
 
     def invoke(workspace_path:, prompt:, log_sink:, timeout:, mcp:, resume_session_id:, **_ignored)
-      CodexAuth.with_refresh_lock(user: job.user) do
-        invoke_with_auth(
-          workspace_path: workspace_path,
-          prompt: prompt,
-          log_sink: log_sink,
-          timeout: timeout,
-          mcp: mcp,
-          resume_session_id: resume_session_id
-        )
-      end
+      invoke_with_auth(
+        workspace_path: workspace_path,
+        prompt: prompt,
+        log_sink: log_sink,
+        timeout: timeout,
+        mcp: mcp,
+        resume_session_id: resume_session_id
+      )
     end
 
     def invoke_with_auth(workspace_path:, prompt:, log_sink:, timeout:, mcp:, resume_session_id:)
       codex_home = WorkflowWorkspace.agent_home_for(workflow, provider)
       codex_auth = CodexAuth.new(user: job.user, codex_home: codex_home)
-      auth = codex_auth.prepare!
+      auth = CodexAuth.with_refresh_lock(user: job.user) { codex_auth.prepare! }
 
       begin
         CodexInvocation.new(

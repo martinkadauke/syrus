@@ -128,5 +128,24 @@ RSpec.describe CodexAuth do
         expect(user.reload.codex_auth_json).to eq(JSON.pretty_generate(JSON.parse(refreshed)) + "\n")
       end
     end
+
+    it "does not overwrite newer stored ChatGPT auth from an older invocation" do
+      user.update!(codex_auth_mode: "chatgpt_login",
+                   codex_auth_json: Factories.codex_auth_json(access_token: "old-access-token"))
+      newer = JSON.pretty_generate(JSON.parse(Factories.codex_auth_json(access_token: "newer-access-token"))) + "\n"
+
+      Dir.mktmpdir do |home|
+        auth = described_class.new(user: user, codex_home: home)
+        auth.prepare!
+
+        user.update!(codex_auth_json: newer)
+        File.write(File.join(home, "auth.json"),
+                   Factories.codex_auth_json(access_token: "stale-refresh-token"))
+
+        auth.persist_updated_auth_json
+
+        expect(user.reload.codex_auth_json).to eq(newer)
+      end
+    end
   end
 end
