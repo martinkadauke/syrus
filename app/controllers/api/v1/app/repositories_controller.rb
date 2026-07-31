@@ -657,6 +657,7 @@ module Api
             agent_provider: repository.agent_provider.to_s,
             auto_approve_mode: repository.auto_approve_mode,
             feedback_policy: repository.feedback_policy,
+            epic_dependency_policy: repository.epic_dependency_policy,
             github_owner_id: repository.github_owner_id,
             github_repository_id: repository.github_repository_id,
             repository_path: repository.persisted? ? repository_path(repository) : nil
@@ -1002,6 +1003,7 @@ module Api
             :fork_auto_sync_enabled,
             :auto_approve_mode,
             :feedback_policy,
+            :epic_dependency_policy,
             :github_repository_id,
             :github_owner_id
           )
