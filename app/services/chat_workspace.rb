@@ -750,7 +750,6 @@ class ChatWorkspace
     @git.run("reset", "--hard", default_ref, chdir: path.to_s, env: @env)
     @git.run("clean", "-ffdx", chdir: path.to_s, env: @env)
     GitInfoExclude.ensure_entry!(path, EXCLUDE_ENTRY)
-    enqueue_prepare!(repository)
   end
 
   def delete_wip_tag!(repository, path)
