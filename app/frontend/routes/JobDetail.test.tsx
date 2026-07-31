@@ -185,9 +185,9 @@ describe("JobDetailView", () => {
     const reachedAt = "2026-07-30T12:00:00Z"
     renderJobDetail(jobPayload({
       deployment_stages: [
-        { name: "staging", label: "On Staging", reached_at: reachedAt },
-        { name: "production", label: "In Production", reached_at: null },
-        { name: "public", label: "Released to Public", reached_at: null }
+        { name: "staging", label: "On Staging", reached: true, reached_at: reachedAt, tag_sha: "tag-sha" },
+        { name: "production", label: "In Production", reached: false, reached_at: null, tag_sha: null },
+        { name: "public", label: "Released to Public", reached: false, reached_at: null, tag_sha: null }
       ]
     }))
 
