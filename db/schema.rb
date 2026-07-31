@@ -676,6 +676,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_31_171000) do
     t.index ["unresolved_owner", "unresolved_repo", "unresolved_number"], name: "index_job_deps_on_unresolved_reference", where: "unresolved_owner IS NOT NULL"
   end
 
+  create_table "job_deployment_stage_statuses", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "job_id", null: false
+    t.datetime "reached_at", null: false
+    t.string "stage_name", null: false
+    t.string "tag_sha"
+    t.datetime "updated_at", null: false
+    t.index ["job_id", "stage_name"], name: "index_job_deployment_stage_statuses_on_job_id_and_stage_name", unique: true
+    t.index ["job_id"], name: "index_job_deployment_stage_statuses_on_job_id"
+  end
+
   create_table "job_logs", force: :cascade do |t|
     t.text "chunk", limit: 16777215, null: false
     t.datetime "created_at", null: false
@@ -741,6 +752,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_31_171000) do
     t.integer "issue_number"
     t.string "issue_title"
     t.string "kind", default: "issue", null: false
+    t.string "landed_sha"
     t.text "landing_failure_reason"
     t.string "landing_queue_blocked_reason"
     t.json "landing_queue_blocker_job_ids"
@@ -1569,6 +1581,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_31_171000) do
   add_foreign_key "job_dependencies", "jobs"
   add_foreign_key "job_dependencies", "jobs", column: "depends_on_job_id"
   add_foreign_key "job_dependencies", "users", column: "created_by_user_id"
+  add_foreign_key "job_deployment_stage_statuses", "jobs"
   add_foreign_key "job_logs", "runs"
   add_foreign_key "job_pins", "jobs"
   add_foreign_key "job_pins", "users"

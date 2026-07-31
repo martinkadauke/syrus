@@ -26,7 +26,7 @@ module App
     end
 
     def payload
-      {
+      result = {
         job: job_json,
         repository: repository_json(@job.repository),
         epic: epic_json(@job.epic),
@@ -53,6 +53,9 @@ module App
         actions: actions_json,
         paths: paths_json
       }
+      stages = App::DeploymentStagesPayload.for_job(@job)
+      result[:deployment_stages] = stages if @job.landed_sha.present? && stages
+      result
     end
 
     def workflows_payload
@@ -157,7 +160,7 @@ module App
         main_branch_repair: @job.main_branch_repair?,
         start_blocked_reason: job_start_blocked_reason,
         start_blocked_at: job_start_blocked_at
-      }
+      }.merge(deployment_stages_json)
     end
 
     def worker_health_job_correlation_json
@@ -180,6 +183,13 @@ module App
         landing_paused: repository.landing_paused?,
         repository_path: repository_path(repository)
       }
+    end
+
+    def deployment_stages_json
+      stages = App::DeploymentStagesPayload.for_job(@job)
+      return {} unless stages
+
+      { deployment_stages: stages }
     end
 
     def epic_json(epic)

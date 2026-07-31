@@ -181,6 +181,30 @@ describe("JobDetailView", () => {
     expect(screen.queryByRole("link", { name: "View in chat" })).not.toBeInTheDocument()
   })
 
+  it("renders configured deployment stages below the job state badge", () => {
+    const reachedAt = "2026-07-30T12:00:00Z"
+    renderJobDetail(jobPayload({
+      deployment_stages: [
+        { name: "staging", label: "On Staging", reached: true, reached_at: reachedAt, tag_sha: "tag-sha" },
+        { name: "production", label: "In Production", reached: false, reached_at: null, tag_sha: null },
+        { name: "public", label: "Released to Public", reached: false, reached_at: null, tag_sha: null }
+      ]
+    }))
+
+    const pipeline = screen.getByTestId("deployment-stage-pipeline")
+    expect(within(pipeline).getByText("On Staging")).toBeInTheDocument()
+    expect(within(pipeline).getByText("In Production")).toBeInTheDocument()
+    expect(within(pipeline).getByText("Released to Public")).toBeInTheDocument()
+    expect(pipeline.querySelector(`time[datetime="${reachedAt}"]`)).toBeInTheDocument()
+    expect(within(pipeline).getAllByText("Pending")).toHaveLength(2)
+  })
+
+  it("omits deployment stages when the payload does not include them", () => {
+    renderJobDetail(jobPayload())
+
+    expect(screen.queryByTestId("deployment-stage-pipeline")).not.toBeInTheDocument()
+  })
+
   it("skips workflows with null artifacts when rendering coverage", () => {
     renderJobDetail(jobPayload({
       workflows: [

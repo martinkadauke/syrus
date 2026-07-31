@@ -34,6 +34,43 @@ RSpec.describe App::JobDetailPayload do
       )
     end
 
+    it "includes configured deployment stage statuses in the Job detail shape" do
+      staging = SyrusYml::DeploymentStage.new(name: "staging", label: "Staging", tag: "staging", tag_pattern: nil)
+      production = SyrusYml::DeploymentStage.new(name: "production", label: "Production", tag: "production", tag_pattern: nil)
+      allow(RepoDeploymentStagesReader).to receive(:for_repository).with(repo).and_return(
+        RepoDeploymentStagesReader::Result.new(stages: [ staging, production ], source: ".syrus.yml", note: nil)
+      )
+      job = Factories.job_record(user: user, repository: repo, landed_sha: "merge-sha", state: "closed")
+      reached_at = Time.zone.parse("2026-07-30 12:00:00 UTC")
+      JobDeploymentStageStatus.create!(job: job, stage_name: "staging", reached_at: reached_at, tag_sha: "tag-sha")
+
+      expect(payload_for(job).dig(:job, :deployment_stages)).to eq([
+        {
+          name: "staging",
+          label: "Staging",
+          reached: true,
+          reached_at: reached_at.iso8601,
+          tag_sha: "tag-sha"
+        },
+        {
+          name: "production",
+          label: "Production",
+          reached: false,
+          reached_at: nil,
+          tag_sha: nil
+        }
+      ])
+    end
+
+    it "omits deployment stages when the repository has none configured" do
+      allow(RepoDeploymentStagesReader).to receive(:for_repository).with(repo).and_return(
+        RepoDeploymentStagesReader::Result.new(stages: [], source: "none", note: "no deployment_stages configured")
+      )
+      job = Factories.job_record(user: user, repository: repo)
+
+      expect(payload_for(job).fetch(:job)).not_to have_key(:deployment_stages)
+    end
+
     it "links a chat-created Job back to the proposal message" do
       chat = ChatSession.create!(user: user, repository: repo, title: "Release planning")
       job = Factories.job_record(user: user, repository: repo, kind: "direct", issue_number: nil, issue_title: "Map auth")
@@ -172,6 +209,49 @@ RSpec.describe App::JobDetailPayload do
       )
 
       expect(payload_for(job)[:origin_chat]).to be_nil
+    end
+  end
+
+  describe "#deployment_stages_json" do
+    let(:stages) do
+      [
+        SyrusYml::DeploymentStage.new(name: "staging", label: "On Staging", tag: "staging", tag_pattern: nil),
+        SyrusYml::DeploymentStage.new(name: "production", label: "In Production", tag: "production", tag_pattern: nil),
+        SyrusYml::DeploymentStage.new(name: "public", label: "Released to Public", tag: "release", tag_pattern: nil)
+      ]
+    end
+
+    before do
+      allow(RepoDeploymentStagesReader).to receive(:for_repository)
+        .with(repo)
+        .and_return(RepoDeploymentStagesReader::Result.new(stages: stages, source: ".syrus.yml", note: nil))
+    end
+
+    it "omits deployment stages when the job has not landed" do
+      job = Factories.job_record(repository: repo, landed_sha: nil)
+
+      expect(payload_for(job)).not_to have_key(:deployment_stages)
+    end
+
+    it "returns configured stages in order with reached timestamps" do
+      reached_at = Time.zone.parse("2026-07-30T12:00:00Z")
+      job = Factories.job_record(repository: repo, landed_sha: "abc123")
+      job.deployment_stage_statuses.create!(stage_name: "staging", reached_at: reached_at, tag_sha: "tagsha")
+
+      expect(payload_for(job)[:deployment_stages]).to eq([
+        { name: "staging", label: "On Staging", reached: true, reached_at: "2026-07-30T12:00:00Z", tag_sha: "tagsha" },
+        { name: "production", label: "In Production", reached: false, reached_at: nil, tag_sha: nil },
+        { name: "public", label: "Released to Public", reached: false, reached_at: nil, tag_sha: nil }
+      ])
+    end
+
+    it "omits deployment stages when the repository has no configured stages" do
+      job = Factories.job_record(repository: repo, landed_sha: "abc123")
+      allow(RepoDeploymentStagesReader).to receive(:for_repository)
+        .with(repo)
+        .and_return(RepoDeploymentStagesReader::Result.new(stages: [], source: ".syrus.yml", note: nil))
+
+      expect(payload_for(job)).not_to have_key(:deployment_stages)
     end
   end
 

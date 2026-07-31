@@ -112,6 +112,7 @@ export type JobRecord = {
   main_branch_repair: boolean
   start_blocked_reason: string | null
   start_blocked_at: string | null
+  deployment_stages?: JobDeploymentStage[]
 }
 
 export type WorkerHealthMetricSummary = {
@@ -618,9 +619,18 @@ export type JobDetailPayload = {
   landing_queue_entry: JobLandingQueueEntry | null
   workflows: JobWorkflow[]
   workflows_pagination: JobWorkflowsPagination
+  deployment_stages?: JobDeploymentStage[]
   feature_flags?: Record<string, boolean>
   actions: JobActions
   paths: JobPaths
+}
+
+export type JobDeploymentStage = {
+  name: string
+  label: string
+  reached: boolean
+  reached_at: string | null
+  tag_sha: string | null
 }
 
 export type JobWorkflowsPayload = Pick<JobDetailPayload, "job" | "workflows" | "workflows_pagination" | "feature_flags" | "actions" | "paths">
