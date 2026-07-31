@@ -124,3 +124,51 @@ remediation copy branches on deployment: single-host Docker (Compose / the
 desktop apps, detected via `SYRUS_SQLITE`) gets `docker image prune` guidance
 because the volume shares the Docker host's disk; K8s gets per-pod workspace and
 volume-resize guidance instead.
+
+## Worker host health history
+
+Worker heartbeats also write a bounded historical row to
+`worker_host_health_samples` for each worker host observation. The table is wide
+by design: hostname, role, version, observation time, CPU usage, load averages,
+memory usage, `SYRUS_DATA_ROOT` usage, Linux CPU pressure, Linux IO pressure,
+and a small `raw_metrics` JSON escape hatch for source/path metadata or future
+platform-specific fields.
+
+Sampling is best-effort and cheap. The heartbeat reuses the same `df` snapshot
+that updates `InstanceVersion`, reads lightweight Linux files under `/proc`, and
+swallows sampler failures so worker liveness is never destabilized by metrics.
+Rows are retained for `WorkerHostHealthSample::RETAIN_AFTER` (7 days, matching
+`RunHealthSnapshot::RETAIN_AFTER`) and pruned daily by
+`WorkerHostHealthSamplePruneJob`.
+The current admin overview, `/api/v1/admin/version`, and the admin queue
+workers payload include worker health snapshots alongside the existing
+data-root disk fields. The Workers tab (`/admin/queue/workers`) renders that
+payload inline as a per-host health dashboard using a shorter 6-hour default
+lookback for page load, with compact 15m/1h/6h trends and recent samples.
+Still-running stale worker instances stay in the dashboard even when they have
+no retained host-health sample, so operators can distinguish stale heartbeat
+from no-sample states. Disk alerts still come from the most-full worker's
+`InstanceVersion` reading so existing alert behavior is unchanged. For deeper
+inspection, `/api/v1/admin/worker_health` and `/api/v1/app/admin/worker_health`
+return live worker status plus compact 15m/1h/6h/24h summaries, recent
+samples, and bounded minute-resolution buckets. By default each host includes
+one bucket per minute for the last hour, ending at `until`; callers can increase
+that bounded minute window with `minute_bucket_window_minutes` up to 24 hours.
+Each bucket includes the minute timestamp, sample count, warning/critical
+counts, and max/avg summaries for CPU, load, memory, data-root disk, CPU
+pressure, and IO pressure. The payload can be filtered with `hostname`, `since`,
+`until`, `sample_limit_per_host`, and `minute_bucket_window_minutes`.
+
+Admin chat agents can call `read_worker_health` for the same payload. Use it
+when diagnosing pod-local pressure, recurring worker warnings, or failure
+patterns that may correlate with CPU, memory, disk, or IO pressure.
+
+Workflow and insight agents can call `read_run_worker_health` to correlate a
+specific Run with retained host samples. The tool uses
+`workflows.worker_hostname`, the Run's start/finish timestamps, related
+`SpawnedProcess` host metadata, and the Step kind to return a compact pressure
+summary plus optional raw samples. The Job detail payload also includes a
+recent-run aggregate, and each serialized Run includes its own compact
+correlation. Runs older than `WorkerHostHealthSample::RETAIN_AFTER` are marked
+`retention_limited`; missing hostnames or samples return `pressure.level:
+"unknown"` rather than treating the interval as healthy.

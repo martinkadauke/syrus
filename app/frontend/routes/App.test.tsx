@@ -2427,7 +2427,15 @@ describe("App", () => {
           provider_circuits: [],
           agent_session_capture_rate: { total: 3, captured: 3, rate: 1.0 },
           data_root_disk_usage: { path: "/syrus-home/.syrus", filesystem: "/dev/pvc", total_bytes: 100, used_bytes: 90, available_bytes: 10, used_percent: 90, mounted_on: "/syrus-home", observed_at: "2026-06-05T12:00:00Z", level: "warning" },
-          workers: { total: 1, stale: 0 },
+          workers: { total: 1, stale: 1 },
+          worker_health: {
+            generated_at: "2026-06-05T12:00:00Z",
+            range: { since: "2026-06-04T12:00:00Z", until: "2026-06-05T12:00:00Z" },
+            current_sample_window_seconds: 900,
+            minute_bucket: { granularity_seconds: 60, window_minutes: 60, max_window_minutes: 1440 },
+            current: [],
+            hosts: []
+          },
           recurring: { overdue: [] },
           stuck: [
             {
@@ -2477,6 +2485,7 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "Run #4 silent for 10m" })).toHaveAttribute("href", "/app-shell/jobs/1?tab=workflows#workflow-2")
       expect(screen.getByText("Data root disk")).toBeInTheDocument()
       expect(screen.getByText("90%")).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: /Workers/ })).toHaveClass("border-red-200")
       expect(screen.getByText("2")).toBeInTheDocument()
     } finally {
       script.remove()
@@ -5871,7 +5880,122 @@ describe("App", () => {
               pid: 101,
               last_heartbeat_at: "2026-05-30T12:00:00Z"
             }
-          ]
+          ],
+          worker_health: {
+            generated_at: "2026-05-30T12:02:00Z",
+            range: {
+              since: "2026-05-30T06:02:00Z",
+              until: "2026-05-30T12:02:00Z"
+            },
+            current_sample_window_seconds: 900,
+            current: [
+              {
+                id: 4,
+                hostname: "worker-a",
+                role: "worker",
+                version: "abc123",
+                started_at: "2026-05-30T11:00:00Z",
+                last_heartbeat_at: "2026-05-30T12:00:00Z",
+                seconds_since_heartbeat: 120,
+                stale: false,
+                health: { level: "ok", reasons: [] },
+                sample: {
+                  id: 7,
+                  hostname: "worker-a",
+                  role: "worker",
+                  version: "abc123",
+                  observed_at: "2026-05-30T12:01:00Z",
+                  cpu_used_percent: 25,
+                  load_1m: 1.2,
+                  load_5m: 1.1,
+                  load_15m: 1,
+                  memory_used_percent: 45,
+                  memory_available_bytes: 4294967296,
+                  memory_total_bytes: 8589934592,
+                  data_root_used_percent: 55,
+                  data_root_available_bytes: 10737418240,
+                  data_root_total_bytes: 21474836480,
+                  cpu_pressure_some: 3,
+                  cpu_pressure_full: null,
+                  io_pressure_some: 4,
+                  io_pressure_full: null,
+                  raw_metrics: {}
+                },
+                trend: {
+                  sample_count: 1,
+                  first_observed_at: "2026-05-30T12:01:00Z",
+                  last_observed_at: "2026-05-30T12:01:00Z",
+                  warning_count: 0,
+                  critical_count: 0
+                }
+              }
+            ],
+            hosts: [
+              {
+                hostname: "worker-a",
+                current: null,
+                windows: {
+                  "15m": {
+                    sample_count: 1,
+                    first_observed_at: "2026-05-30T12:01:00Z",
+                    last_observed_at: "2026-05-30T12:01:00Z",
+                    warning_count: 0,
+                    critical_count: 0,
+                    cpu_used_percent: { avg: 25, max: 25 },
+                    memory_used_percent: { avg: 45, max: 45 },
+                    data_root_used_percent: { avg: 55, max: 55 },
+                    load_1m: { avg: 1.2, max: 1.2 }
+                  },
+                  "1h": {
+                    sample_count: 1,
+                    first_observed_at: "2026-05-30T12:01:00Z",
+                    last_observed_at: "2026-05-30T12:01:00Z",
+                    warning_count: 0,
+                    critical_count: 0,
+                    cpu_used_percent: { avg: 25, max: 25 },
+                    memory_used_percent: { avg: 45, max: 45 },
+                    data_root_used_percent: { avg: 55, max: 55 },
+                    load_1m: { avg: 1.2, max: 1.2 }
+                  },
+                  "6h": {
+                    sample_count: 1,
+                    first_observed_at: "2026-05-30T12:01:00Z",
+                    last_observed_at: "2026-05-30T12:01:00Z",
+                    warning_count: 0,
+                    critical_count: 0,
+                    cpu_used_percent: { avg: 25, max: 25 },
+                    memory_used_percent: { avg: 45, max: 45 },
+                    data_root_used_percent: { avg: 55, max: 55 },
+                    load_1m: { avg: 1.2, max: 1.2 }
+                  }
+                },
+                recent_samples: [
+                  {
+                    id: 7,
+                    hostname: "worker-a",
+                    role: "worker",
+                    version: "abc123",
+                    observed_at: "2026-05-30T12:01:00Z",
+                    cpu_used_percent: 25,
+                    load_1m: 1.2,
+                    load_5m: 1.1,
+                    load_15m: 1,
+                    memory_used_percent: 45,
+                    memory_available_bytes: 4294967296,
+                    memory_total_bytes: 8589934592,
+                    data_root_used_percent: 55,
+                    data_root_available_bytes: 10737418240,
+                    data_root_total_bytes: 21474836480,
+                    cpu_pressure_some: 3,
+                    cpu_pressure_full: null,
+                    io_pressure_some: 4,
+                    io_pressure_full: null,
+                    raw_metrics: {}
+                  }
+                ]
+              }
+            ]
+          }
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       )
@@ -5886,9 +6010,16 @@ describe("App", () => {
     )
 
     expect(screen.getByRole("main", { name: "Admin queue" })).toBeInTheDocument()
-    expect(await screen.findAllByText("worker-a")).toHaveLength(2)
+    expect(await screen.findByText("Worker health")).toBeInTheDocument()
+    expect(screen.getAllByText("worker-a")).toHaveLength(3)
     expect(screen.getByText("runs")).toBeInTheDocument()
-    expect(screen.getByText("healthy")).toBeInTheDocument()
+    expect(screen.getAllByText("healthy").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("CPU pressure").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("IO pressure").length).toBeGreaterThan(0)
+    expect(screen.getByText("Memory available")).toBeInTheDocument()
+    expect(screen.getByText("Data root available")).toBeInTheDocument()
+    expect(screen.getByText("15m")).toBeInTheDocument()
+    expect(screen.getAllByText("avg 25% / max 25%").length).toBeGreaterThan(0)
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/admin/queue/workers",
       expect.objectContaining({

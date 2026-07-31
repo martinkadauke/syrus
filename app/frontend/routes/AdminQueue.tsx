@@ -27,7 +27,8 @@ import {
   type QueueTab,
   type QueueWorker,
   type RecurringQueuePayload,
-  type WorkersQueuePayload
+  type WorkersQueuePayload,
+  type WorkerHealthPayload
 } from "../api/adminQueue"
 
 
@@ -291,8 +292,148 @@ function RecurringTable({ tasks }: { tasks: QueueRecurringTask[] }) {
 function WorkersPanel({ payload }: { payload: WorkersQueuePayload }) {
   return (
     <div className="space-y-6 p-4">
+      {payload.worker_health ? <WorkerHealthPanel health={payload.worker_health} /> : null}
       <WorkerTable workers={payload.workers ?? []} />
       <ProcessTable processes={payload.all_processes ?? []} />
+    </div>
+  )
+}
+
+function WorkerHealthPanel({ health }: { health: WorkerHealthPayload }) {
+  const { t } = useT("admin")
+  const hosts = health.hosts ?? []
+
+  if (hosts.length === 0) return <PanelMessage>{t("queue.no_worker_health")}</PanelMessage>
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t("queue.worker_health")}</h2>
+        <span className="text-xs text-gray-500 dark:text-gray-400">{t("queue.worker_health_range", { since: formatRelativeDate(new Date(health.range.since)), minutes: health.minute_bucket?.window_minutes ?? 60 })}</span>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {hosts.map((host) => <WorkerHealthHostPanel host={host} key={host.hostname} />)}
+      </div>
+    </div>
+  )
+}
+
+function WorkerHealthHostPanel({ host }: { host: WorkerHealthPayload["hosts"][number] }) {
+  const { t } = useT("admin")
+  const current = host.current
+  const sample = current?.sample || host.recent_samples[0]
+  const level = current?.health.level || (sample ? "ok" : "unknown")
+  const oneHour = host.windows["1h"]
+  const minuteBuckets = host.minute_buckets ?? []
+
+  return (
+    <details className={`rounded border ${workerHealthBorder(level)} bg-white dark:bg-gray-900`} open={level === "critical" || level === "warning"}>
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-sm font-semibold text-gray-900 dark:text-gray-100">{host.hostname}</span>
+            <span className={`rounded px-2 py-0.5 text-xs font-medium ${workerHealthBadge(level)}`}>{workerHealthLabel(level, t)}</span>
+          </div>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{current?.health.reasons.length ? current.health.reasons.join("; ") : t("queue.worker_health_ok")}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-right text-xs sm:grid-cols-3 lg:grid-cols-6">
+          <HealthStat label={t("queue.metric_cpu")} value={formatPercent(sample?.cpu_used_percent)} />
+          <HealthStat label={t("queue.metric_load")} value={formatNumber(sample?.load_1m)} />
+          <HealthStat label={t("queue.metric_memory")} value={formatPercent(sample?.memory_used_percent)} />
+          <HealthStat label={t("queue.metric_disk")} value={formatPercent(sample?.data_root_used_percent)} />
+          <HealthStat label={t("queue.metric_cpu_pressure")} value={formatPercent(sample?.cpu_pressure_some)} />
+          <HealthStat label={t("queue.metric_io_pressure")} value={formatPercent(sample?.io_pressure_some)} />
+        </div>
+      </summary>
+      <div className="border-t border-gray-100 dark:border-gray-800 px-4 py-3">
+        <div className="grid gap-3 text-xs sm:grid-cols-3">
+          <HealthStat label={t("queue.col_version")} value={current?.version || sample?.version || "-"} />
+          <HealthStat label={t("queue.last_sample")} value={sample ? formatRelativeDate(new Date(sample.observed_at)) : "-"} />
+          <HealthStat label={t("queue.memory_available")} value={formatBytes(sample?.memory_available_bytes)} />
+          <HealthStat label={t("queue.data_root_available")} value={formatBytes(sample?.data_root_available_bytes)} />
+          <HealthStat label={t("queue.one_hour_max")} value={oneHour ? compactTrend(oneHour) : "-"} />
+        </div>
+        <WorkerHealthTrendTable windows={host.windows} />
+        {minuteBuckets.length > 0 ? (
+          <div className="mt-3 overflow-x-auto rounded border border-gray-200 dark:border-gray-700">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs">
+              <thead className="bg-gray-50 dark:bg-gray-800 text-left font-medium uppercase text-gray-500 dark:text-gray-400">
+                <tr>
+                  <th className="px-3 py-2">{t("queue.col_minute")}</th>
+                  <th className="px-3 py-2">{t("queue.col_samples")}</th>
+                  <th className="px-3 py-2">{t("queue.metric_cpu")}</th>
+                  <th className="px-3 py-2">{t("queue.metric_memory")}</th>
+                  <th className="px-3 py-2">{t("queue.metric_disk")}</th>
+                  <th className="px-3 py-2">{t("queue.metric_load")}</th>
+                  <th className="px-3 py-2">{t("queue.metric_cpu_pressure")}</th>
+                  <th className="px-3 py-2">{t("queue.metric_io_pressure")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {minuteBuckets.map((bucket) => (
+                  <tr key={bucket.minute}>
+                    <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{formatRelativeDate(new Date(bucket.minute))}</td>
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{bucket.sample_count}</td>
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatSummary(bucket.cpu_used_percent)}</td>
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatSummary(bucket.memory_used_percent)}</td>
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatSummary(bucket.data_root_used_percent)}</td>
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatSummary(bucket.load_1m, "number")}</td>
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatSummary(bucket.cpu_pressure_some)}</td>
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatSummary(bucket.io_pressure_some)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+    </details>
+  )
+}
+
+function WorkerHealthTrendTable({ windows }: { windows: WorkerHealthPayload["hosts"][number]["windows"] }) {
+  const { t } = useT("admin")
+  const rows = ["15m", "1h", "6h"].map((window) => [ window, windows[window] ] as const).filter(([, summary]) => summary)
+
+  if (rows.length === 0) return null
+
+  return (
+    <div className="mt-3 overflow-x-auto rounded border border-gray-200 dark:border-gray-700">
+      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs">
+        <thead className="bg-gray-50 dark:bg-gray-800 text-left font-medium uppercase text-gray-500 dark:text-gray-400">
+          <tr>
+            <th className="px-3 py-2">{t("queue.col_window")}</th>
+            <th className="px-3 py-2">{t("queue.col_samples")}</th>
+            <th className="px-3 py-2">{t("queue.metric_cpu")}</th>
+            <th className="px-3 py-2">{t("queue.metric_memory")}</th>
+            <th className="px-3 py-2">{t("queue.metric_disk")}</th>
+            <th className="px-3 py-2">{t("queue.metric_load")}</th>
+            <th className="px-3 py-2">{t("queue.col_alerts")}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          {rows.map(([window, summary]) => (
+            <tr key={window}>
+              <td className="px-3 py-2 font-mono text-gray-700 dark:text-gray-200">{window}</td>
+              <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{summary.sample_count}</td>
+              <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatSummary(summary.cpu_used_percent)}</td>
+              <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatSummary(summary.memory_used_percent)}</td>
+              <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatSummary(summary.data_root_used_percent)}</td>
+              <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{formatSummary(summary.load_1m, "number")}</td>
+              <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{summary.warning_count + summary.critical_count}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function HealthStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[11px] font-medium uppercase text-gray-500 dark:text-gray-400">{label}</div>
+      <div className="mt-0.5 font-mono text-gray-900 dark:text-gray-100">{value}</div>
     </div>
   )
 }
@@ -371,6 +512,70 @@ function QueueError({ error }: { error: Error }) {
   return <PanelMessage tone="error">{message}</PanelMessage>
 }
 
+function workerHealthBorder(level: string) {
+  if (level === "critical") return "border-red-300 dark:border-red-800"
+  if (level === "warning" || level === "unknown") return "border-amber-300 dark:border-amber-800"
+  return "border-emerald-200 dark:border-emerald-800"
+}
+
+function workerHealthBadge(level: string) {
+  if (level === "critical") return "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200"
+  if (level === "warning" || level === "unknown") return "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+  return "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+}
+
+function workerHealthLabel(level: string, t: (key: string) => string) {
+  if (level === "critical") return t("queue.worker_critical")
+  if (level === "warning") return t("queue.worker_warning")
+  if (level === "unknown") return t("queue.worker_unknown")
+  return t("queue.worker_healthy")
+}
+
+function compactTrend(summary: WorkerHealthPayload["hosts"][number]["windows"][string]) {
+  if (!summary || summary.sample_count === 0) return "-"
+  const cpu = summary.cpu_used_percent?.max
+  const mem = summary.memory_used_percent?.max
+  const disk = summary.data_root_used_percent?.max
+  const parts = [
+    cpu == null ? null : `CPU ${formatPercent(cpu)}`,
+    mem == null ? null : `Mem ${formatPercent(mem)}`,
+    disk == null ? null : `Disk ${formatPercent(disk)}`
+  ].filter(Boolean)
+
+  return parts.length > 0 ? parts.join(" / ") : `${summary.sample_count} samples`
+}
+
+function formatSummary(summary?: { avg: number; max: number } | null, kind: "percent" | "number" = "percent") {
+  if (!summary) return "-"
+  const formatter = kind === "percent" ? formatPercent : formatNumber
+
+  return `avg ${formatter(summary.avg)} / max ${formatter(summary.max)}`
+}
+
+function formatPercent(value?: number | null) {
+  if (value == null) return "-"
+  return `${Math.round(value * 10) / 10}%`
+}
+
+function formatNumber(value?: number | null) {
+  if (value == null) return "-"
+  return `${Math.round(value * 100) / 100}`
+}
+
+function formatBytes(value?: number | null) {
+  if (value == null) return "-"
+  const units = ["B", "KB", "MB", "GB", "TB"]
+  let size = value
+  let unitIndex = 0
+
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+
+  return `${Math.round(size * 10) / 10} ${units[unitIndex]}`
+}
+
 function formatQueues(queues: QueueWorker["queues"]) {
   if (Array.isArray(queues)) return queues.length > 0 ? queues.join(", ") : "-"
   if (typeof queues === "string") return queues.trim() || "-"
@@ -386,4 +591,3 @@ function formatArguments(value: unknown[] | null) {
 
   return JSON.stringify(value)
 }
-

@@ -21,6 +21,7 @@ RSpec.describe "SyrusChatMcp admin tools" do
     "admin_list_runs" => {},
     "admin_list_users" => {},
     "admin_version" => {},
+    "read_worker_health" => {},
     "admin_kill_process" => { process_id: 1 },
     "admin_reap_stale_runs" => {},
     "admin_pause_polling" => {},
@@ -271,6 +272,7 @@ RSpec.describe "SyrusChatMcp admin tools" do
     payload = payload_for(response)
 
     expect(payload).to include(:request_handler, :instances)
+    expect(payload).to include(:worker_health)
     expect(payload.fetch(:instances).first).to include(
       id: instance.id,
       hostname: "syrus-worker-a",
@@ -278,6 +280,89 @@ RSpec.describe "SyrusChatMcp admin tools" do
       version: "abc123",
       started_at: instance.started_at.iso8601
     )
+  end
+
+  it "returns worker health for admins with hostname filtering" do
+    InstanceVersion.create!(
+      hostname: "syrus-worker-a",
+      role: "worker",
+      version: "abc123",
+      started_at: 5.minutes.ago,
+      last_heartbeat_at: 10.seconds.ago
+    )
+    WorkerHostHealthSample.create!(
+      hostname: "syrus-worker-a",
+      role: "worker",
+      version: "abc123",
+      observed_at: 1.minute.ago,
+      cpu_used_percent: 99,
+      memory_used_percent: 70,
+      data_root_used_percent: 60
+    )
+
+    response = call_tool(admin_session, "read_worker_health", { hostname: "syrus-worker-a", sample_limit_per_host: 1 })
+    payload = payload_for(response)
+
+    expect(response.dig(:result, :isError)).to be_falsey
+    expect(payload.fetch(:current).first).to include(
+      hostname: "syrus-worker-a",
+      health: include(level: "critical")
+    )
+    expect(payload.dig(:hosts, 0, :recent_samples).length).to eq(1)
+  end
+
+  it "returns bounded minute worker health buckets through the MCP tool" do
+    travel_to Time.zone.parse("2026-07-31 12:30:30 UTC") do
+      InstanceVersion.create!(
+        hostname: "syrus-worker-a",
+        role: "worker",
+        version: "abc123",
+        started_at: 5.minutes.ago,
+        last_heartbeat_at: 10.seconds.ago
+      )
+      WorkerHostHealthSample.create!(
+        hostname: "syrus-worker-a",
+        role: "worker",
+        version: "abc123",
+        observed_at: Time.zone.parse("2026-07-31 12:30:05 UTC"),
+        cpu_used_percent: 40,
+        load_1m: 1.0,
+        memory_used_percent: 50,
+        data_root_used_percent: 60,
+        cpu_pressure_some: 7,
+        io_pressure_some: 8
+      )
+
+      response = call_tool(admin_session, "read_worker_health", {
+                             hostname: "syrus-worker-a",
+                             minute_bucket_window_minutes: 2,
+                             sample_limit_per_host: 0
+                           })
+      payload = payload_for(response)
+
+      expect(response.dig(:result, :isError)).to be_falsey
+      expect(payload.fetch(:minute_bucket)).to include(
+        granularity_seconds: 60,
+        window_minutes: 2,
+        max_window_minutes: 1440
+      )
+      expect(payload.dig(:hosts, 0, :recent_samples)).to eq([])
+      buckets = payload.dig(:hosts, 0, :minute_buckets)
+      expect(buckets.map { |bucket| bucket[:minute] }).to eq(
+        [
+          "2026-07-31T12:29:00Z",
+          "2026-07-31T12:30:00Z"
+        ]
+      )
+      expect(buckets.last).to include(
+        sample_count: 1,
+        cpu_used_percent: { avg: 40.0, max: 40.0 },
+        memory_used_percent: { avg: 50.0, max: 50.0 },
+        data_root_used_percent: { avg: 60.0, max: 60.0 },
+        cpu_pressure_some: { avg: 7.0, max: 7.0 },
+        io_pressure_some: { avg: 8.0, max: 8.0 }
+      )
+    end
   end
 
   def solid_queue_job(class_name:, queue_name:)

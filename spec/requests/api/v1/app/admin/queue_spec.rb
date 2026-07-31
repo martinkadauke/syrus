@@ -257,6 +257,25 @@ RSpec.describe "API: /api/v1/app/admin/queue/*", type: :request do
     sign_in_as(admin)
     solid_queue_process(hostname: "worker-a", pid: 101, metadata: { "queues" => "runs", "thread_pool_size" => 2 })
     solid_queue_process(kind: "Dispatcher", hostname: "dispatcher-a", pid: 202)
+    InstanceVersion.create!(hostname: "worker-a", role: "worker", version: "abc123",
+                            started_at: 5.minutes.ago, last_heartbeat_at: 10.seconds.ago)
+    WorkerHostHealthSample.create!(hostname: "worker-a", role: "worker", version: "abc123",
+                                   observed_at: 1.minute.ago,
+                                   cpu_used_percent: 20,
+                                   load_1m: 1.5,
+                                   memory_used_percent: 40,
+                                   memory_available_bytes: 4.gigabytes,
+                                   memory_total_bytes: 8.gigabytes,
+                                   data_root_used_percent: 50,
+                                   data_root_available_bytes: 10.gigabytes,
+                                   data_root_total_bytes: 20.gigabytes,
+                                   cpu_pressure_some: 3,
+                                   io_pressure_some: 4)
+    WorkerHostHealthSample.create!(hostname: "worker-a", role: "worker", version: "abc123",
+                                   observed_at: 12.hours.ago,
+                                   cpu_used_percent: 99,
+                                   memory_used_percent: 99,
+                                   data_root_used_percent: 99)
 
     get "/api/v1/app/admin/queue/workers"
 
@@ -270,6 +289,25 @@ RSpec.describe "API: /api/v1/app/admin/queue/*", type: :request do
       "stale" => false
     )
     expect(body["all_processes"].map { |process| process["kind"] }).to eq([ "Dispatcher", "Worker" ])
+    expect(body.dig("worker_health", "current", 0)).to include(
+      "hostname" => "worker-a",
+      "health" => include("level" => "ok")
+    )
+    expect(Time.iso8601(body.dig("worker_health", "range", "since"))).to be > 7.hours.ago
+    expect(body.dig("worker_health", "hosts", 0, "recent_samples").length).to eq(1)
+    expect(body.dig("worker_health", "hosts", 0, "recent_samples", 0)).to include(
+      "cpu_used_percent" => 20,
+      "load_1m" => 1.5,
+      "memory_available_bytes" => 4.gigabytes,
+      "data_root_available_bytes" => 10.gigabytes,
+      "cpu_pressure_some" => 3,
+      "io_pressure_some" => 4
+    )
+    expect(body.dig("worker_health", "hosts", 0, "windows", "6h")).to include(
+      "sample_count" => 1,
+      "cpu_used_percent" => include("max" => 20.0),
+      "io_pressure_some" => include("max" => 4.0)
+    )
   end
 
   it "runs ReapStaleRunsJob inline" do
