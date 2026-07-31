@@ -53,8 +53,8 @@ module App
         actions: actions_json,
         paths: paths_json
       }
-      stages = deployment_stages_json
-      result[:deployment_stages] = stages if stages
+      stages = App::DeploymentStagesPayload.for_job(@job)
+      result[:deployment_stages] = stages if @job.landed_sha.present? && stages
       result
     end
 
@@ -160,7 +160,7 @@ module App
         main_branch_repair: @job.main_branch_repair?,
         start_blocked_reason: job_start_blocked_reason,
         start_blocked_at: job_start_blocked_at
-      }
+      }.merge(deployment_stages_json)
     end
 
     def worker_health_job_correlation_json
@@ -183,6 +183,13 @@ module App
         landing_paused: repository.landing_paused?,
         repository_path: repository_path(repository)
       }
+    end
+
+    def deployment_stages_json
+      stages = App::DeploymentStagesPayload.for_job(@job)
+      return {} unless stages
+
+      { deployment_stages: stages }
     end
 
     def epic_json(epic)
@@ -271,23 +278,6 @@ module App
         created_at: iso8601(attachment.created_at),
         app_delete_path: "/api/v1/app/jobs/#{@job.id}/attachments/#{attachment.id}"
       }
-    end
-
-    def deployment_stages_json
-      return nil if @job.landed_sha.blank?
-
-      stages = RepoDeploymentStagesReader.for_repository(@job.repository).stages
-      return nil if stages.empty?
-
-      statuses = @job.deployment_stage_statuses.index_by(&:stage_name)
-      stages.map do |stage|
-        status = statuses[stage.name]
-        {
-          name: stage.name,
-          label: stage.label,
-          reached_at: iso8601(status&.reached_at)
-        }
-      end
     end
 
     def summary_json

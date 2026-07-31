@@ -1,5 +1,6 @@
 import { deleteJson, getJson, patchJson, postJson } from "./client"
 import type { DashboardGraphEdge, DashboardGraphNode } from "./dashboard"
+import type { JobDeploymentStage } from "./jobs"
 import type { ProviderAvailability } from "./providerAvailability"
 import type { RepositoryEpicDependencyPolicy } from "./repositories"
 
@@ -163,11 +164,13 @@ export type EpicDetailJob = {
   state: string
   agent_provider?: string | null
   provider_availability?: ProviderAvailability
+  landed: boolean
   pr_number: number | null
   pr_url: string | null
   owner_user_id: number | null
   owner_user: EpicOwnerUser | null
   repository_slug: string
+  deployment_stages?: JobDeploymentStage[]
 }
 
 export type EpicVersionRecord = {
