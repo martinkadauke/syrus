@@ -443,12 +443,49 @@ function publicCta(publicState: BootstrapPayload["public"], prefix: string, invi
 
 function renderAppRoutes(initialBootstrap: BootstrapPayload | null) {
   return appRouteDefinitions.flatMap(({ path, element }) => [
-    <Route element={<RouteErrorBoundary key={path}>{element}</RouteErrorBoundary>} key={path} path={path} />,
-    <Route element={<RouteErrorBoundary key={`/app-shell${path}`}>{element}</RouteErrorBoundary>} key={`/app-shell${path}`} path={`/app-shell${path}`} />
+    <Route element={<RouteErrorBoundary key={path}>{simpleModeRouteElement(path, element, initialBootstrap)}</RouteErrorBoundary>} key={path} path={path} />,
+    <Route element={<RouteErrorBoundary key={`/app-shell${path}`}>{simpleModeRouteElement(path, element, initialBootstrap)}</RouteErrorBoundary>} key={`/app-shell${path}`} path={`/app-shell${path}`} />
   ]).concat([
     <Route element={<OnboardingShell initialBootstrap={initialBootstrap} />} key="/onboarding" path="/onboarding" />,
     <Route element={<OnboardingShell initialBootstrap={initialBootstrap} />} key="/app-shell/onboarding" path="/app-shell/onboarding" />
   ])
+}
+
+const SIMPLE_MODE_HIDDEN_PATHS = [
+  "/dashboard/jobs",
+  "/dashboard/workflows",
+  "/jobs",
+  "/jobs/new",
+  "/jobs/:id",
+  "/jobs/:id/source",
+  "/scheduled_tasks",
+  "/scheduled_tasks/:id",
+  "/scheduled_tasks/:id/edit",
+  "/repositories/:repositoryId/scheduled_tasks",
+  "/repositories/:repositoryId/scheduled_tasks/new"
+]
+
+function simpleModeRouteElement(path: string, element: ReactNode, initialBootstrap: BootstrapPayload | null) {
+  if (!SIMPLE_MODE_HIDDEN_PATHS.includes(path)) return element
+
+  return <SimpleModeRedirect initialBootstrap={initialBootstrap}>{element}</SimpleModeRedirect>
+}
+
+function SimpleModeRedirect({ children, initialBootstrap }: { children: ReactNode; initialBootstrap: BootstrapPayload | null }) {
+  const location = useLocation()
+  const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
+  const bootstrap = useQuery({
+    queryKey: ["bootstrap"],
+    queryFn: fetchBootstrap,
+    initialData: initialBootstrap ?? undefined,
+    staleTime: initialBootstrap ? Number.POSITIVE_INFINITY : 0
+  })
+
+  if ((bootstrap.data ?? initialBootstrap)?.app?.mode === "simple") {
+    return <Navigate replace to={`${prefix}/dashboard/epics`} />
+  }
+
+  return children
 }
 
 // /setup is retired — it now just lands the operator on the onboarding page.
