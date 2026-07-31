@@ -380,7 +380,7 @@ class RepositoryThroughputMetricContract
       Step.joins(workflow: :job).where(jobs: { repository_id: repository.id }).maximum(:finished_at),
       Workflow.joins(:job).where(jobs: { repository_id: repository.id }).maximum(:finished_at),
       PrReviewComment.joins(:job).where(jobs: { repository_id: repository.id }).maximum(:comment_created_at),
-    MergeTrain.where(repository_id: repository.id).maximum(:finished_at)
+      MergeTrain.where(repository_id: repository.id).maximum(:finished_at)
     ].compact.max || now
 
     (active_at - LAST_ACTIVE_WINDOW_DURATION)..active_at
