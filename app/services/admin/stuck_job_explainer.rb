@@ -15,6 +15,8 @@ module Admin
     def call
       payload = {
         job: job_payload,
+        stuck: stuck_items.any?,
+        issues: issues_payload,
         stuck_list: stuck_list_payload,
         workflows: workflows_payload,
         runs: runs_payload,
@@ -22,8 +24,6 @@ module Admin
         landing: landing_payload,
         empty_reconciliation: empty_reconciliation_payload
       }
-      payload[:stuck] = payload.dig(:stuck_list, :listed)
-      payload[:issues] = payload.dig(:stuck_list, :items)
       payload[:recommended_action] = recommended_action(payload)
       payload[:human_summary] = human_summary(payload)
       payload
@@ -53,10 +53,9 @@ module Admin
     end
 
     def stuck_list_payload
-      items = Admin::StuckItems.all.select { |item| item.job&.id == job.id }
       {
-        listed: items.any?,
-        items: items.map do |item|
+        listed: stuck_items.any?,
+        items: stuck_items.map do |item|
           {
             kind: item.kind.to_s,
             severity: item.severity.to_s,
@@ -68,6 +67,16 @@ module Admin
           }
         end
       }
+    end
+
+    def issues_payload
+      stuck_items.map do |item|
+        Admin::StuckItemPayload.serialize(item: item, include_actions: false)
+      end
+    end
+
+    def stuck_items
+      @stuck_items ||= Admin::StuckItems.for_job(job)
     end
 
     def workflows_payload
@@ -164,7 +173,7 @@ module Admin
         state: run.state,
         last_signal_at: last_signal&.iso8601,
         silent_for_seconds: last_signal ? (Time.current - last_signal).to_i : nil,
-        stale_for_admin: last_signal.present? && last_signal < WorkEngine::Reconciler::ORPHAN_RUN_GRACE_PERIOD.ago,
+        stale_for_admin: last_signal.present? && last_signal < Run::STALE_HEARTBEAT_THRESHOLD.ago,
         past_reaper_threshold: last_signal.present? && last_signal < Run::STALE_HEARTBEAT_THRESHOLD.ago
       }
     end
