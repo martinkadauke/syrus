@@ -53,3 +53,28 @@ Adds subtle motion-safe chat animations: new messages fade in, the jump-to-botto
 **Category:** Operations
 
 Records structured slow-request, SQL query, and phase-timing events to logs and a short-lived admin diagnostics buffer. Useful for profiling production performance. No user-facing impact.
+
+## unified_work_engine_reconciler
+
+**Category:** Operations
+
+Makes the unified work-engine reconciler authoritative for work-state recovery.
+
+Default is **off**, which preserves the legacy engine: `ReapStaleRunsJob`,
+`AutoRetryScheduler`, `ReconcileJobStatesJob`, and the existing admin stuck
+detection/reaper action continue to run through their current mutation paths.
+
+When enabled, legacy disconnected fixers do not independently mutate work
+state. The stale-run reaper, auto-retry scheduler, Job-state reconciler, and
+manual admin reap action defer to `WorkEngine::Reconciler` through
+`WorkEngine::ReconcileJob` instead, so unified reconciliation is the single
+authority for classifying and repairing split-brain work state.
+
+Diagnostic reconciler calls remain read-only by default. The feature-gated
+recurring repair path executes only repair plans marked `auto_executable`, and
+audits each action to system logs plus `JobLog` when a Run is available. See
+`work_engine_reconciler.md` for the issue families, result shape, and execution
+contract. Admin stuck visibility and the structured `explain_stuck_job` chat
+tool use the reconciler's read-only classifications and repair plans so
+operators see the same reason, wait/repair/operator status, and evidence that
+the repair loop uses.

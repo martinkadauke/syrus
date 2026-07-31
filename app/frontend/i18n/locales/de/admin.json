@@ -141,6 +141,10 @@
       "agent_insights": {
         "name": "Agenten-Einblicke",
         "description": "Aktiviert Agenten-Einblick-Analysejobs, die aktuelle Workflow-Ausführungen untersuchen und Verbesserungsvorschläge aufzeigen."
+      },
+      "unified_work_engine_reconciler": {
+        "name": "Einheitlicher Work-Engine-Reconciler",
+        "description": "Macht den einheitlichen Work-Engine-Reconciler zur Autorität für die Wiederherstellung von Arbeitszuständen. Wenn aktiviert, delegieren Legacy-Reaper und Auto-Retry-Fixer, statt Zustand unabhängig zu ändern."
       }
     }
   },
@@ -266,11 +270,16 @@
     "refresh": "Aktualisieren",
     "refreshing": "Wird aktualisiert...",
     "col_severity": "Schwere",
+    "col_status": "Status",
     "col_kind": "Art",
     "col_detail": "Einzelheit",
     "col_context": "Lauf / Schritt / Arbeitsablauf",
     "col_age": "Alter",
     "col_links": "Verweise",
+    "status_auto_repairable": "Automatisch reparierbar",
+    "status_operator_action_required": "Operator erforderlich",
+    "status_repaired": "Repariert",
+    "status_waiting": "Wartet",
     "force_fail": "Fehlschlagen erzwingen",
     "force_failing": "Schlägt fehl...",
     "force_fail_error": "Job konnte nicht zwangsweise als fehlgeschlagen markiert werden."

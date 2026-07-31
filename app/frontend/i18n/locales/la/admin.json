@@ -141,6 +141,10 @@
       "agent_insights": {
         "name": "Perspectus Agentis",
         "description": "Opera analytica perspectuum agentis activat quae cursus recentes operis inspiciunt et suggestiones meliorationis exhibent."
+      },
+      "unified_work_engine_reconciler": {
+        "name": "Reconciliator Operis Unificatus",
+        "description": "Reconciliatorem unificatum facit auctoritatem status operis reparandi. Si activatus est, reparatores veteres rem delegant nec statum separatim mutant."
       }
     }
   },
@@ -266,11 +270,16 @@
     "refresh": "Renovare",
     "refreshing": "Renovans...",
     "col_severity": "Gravitas",
+    "col_status": "Status",
     "col_kind": "Genus",
     "col_detail": "Detailum",
     "col_context": "Cursus / Gradus / Processus",
     "col_age": "Aetas",
     "col_links": "Nexus",
+    "status_auto_repairable": "Reparabile automatice",
+    "status_operator_action_required": "Operator necessarius",
+    "status_repaired": "Reparatum",
+    "status_waiting": "Exspectans",
     "force_fail": "Deficere cogere",
     "force_failing": "Deficiens...",
     "force_fail_error": "Opus cogendo deficere non potuit."

@@ -141,6 +141,10 @@
       "agent_insights": {
         "name": "Agent Insights",
         "description": "Enables agent insight analysis jobs that inspect recent workflow runs and surface improvement suggestions."
+      },
+      "unified_work_engine_reconciler": {
+        "name": "Unified work-engine reconciler",
+        "description": "Makes the unified work-engine reconciler authoritative for work-state recovery. When enabled, legacy reapers and auto-retry fixers defer instead of mutating state independently."
       }
     }
   },
@@ -266,11 +270,16 @@
     "refresh": "Refresh",
     "refreshing": "Refreshing...",
     "col_severity": "Severity",
+    "col_status": "Status",
     "col_kind": "Kind",
     "col_detail": "Detail",
     "col_context": "Run / Step / Workflow",
     "col_age": "Age",
     "col_links": "Links",
+    "status_auto_repairable": "Auto repairable",
+    "status_operator_action_required": "Operator needed",
+    "status_repaired": "Repaired",
+    "status_waiting": "Waiting",
     "force_fail": "Force fail",
     "force_failing": "Failing...",
     "force_fail_error": "Unable to force fail job."
