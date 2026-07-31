@@ -258,7 +258,7 @@ class Epic < ApplicationRecord
   # Historical compatibility hook. Syrus used to create a standalone
   # reconciliation Job when an Epic entered :in_progress; new Epics reconcile
   # inside merge-train landing after the integration branch is built.
-  def maybe_create_reconciliation_job!
+  def maybe_create_reconciliation_job!(raise_on_invalid_graph: true)
     false
   end
 
