@@ -255,34 +255,11 @@ class Epic < ApplicationRecord
     EpicDependencyPolicy::Base.for(epic_dependency_policy).resolve(self)
   end
 
-  # Creates a reconciliation Job if the Epic is in_progress, has 2+ work
-  # jobs, and reconciliation mode is not "none". Idempotent — returns early
-  # if a reconciliation job already exists.
-  def maybe_create_reconciliation_job!(raise_on_invalid_graph: true)
-    return if @creating_reconciliation_job
-    return if reconciliation_job_id.present?
-    return unless in_progress?
-    return if work_jobs.count < 2
-    return if work_jobs.where(state: "blocked_by_epic").exists?
-    return if resolved_reconciliation_mode == "none"
-
-    @creating_reconciliation_job = true
-    # Use a fresh locked query instead of with_lock so this method is safe
-    # to call even when self has unsaved changes (e.g. from an AASM after: callback).
-    transaction do
-      fresh = self.class.lock.find(id)
-      return if fresh.reconciliation_job_id.present?
-
-      begin
-        create_reconciliation_job!(work_jobs.order(:id).to_a)
-      rescue ArgumentError
-        raise if raise_on_invalid_graph
-
-        false
-      end
-    end
-  ensure
-    @creating_reconciliation_job = nil
+  # Historical compatibility hook. Syrus used to create a standalone
+  # reconciliation Job when an Epic entered :in_progress; new Epics reconcile
+  # inside merge-train landing after the integration branch is built.
+  def maybe_create_reconciliation_job!
+    false
   end
 
   # Clears reconciliation_job_id if the linked reconciliation Job has closed.
@@ -471,45 +448,6 @@ class Epic < ApplicationRecord
   end
 
   private
-
-  def create_reconciliation_job!(sibling_jobs)
-    reconciliation_dependency_jobs = EpicDependencyPolicy::Base.for(epic_dependency_policy).reconciliation_dependency_jobs(self, sibling_jobs)
-    return if reconciliation_dependency_jobs.empty?
-
-    prompt = Prompts::EpicReconciliation.new(
-      epic: self,
-      jobs: sibling_jobs,
-      reconciliation_mode: resolved_reconciliation_mode
-    ).to_s
-
-    recon_job = user.jobs.create!(
-      repository: repository,
-      kind: "direct",
-      epic: self,
-      issue_title: "Reconciliation: #{title}",
-      issue_body: prompt,
-      agent_provider: repository.effective_agent_provider,
-      priority: "medium",
-      state: "triaging"
-    )
-
-    reconciliation_dependency_jobs.each do |sibling|
-      recon_job.dependencies.create!(
-        depends_on_job: sibling,
-        source: "manual",
-        created_by_user: user
-      )
-    end
-
-    # Set reconciliation_job_id BEFORE advancing triage so any callback
-    # re-entering maybe_create_reconciliation_job! sees the field set and
-    # returns early, preventing duplicate reconciliation jobs.
-    update!(reconciliation_job_id: recon_job.id)
-
-    recon_job.advance_after_triage! if recon_job.may_advance_after_triage?
-
-    recon_job
-  end
 
   def start_implementing_block_reason(actor)
     actor_user = epic_advancement_actor(actor)

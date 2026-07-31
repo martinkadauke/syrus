@@ -122,22 +122,6 @@ the proposal used the explicit nonlinear override.
 
 ### Epic reconciliation
 
-When an Epic goes `in_progress` with two or more child Jobs, Syrus can
-automatically create a **reconciliation Job** — a synthesizing review that
-checks all sibling changes together for consistency, naming conflicts, shared
-migration issues, and cross-cutting concerns that per-Job review may miss.
-
-For linear Epics, the reconciliation Job depends only on the final child Job
-in the stack, preserving the single-parent branch chain. For explicit
-nonlinear Epics, it depends on every sibling Job. In both cases it holds
-siblings from landing until it finishes; once it closes, sibling Jobs proceed
-to the landing queue normally.
-
-If reconciliation finds no additional patch beyond the effective stack parent,
-Syrus closes the reconciliation Job successfully as `no_changes` instead of
-opening a duplicate PR. The Job detail page keeps the reconciliation summary,
-test plan, and a no-PR explanation for review.
-
 When merge trains are enabled, approved child Jobs land atomically only after
 the Epic has released its children and all open siblings are approved. Children
 blocked by an upstream Epic dependency stay in the queue with a
@@ -148,11 +132,14 @@ landing. A no-diff reconciliation continues normally; focused fixes are
 committed to the integration branch and still pass the normal gates before
 the Epic lands.
 
-Reconciliation is configured via `reconciliation_mode` in `.syrus.yml` or
-per-Epic:
+New Epics no longer create a standalone `Reconciliation: ...` child Job just
+to review sibling consistency. Existing historical reconciliation Jobs remain
+readable and can still close through the successful `no_changes` path when
+they produce no patch.
 
-- `pr` (default) — create a reconciliation Job before landing.
-- `none` — skip reconciliation; siblings land independently.
+The legacy `reconciliation_mode` setting is retained for compatibility with
+older standalone reconciliation Jobs, but current Epics reconcile during
+merge-train landing after the integration branch is built.
 
 Chats can propose Epics or propose an Epic with child Jobs, including
 Epic-level dependencies on existing Epics or other chat Epic proposals. Chat
