@@ -35,10 +35,12 @@ function detailPayload(overrides: Partial<EpicDetailPayload["epic"]> = {}): Epic
       owner_user_id: null,
       owner_status: "unclaimed",
       owner_user: null,
-      repository: { id: 1, slug: "acme/widgets", repository_path: "/repositories/1" },
+      repository: { id: 1, slug: "acme/widgets", repository_path: "/repositories/1", epic_dependency_policy: "linear" },
       max_commits_behind_base: null,
       furthest_behind_job_id: null,
       furthest_behind_job_path: null,
+      epic_dependency_policy: "inherit",
+      resolved_epic_dependency_policy: "linear",
       ...overrides
     },
     summary: { done_jobs_count: 0, total_jobs_count: 0, dependency_edge_count: 0, blocked: false, blocked_reason: null },
@@ -88,6 +90,27 @@ describe("EpicDetail origin_chat link", () => {
     renderDetail(detailPayload())
 
     expect(screen.queryByRole("link", { name: /view in chat/i })).not.toBeInTheDocument()
+  })
+
+  it("renders the effective dependency policy and repository default", () => {
+    renderDetail(detailPayload({
+      epic_dependency_policy: "inherit",
+      resolved_epic_dependency_policy: "linear",
+      repository: { id: 1, slug: "acme/widgets", repository_path: "/repositories/1", epic_dependency_policy: "linear" }
+    }))
+
+    expect(screen.getByText("Dependency policy")).toBeInTheDocument()
+    expect(screen.getByText("Linear (repository default: Linear)")).toBeInTheDocument()
+  })
+
+  it("renders an explicit Epic dependency-policy override", () => {
+    renderDetail(detailPayload({
+      epic_dependency_policy: "nonlinear",
+      resolved_epic_dependency_policy: "nonlinear",
+      repository: { id: 1, slug: "acme/widgets", repository_path: "/repositories/1", epic_dependency_policy: "linear" }
+    }))
+
+    expect(screen.getByText("Nonlinear (Epic override)")).toBeInTheDocument()
   })
 })
 

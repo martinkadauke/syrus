@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_31_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_31_124500) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -242,6 +242,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_31_120000) do
     t.string "kind", default: "syrus_issue", null: false
     t.string "labels"
     t.json "media_ids", null: false
+    t.boolean "nonlinear_dependency_override", default: false, null: false
     t.integer "parent_proposal_id"
     t.datetime "rejected_at"
     t.integer "repository_id"
@@ -467,6 +468,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_31_120000) do
     t.datetime "created_at", null: false
     t.text "description"
     t.datetime "done_at"
+    t.string "epic_dependency_policy", default: "inherit", null: false
     t.string "github_issue_url"
     t.integer "number", null: false
     t.integer "owner_id"
@@ -982,6 +984,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_31_120000) do
     t.string "ci_health", default: "unknown", null: false
     t.datetime "created_at", null: false
     t.string "default_branch", default: "main", null: false
+    t.string "epic_dependency_policy", default: "linear", null: false
     t.string "feedback_policy", default: "confirm", null: false
     t.boolean "fork_auto_sync_enabled", default: false, null: false
     t.integer "fork_pr_grace_period_hours", default: 24, null: false

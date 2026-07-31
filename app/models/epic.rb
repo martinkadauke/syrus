@@ -13,6 +13,7 @@ class Epic < ApplicationRecord
   MERGED_JOB_CLOSURE_REASONS = %w[ pr_merged external_pr_merged ].freeze
   SUCCESSFUL_JOB_CLOSURE_REASONS = (MERGED_JOB_CLOSURE_REASONS + %w[ no_changes ]).freeze
   RECONCILIATION_MODES = %w[ pr feedback none ].freeze
+  EPIC_DEPENDENCY_POLICIES = %w[ inherit linear nonlinear ].freeze
 
   attr_readonly :number
 
@@ -39,6 +40,7 @@ class Epic < ApplicationRecord
   validates :number, presence: true, numericality: { only_integer: true, greater_than: 0 }, uniqueness: true
   validates :title, presence: true
   validates :state, presence: true, inclusion: { in: STATES }
+  validates :epic_dependency_policy, presence: true, inclusion: { in: EPIC_DEPENDENCY_POLICIES }
   validate :user_is_repository_member
 
   after_initialize :default_pending_epic_dependency_refs
@@ -247,13 +249,21 @@ class Epic < ApplicationRecord
     RepoReconciliationPlan.for_epic(self).mode
   end
 
+  def resolved_epic_dependency_policy
+    return nil unless repository
+
+    EpicDependencyPolicy::Base.for(epic_dependency_policy).resolve(self)
+  end
+
   # Creates a reconciliation Job if the Epic is in_progress, has 2+ work
   # jobs, and reconciliation mode is not "none". Idempotent — returns early
   # if a reconciliation job already exists.
-  def maybe_create_reconciliation_job!
+  def maybe_create_reconciliation_job!(raise_on_invalid_graph: true)
     return if @creating_reconciliation_job
     return if reconciliation_job_id.present?
+    return unless in_progress?
     return if work_jobs.count < 2
+    return if work_jobs.where(state: "blocked_by_epic").exists?
     return if resolved_reconciliation_mode == "none"
 
     @creating_reconciliation_job = true
@@ -263,7 +273,13 @@ class Epic < ApplicationRecord
       fresh = self.class.lock.find(id)
       return if fresh.reconciliation_job_id.present?
 
-      create_reconciliation_job!(work_jobs.order(:id).to_a)
+      begin
+        create_reconciliation_job!(work_jobs.order(:id).to_a)
+      rescue ArgumentError
+        raise if raise_on_invalid_graph
+
+        false
+      end
     end
   ensure
     @creating_reconciliation_job = nil
@@ -286,7 +302,7 @@ class Epic < ApplicationRecord
     elsif in_progress?
       released = release_child_jobs_if_ready!
       cleared = clear_reconciliation_job_if_closed!
-      maybe_create_reconciliation_job! unless cleared
+      maybe_create_reconciliation_job!(raise_on_invalid_graph: false) unless cleared
       return auto_complete! if may_auto_complete?
 
       dependent_epics.find_each(&:refresh_auto_state!) if fully_approved?
@@ -457,6 +473,9 @@ class Epic < ApplicationRecord
   private
 
   def create_reconciliation_job!(sibling_jobs)
+    reconciliation_dependency_jobs = EpicDependencyPolicy::Base.for(epic_dependency_policy).reconciliation_dependency_jobs(self, sibling_jobs)
+    return if reconciliation_dependency_jobs.empty?
+
     prompt = Prompts::EpicReconciliation.new(
       epic: self,
       jobs: sibling_jobs,
@@ -474,7 +493,7 @@ class Epic < ApplicationRecord
       state: "triaging"
     )
 
-    sibling_jobs.each do |sibling|
+    reconciliation_dependency_jobs.each do |sibling|
       recon_job.dependencies.create!(
         depends_on_job: sibling,
         source: "manual",

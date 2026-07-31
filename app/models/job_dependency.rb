@@ -15,6 +15,7 @@ class JobDependency < ApplicationRecord
   validate :pending_fields_consistent
 
   after_save_commit :materialize_derived_epic_dependency, if: :depends_on_job_id?
+  after_save_commit :refresh_same_epic_reconciliation, if: :same_epic_job_dependency?
 
   scope :resolved, -> { where.not(depends_on_job_id: nil) }
   scope :pending, -> { where(depends_on_job_id: nil, depends_on_epic_id: nil) }
@@ -39,6 +40,10 @@ class JobDependency < ApplicationRecord
     return resolved_dependency_succeeded? if resolved?
 
     referenced_epic&.done? == true
+  end
+
+  def execution_dependency_satisfied?
+    dependency_succeeded? || same_epic_dependency_ready_for_execution?
   end
 
   def referenced_epic
@@ -78,6 +83,16 @@ class JobDependency < ApplicationRecord
     return false unless depends_on_job&.epic_id == job.epic_id
 
     depends_on_job.approved? || depends_on_job.landing?
+  end
+
+  def same_epic_dependency_ready_for_execution?
+    return false if job&.epic_id.blank?
+    return false unless depends_on_job&.epic_id == job.epic_id
+
+    depends_on_job.implemented? &&
+      depends_on_job.pr_number.present? &&
+      depends_on_job.branch_name.present? &&
+      depends_on_job.head_sha.present?
   end
 
   def unresolved_github_issue_url
@@ -141,6 +156,14 @@ class JobDependency < ApplicationRecord
       depends_on_epic: upstream_epic,
       derived: true
     )
+  end
+
+  def refresh_same_epic_reconciliation
+    job.epic.maybe_create_reconciliation_job!(raise_on_invalid_graph: false)
+  end
+
+  def same_epic_job_dependency?
+    job&.epic_id.present? && depends_on_job&.epic_id == job.epic_id
   end
 
   def unresolved_reference_present?

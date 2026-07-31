@@ -41,6 +41,7 @@ export function ProposalEditModal({ chatId, proposal, search, queryKey, onClose,
   const [proposalDeps, setProposalDeps] = useState<DependencyPill[]>(initialProposalDependencyPills(proposal))
   const [jobDeps, setJobDeps] = useState<DependencyPill[]>((proposal.depends_on_job_ids || []).map((id) => ({ key: String(id), label: `JOB-${id}` })))
   const [epicDeps, setEpicDeps] = useState<DependencyPill[]>((proposal.depends_on_epic_ids || []).map((id) => ({ key: String(id), label: `EPIC-${id}` })))
+  const [nonlinearDependencyOverride, setNonlinearDependencyOverride] = useState(Boolean(proposal.nonlinear_dependency_override))
   const [proposalQuery, setProposalQuery] = useState("")
   const [jobQuery, setJobQuery] = useState("")
   const [epicQuery, setEpicQuery] = useState("")
@@ -57,7 +58,8 @@ export function ProposalEditModal({ chatId, proposal, search, queryKey, onClose,
       body,
       dependency_slugs: proposalDeps.map((dep) => dep.key),
       depends_on_job_ids: jobDeps.map((dep) => Number(dep.key)).filter((id) => Number.isFinite(id)),
-      depends_on_epic_ids: epicDeps.map((dep) => Number(dep.key)).filter((id) => Number.isFinite(id))
+      depends_on_epic_ids: epicDeps.map((dep) => Number(dep.key)).filter((id) => Number.isFinite(id)),
+      nonlinear_dependency_override: nonlinearDependencyOverride
     }),
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
@@ -155,6 +157,22 @@ export function ProposalEditModal({ chatId, proposal, search, queryKey, onClose,
                 setSelected={setEpicDeps}
               />
             </div>
+            {proposal.epic_bundle ? (
+              <label className="block rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-100">
+                <span className="flex items-start gap-2 font-medium">
+                  <input
+                    checked={nonlinearDependencyOverride}
+                    className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-700 focus:ring-amber-500 dark:border-amber-700"
+                    onChange={(event) => setNonlinearDependencyOverride(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>{t("nonlinear_override_label")}</span>
+                </span>
+                <span className="mt-1 block pl-6 text-xs text-amber-900 dark:text-amber-100">
+                  {t("nonlinear_override_help")}
+                </span>
+              </label>
+            ) : null}
           </div>
           <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-4 dark:border-gray-800">
             <button className={secondaryButton()} onClick={onClose} type="button">{t("cancel")}</button>
@@ -272,6 +290,7 @@ export function ProposalCard({ proposal, prefix, queryKey, onNotice }: { proposa
                 <span className="rounded bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-200">{proposal.epic_bundle ? "Epic" : proposal.kind_label}</span>
                 <span className={`rounded px-2 py-0.5 text-xs font-medium ${proposal.proposed ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-200" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>{proposal.state_label}</span>
                 {proposal.epic_bundle ? <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">{proposal.active_children_count || 0} child Jobs</span> : null}
+                {proposal.epic_bundle && proposal.nonlinear_dependency_override ? <span className="rounded bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">{t("nonlinear_override_badge")}</span> : null}
               </div>
               {proposal.proposed ? <ProposalEditButton label={`Edit ${proposal.slug}`} onClick={() => setEditingProposal(proposal)} /> : null}
             </div>
@@ -283,6 +302,11 @@ export function ProposalCard({ proposal, prefix, queryKey, onNotice }: { proposa
       body={
         <>
           <Markdown className="chat-prose text-sm text-gray-800 dark:text-gray-100" text={proposal.body} />
+          {proposal.epic_bundle && proposal.nonlinear_dependency_override ? (
+            <p className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-100">
+              {t("nonlinear_override_notice")}
+            </p>
+          ) : null}
           {proposal.epic_bundle ? <ProposalChildren children={proposal.children || []} parentProposed={proposal.proposed} mutation={proposalAction} prefix={prefix} onEdit={(child) => setEditingProposal(editableChildProposal(child))} /> : <ProposalMeta proposal={proposal} />}
         </>
       }

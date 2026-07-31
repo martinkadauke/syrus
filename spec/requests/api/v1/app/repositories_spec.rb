@@ -162,10 +162,12 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body.dig("repository", "upstream_default_branch")).to eq("")
     expect(body.dig("repository", "trigger_label")).to eq("syrus")
     expect(body.dig("repository", "polling_enabled")).to eq(true)
+    expect(body.dig("repository", "epic_dependency_policy")).to eq("linear")
     expect(body.dig("repository", "main_branch_health_enabled")).to eq(true)
     expect(body.dig("repository", "main_branch_repair_enabled")).to eq(true)
     expect(body.dig("repository", "main_branch_repair_auto_approve")).to eq(false)
     expect(body.dig("repository", "treat_grader_timeouts_as_failures")).to eq(false)
+    expect(body.dig("repository", "epic_dependency_policy")).to eq("linear")
     expect(body["configured_agent_providers"]).to include(
       { "value" => "codex", "label" => "Codex" },
       { "value" => "claude", "label" => "Claude Code" }
@@ -195,6 +197,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       treat_grader_timeouts_as_failures: true,
       agent_provider: "codex",
       auto_approve_mode: "if_graders_pass",
+      epic_dependency_policy: "nonlinear",
       github_owner_id: 123,
       github_repository_id: 456
     )
@@ -222,6 +225,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       "treat_grader_timeouts_as_failures" => true,
       "agent_provider" => "codex",
       "auto_approve_mode" => "if_graders_pass",
+      "epic_dependency_policy" => "nonlinear",
       "github_owner_id" => 123,
       "github_repository_id" => 456,
       "repository_path" => repository_path(repository)
@@ -559,6 +563,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
           treat_grader_timeouts_as_failures: "1",
           agent_provider: "codex",
           auto_approve_mode: "if_graders_pass",
+          epic_dependency_policy: "nonlinear",
           github_owner_id: "123",
           github_repository_id: "456"
         }
@@ -580,6 +585,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(repository.treat_grader_timeouts_as_failures).to eq(true)
     expect(repository.agent_provider).to eq("codex")
     expect(repository.auto_approve_mode).to eq("if_graders_pass")
+    expect(repository.epic_dependency_policy).to eq("nonlinear")
     expect(repository.github_owner_id).to eq(123)
     expect(repository.github_repository_id).to eq(456)
     expect(parse_body).to include("message" => "Repository acme/widgets added.", "redirect_to" => repositories_path)
@@ -675,6 +681,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
         treat_grader_timeouts_as_failures: "1",
         agent_provider: "codex",
         auto_approve_mode: "if_graders_pass_and_tagged_safe",
+        epic_dependency_policy: "nonlinear",
         github_owner_id: "123",
         github_repository_id: "456"
       }
@@ -696,6 +703,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(repository.treat_grader_timeouts_as_failures).to eq(true)
     expect(repository.agent_provider).to eq("codex")
     expect(repository.auto_approve_mode).to eq("if_graders_pass_and_tagged_safe")
+    expect(repository.epic_dependency_policy).to eq("nonlinear")
     expect(repository.github_owner_id).to eq(123)
     expect(repository.github_repository_id).to eq(456)
     expect(parse_body).to include("message" => "Repository acme/widgets updated.", "redirect_to" => repositories_path)
@@ -998,6 +1006,24 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(repository.reload.feedback_policy).to eq("confirm")
+  end
+
+  it "rejects invalid Epic dependency policies via PATCH" do
+    sign_in_as(user)
+    repository = Factories.repository(user: user, owner: "acme", name: "widgets")
+
+    patch "/api/v1/app/repositories/#{repository.id}", params: {
+      repository: {
+        owner: repository.owner,
+        name: repository.name,
+        default_branch: repository.default_branch,
+        trigger_label: repository.trigger_label,
+        epic_dependency_policy: "mesh"
+      }
+    }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "message")).to include("Epic dependency policy")
   end
 
   it "enqueues main branch graders for the tracked SHA" do

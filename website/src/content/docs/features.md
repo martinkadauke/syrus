@@ -84,8 +84,10 @@ An Epic that has been created or approved does not run work by itself — a
 **Start implementing** action on the Epic detail page (and a
 **Create Epic & Start Implementing** button on the new-Epic form and chat
 Epic proposal cards) moves the Epic to `in_progress` in one click and
-dispatches its ready child Jobs; children with unmet dependencies follow
-as those dependencies close.
+dispatches its ready child Jobs. In linear Epics, children with same-Epic
+parents can keep implementing down the stack once the immediate parent has
+an implemented PR branch; approval and landing order still waits for the
+normal dependency gates.
 Syrus can mark an Epic ready when its dependencies are done and all child
 Jobs are confirmed, then mark it done automatically when all child Jobs
 close through merged PR or no-change outcomes. When every child Job is
@@ -106,6 +108,14 @@ rejects changes that would create a cycle. The page also includes a
 collapsible history section that records title and description changes with
 the actor, timestamp, and before/after text.
 
+Repositories default new Epics to a linear child-Job dependency policy: child
+Jobs should form one ordered chain. Operators can relax the repository default
+to nonlinear, or override an individual Epic to inherit, require linear
+dependencies, or allow nonlinear branching and fan-in. Bundled Epic proposals
+are checked at confirmation time and linear proposals with branching, fan-in,
+or disconnected child Jobs are rejected with the offending child slugs unless
+the proposal used the explicit nonlinear override.
+
 ### Epic reconciliation
 
 When an Epic goes `in_progress` with two or more child Jobs, Syrus can
@@ -113,8 +123,10 @@ automatically create a **reconciliation Job** — a synthesizing review that
 checks all sibling changes together for consistency, naming conflicts, shared
 migration issues, and cross-cutting concerns that per-Job review may miss.
 
-The reconciliation Job depends on every sibling Job in the Epic and holds
-siblings from landing until it finishes. Once it closes, sibling Jobs proceed
+For linear Epics, the reconciliation Job depends only on the final child Job
+in the stack, preserving the single-parent branch chain. For explicit
+nonlinear Epics, it depends on every sibling Job. In both cases it holds
+siblings from landing until it finishes; once it closes, sibling Jobs proceed
 to the landing queue normally.
 
 If reconciliation finds no additional patch beyond the effective stack parent,
