@@ -14,7 +14,7 @@ class TestCase < ApplicationRecord
   scope :skipped, -> { where(status: "skipped") }
   scope :errored, -> { where(status: "error") }
 
-  after_commit :index_for_search, on: %i[create update]
+  after_commit :index_for_search, on: %i[create update destroy]
 
   # Returns flakiness data for a specific (repository, suite_name, name) tuple.
   # A test is flaky if it has both passed and failed within the lookback window.
