@@ -130,6 +130,7 @@ class Epic < ApplicationRecord
       NotificationService.create_for(
         user: owner,
         kind: "epic_completed",
+        repository: repository,
         body: "Epic \"#{title}\" completed"
       )
     end
