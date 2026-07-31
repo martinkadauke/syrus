@@ -150,6 +150,10 @@ detail page keeps the implementation machinery out of view: no child Job list,
 workflow history, diffs, grader output, PR numbers, branch names, commit SHAs,
 timeline, or dependency graph. Scheduled tasks and the repository GitHub
 Issues tab are also hidden in simple mode.
+Simple mode notifications use the feature title only: they announce
+ready-for-review, terminal feature problems that need attention, and accepted
+review feedback; Job IDs, PR numbers, branch names, commit SHAs, and grader
+details are suppressed.
 
 An Epic has a board state: `backlog`, `ready`, `in_progress`, `done`, or
 `archived`. Child Jobs can be blocked until the Epic starts, and Epics can
