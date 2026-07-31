@@ -15,7 +15,7 @@ class JobDependency < ApplicationRecord
   validate :pending_fields_consistent
 
   after_save_commit :materialize_derived_epic_dependency, if: :depends_on_job_id?
-  after_save_commit :refresh_same_epic_auto_state, if: :same_epic_job_dependency?
+  after_save_commit :refresh_same_epic_reconciliation, if: :same_epic_job_dependency?
 
   scope :resolved, -> { where.not(depends_on_job_id: nil) }
   scope :pending, -> { where(depends_on_job_id: nil, depends_on_epic_id: nil) }
@@ -158,8 +158,8 @@ class JobDependency < ApplicationRecord
     )
   end
 
-  def refresh_same_epic_auto_state
-    job.epic.refresh_auto_state!
+  def refresh_same_epic_reconciliation
+    job.epic.maybe_create_reconciliation_job!(raise_on_invalid_graph: false)
   end
 
   def same_epic_job_dependency?

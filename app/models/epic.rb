@@ -261,7 +261,9 @@ class Epic < ApplicationRecord
   def maybe_create_reconciliation_job!(raise_on_invalid_graph: true)
     return if @creating_reconciliation_job
     return if reconciliation_job_id.present?
+    return unless in_progress?
     return if work_jobs.count < 2
+    return if work_jobs.where(state: "blocked_by_epic").exists?
     return if resolved_reconciliation_mode == "none"
 
     @creating_reconciliation_job = true
