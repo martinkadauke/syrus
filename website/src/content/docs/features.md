@@ -48,6 +48,11 @@ when the request has multiple substantially different valid interpretations,
 use project memory heavily, make technical choices itself, write tests, and
 finish the stated sub-task without leaving TODOs for the operator.
 
+Simple-mode chat reads like a conversation: tool call names, JSON inputs, file
+paths, commands, and raw outputs are hidden. Running calls show brief progress
+text, successful calls leave no transcript entry, failed calls show only "Hit a
+snag", and the chat workspace does not show the Context tab.
+
 ## Notifications
 
 Signed-in operators see a bell in the app chrome with the current unread
