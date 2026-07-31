@@ -308,8 +308,8 @@ removes the conversation, its messages, attachments, proposals, whiteboard,
 search-index entries, and the chat workspace on disk, and is refused while a
 turn is still running. When the `admin_supervisor_chat` operations flag is
 enabled, admins also get one durable **Supervisor** chat. Syrus provisions it on
-the chat index payload, renders it as a distinct admin row above normal chat
-groups, keeps it pinned and visible, and blocks ordinary rename, hide, unpin, or
+demand, exposes it on the chat index payload, renders it as a distinct admin row
+above normal chat groups, keeps it pinned and visible, and blocks ordinary rename, hide, unpin, or
 delete actions for that chat while the flag remains enabled. Major operational
 events, including Job notifications, Epic completion, main-branch health changes,
 and new Agent Insight suggestions, are posted there as durable system messages
