@@ -258,7 +258,7 @@ class Epic < ApplicationRecord
   # Creates a reconciliation Job if the Epic is in_progress, has 2+ work
   # jobs, and reconciliation mode is not "none". Idempotent — returns early
   # if a reconciliation job already exists.
-  def maybe_create_reconciliation_job!
+  def maybe_create_reconciliation_job!(raise_on_invalid_graph: true)
     return if @creating_reconciliation_job
     return if reconciliation_job_id.present?
     return if work_jobs.count < 2
@@ -271,7 +271,13 @@ class Epic < ApplicationRecord
       fresh = self.class.lock.find(id)
       return if fresh.reconciliation_job_id.present?
 
-      create_reconciliation_job!(work_jobs.order(:id).to_a)
+      begin
+        create_reconciliation_job!(work_jobs.order(:id).to_a)
+      rescue ArgumentError
+        raise if raise_on_invalid_graph
+
+        false
+      end
     end
   ensure
     @creating_reconciliation_job = nil
@@ -294,7 +300,7 @@ class Epic < ApplicationRecord
     elsif in_progress?
       released = release_child_jobs_if_ready!
       cleared = clear_reconciliation_job_if_closed!
-      maybe_create_reconciliation_job! unless cleared
+      maybe_create_reconciliation_job!(raise_on_invalid_graph: false) unless cleared
       return auto_complete! if may_auto_complete?
 
       dependent_epics.find_each(&:refresh_auto_state!) if fully_approved?
