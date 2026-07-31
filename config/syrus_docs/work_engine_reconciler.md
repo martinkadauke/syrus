@@ -17,7 +17,7 @@ execute_repairs: false)` returns a `WorkEngine::Reconciler::Result` with:
   SpawnedProcess, worker heartbeat, workspace, main-health, and rate-limit
   evidence
 - `issues`, an array of structured issue records
-- `repair_plans`, an array of plans
+- `repair_plans`, an array of side-effect-free plans
 - `repair_executions`, an array of applied/skipped/failed executor results when
   `execute_repairs: true`
 
