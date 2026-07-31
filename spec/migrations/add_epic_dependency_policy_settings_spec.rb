@@ -1,5 +1,5 @@
 require "rails_helper"
-require Rails.root.join("db/migrate/20260731120000_add_epic_dependency_policy_settings")
+require Rails.root.join("db/migrate/20260731124500_add_epic_dependency_policy_settings")
 
 RSpec.describe AddEpicDependencyPolicySettings do
   let(:connection) { ActiveRecord::Base.connection }
