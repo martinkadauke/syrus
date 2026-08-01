@@ -10,6 +10,10 @@ class ClaudeSession < ApplicationRecord
 
   before_validation :default_resumable_from_run
 
+  scope :metadata_only, -> {
+    select(:id, :provider, :session_id, :resumable_type, :resumable_id, :run_id, :created_at, :updated_at)
+  }
+
   # Keep captured agent sessions for diagnostics for two weeks after the parent Run
   # reaches a terminal state. After that, ClaudeSessionPruneJob deletes
   # them. Active Runs (queued/running) are never pruned.

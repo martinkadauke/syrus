@@ -131,7 +131,7 @@ module WorkEngine
     def call
       @jobs = scoped_jobs.includes(:repository, :dependencies, :epic).to_a
       @workflows = scoped_workflows.includes(:job, :steps).to_a
-      @runs = scoped_runs.includes(:job, :step, :claude_session, :run_failure_classification, :run_diagnostic).to_a
+      @runs = scoped_runs.includes(:job, :step, :claude_session_metadata, :run_failure_classification, :run_diagnostic).to_a
       @steps = Step.where(id: @workflows.flat_map { |workflow| workflow.steps.map(&:id) } + @runs.filter_map(&:step_id)).to_a
       @solid_queue = capture_solid_queue
 
@@ -606,14 +606,14 @@ module WorkEngine
           run.run_failure_classification&.classification == AutoRetryScheduler::WORKER_DIED_CLASSIFICATION
         next unless retryable_worker_failure
 
-        if run.claude_session.present?
+        if run.claude_session_metadata.present?
           issue(
             kind: :resumable_agent_session_present,
             severity: :info,
             affected_ids: ids_for(run),
             safe_to_auto_repair: true,
             recommended_repair_action: "resume_failed_step",
-            evidence: run_evidence(run).merge(session_id: run.claude_session.session_id),
+            evidence: run_evidence(run).merge(session_id: run.claude_session_metadata.session_id),
             explanation: "Run ##{run.id} failed after an agent session was captured and can be resumed."
           )
         else

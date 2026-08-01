@@ -53,6 +53,10 @@ class ChatSession < ApplicationRecord
   has_many :pending_actions, class_name: "ChatPendingAction", dependent: :destroy
   has_many :whiteboard_snapshots, dependent: :destroy
   has_one :claude_session, as: :resumable, dependent: :destroy
+  has_one :claude_session_metadata,
+          -> { metadata_only },
+          as: :resumable,
+          class_name: "ClaudeSession"
   has_one :whiteboard, dependent: :destroy
   has_one :linked_job, class_name: "Job", foreign_key: :linked_chat_id, inverse_of: :linked_chat, dependent: :nullify
   has_one :local_daemon_session, dependent: :destroy

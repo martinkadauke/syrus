@@ -721,22 +721,18 @@ module Api
         end
 
         def repository_counts_json(repository)
+          job_ids = repository.jobs.select(:id)
           {
-            running: repository.jobs.joins(:runs).where(runs: { state: "running" }).distinct.count,
-            queued: repository.jobs.joins(:runs).where(runs: { state: "queued" }).distinct.count,
-            failed_7d: repository.jobs
-              .joins(:runs)
-              .where(runs: { state: "failed", updated_at: 7.days.ago.. })
-              .distinct
-              .count
+            running: Run.where(job_id: job_ids, state: "running").distinct.count(:job_id),
+            queued: Run.where(job_id: job_ids, state: "queued").distinct.count(:job_id),
+            failed_7d: Run.where(job_id: job_ids, state: "failed", updated_at: 7.days.ago..).distinct.count(:job_id)
           }
         end
 
         def retry_failed_jobs_json(repository)
-          retryable = retryable_failed_jobs(repository)
           circuit = ProviderCircuitBreaker.call(repository.effective_agent_provider)
           {
-            count: retryable.size,
+            count: retryable_failed_jobs_count(repository),
             agent_provider: repository.effective_agent_provider,
             agent_provider_label: agent_provider_label(repository.effective_agent_provider),
             provider_circuit: circuit.as_json
@@ -1020,6 +1016,17 @@ module Api
           return [] if failed_job_ids.empty?
 
           repository.jobs.where(id: failed_job_ids).to_a
+        end
+
+        def retryable_failed_jobs_count(repository)
+          open_job_ids = repository.jobs.open_threads.pluck(:id)
+          return 0 if open_job_ids.empty?
+
+          active_job_ids = Run.active.where(job_id: open_job_ids).distinct.pluck(:job_id)
+          inactive_job_ids = open_job_ids - active_job_ids
+          return 0 if inactive_job_ids.empty?
+
+          latest_runs_by_job_id(inactive_job_ids).values.count(&:failed?)
         end
 
         def preload_repository_index_job_state(repositories)

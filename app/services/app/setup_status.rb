@@ -39,7 +39,8 @@ module App
 
     # Onboarding completes when the first Epic lands (all child Jobs merged).
     def complete?
-      user.first_run_setup_complete?
+      @complete = user.first_run_setup_complete? unless defined?(@complete)
+      @complete
     end
 
     def next_step
@@ -67,11 +68,12 @@ module App
     end
 
     def chat_started?
-      user.onboarding_chat_started?
+      @chat_started = user.onboarding_chat_started? unless defined?(@chat_started)
+      @chat_started
     end
 
     def onboarding_chat_path
-      chat = user.onboarding_chat
+      chat = onboarding_chat
       chat ? routes.chat_path(chat) : nil
     end
 
@@ -136,24 +138,32 @@ module App
     end
 
     def credentials_ready?
-      github_credentials_ready? && user.agent_provider_configured?(user.agent_provider)
+      @credentials_ready = github_credentials_ready? && user.agent_provider_configured?(user.agent_provider) unless defined?(@credentials_ready)
+      @credentials_ready
     end
 
     # Onboarding requires BOTH a PAT and the GitHub App.
     def github_credentials_ready?
-      user.github_token.present? && AppSetting.github_app_registered?
+      @github_credentials_ready = user.github_token.present? && AppSetting.github_app_registered? unless defined?(@github_credentials_ready)
+      @github_credentials_ready
     end
 
     def active_repository?
-      user.repositories.active.exists?
+      @active_repository = user.repositories.active.exists? unless defined?(@active_repository)
+      @active_repository
     end
 
     def successful_first_job?
-      user.jobs.where(closure_reason: SUCCESSFUL_CLOSURE_REASONS).exists?
+      @successful_first_job = user.jobs.where(closure_reason: SUCCESSFUL_CLOSURE_REASONS).exists? unless defined?(@successful_first_job)
+      @successful_first_job
     end
 
     def latest_job
       @latest_job ||= user.jobs.includes(:repository).order(updated_at: :desc, id: :desc).first
+    end
+
+    def onboarding_chat
+      @onboarding_chat ||= user.onboarding_chat
     end
 
     def repository_payload(repository)

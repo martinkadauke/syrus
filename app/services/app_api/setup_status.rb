@@ -54,30 +54,36 @@ module AppApi
     end
 
     def first_admin?
-      user.admin? && User.order(:id).limit(1).pick(:id) == user.id
+      @first_admin = user.admin? && User.order(:id).limit(1).pick(:id) == user.id unless defined?(@first_admin)
+      @first_admin
     end
 
     def credentials_configured?
-      agent_credential_configured? && github_credential_configured?
+      @credentials_configured = agent_credential_configured? && github_credential_configured? unless defined?(@credentials_configured)
+      @credentials_configured
     end
 
     def agent_credential_configured?
-      user.agent_provider_configured?(user.agent_provider)
+      @agent_credential_configured = user.agent_provider_configured?(user.agent_provider) unless defined?(@agent_credential_configured)
+      @agent_credential_configured
     end
 
     # Onboarding wants BOTH a personal access token and the GitHub App for
     # best results (PAT covers private clones / fallback; the App gives a bot
     # identity + independent rate limit). Both are required to finish the step.
     def github_credential_configured?
-      github_token_configured? && github_app_configured?
+      @github_credential_configured = github_token_configured? && github_app_configured? unless defined?(@github_credential_configured)
+      @github_credential_configured
     end
 
     def github_token_configured?
-      user.github_token.present?
+      @github_token_configured = user.github_token.present? unless defined?(@github_token_configured)
+      @github_token_configured
     end
 
     def github_app_configured?
-      AppSetting.github_app_registered?
+      @github_app_configured = AppSetting.github_app_registered? unless defined?(@github_app_configured)
+      @github_app_configured
     end
 
     def repository_configured?
@@ -90,19 +96,23 @@ module AppApi
     end
 
     def first_epic_landed?
-      user.first_epic_landed?
+      @first_epic_landed = user.first_epic_landed? unless defined?(@first_epic_landed)
+      @first_epic_landed
     end
 
     def first_epic_started?
-      user.first_epic_started?
+      @first_epic_started = user.first_epic_started? unless defined?(@first_epic_started)
+      @first_epic_started
     end
 
     def first_epic_created?
-      user.first_epic_created?
+      @first_epic_created = user.first_epic_created? unless defined?(@first_epic_created)
+      @first_epic_created
     end
 
     def onboarding_chat_started?
-      user.onboarding_chat_started?
+      @onboarding_chat_started = user.onboarding_chat_started? unless defined?(@onboarding_chat_started)
+      @onboarding_chat_started
     end
 
     def first_job_started?

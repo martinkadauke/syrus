@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_01_182500) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_01_232000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -833,8 +833,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_182500) do
     t.index ["parent_job_id"], name: "index_jobs_on_parent_job_id"
     t.index ["pr_repository_id"], name: "index_jobs_on_pr_repository_id"
     t.index ["repository_id", "issue_number", "state"], name: "index_jobs_on_repository_id_and_issue_number_and_state"
+    t.index ["repository_id", "state", "closure_reason", "finished_at"], name: "idx_jobs_repo_state_closure_finished"
     t.index ["repository_id", "state"], name: "index_jobs_on_repository_id_and_state"
     t.index ["repository_id", "system_kind", "state"], name: "index_jobs_on_repository_id_system_kind_state"
+    t.index ["repository_id", "updated_at", "id"], name: "idx_jobs_repo_updated_latest"
     t.index ["repository_id"], name: "index_jobs_on_repository_id"
     t.index ["scheduled_task_id"], name: "index_jobs_on_scheduled_task_id"
     t.index ["slug"], name: "index_jobs_on_slug", unique: true
@@ -844,6 +846,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_182500) do
     t.index ["state", "landing_queue_position", "id"], name: "index_jobs_on_state_and_landing_queue_position_and_id"
     t.index ["target_repository_id"], name: "index_jobs_on_target_repository_id"
     t.index ["triaging_reason"], name: "index_jobs_on_triaging_reason"
+    t.index ["user_id", "state", "closure_reason", "finished_at"], name: "idx_jobs_user_state_closure_finished"
     t.index ["user_id"], name: "index_jobs_on_user_id"
     t.index ["validity"], name: "index_jobs_on_validity"
   end
@@ -1216,6 +1219,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_182500) do
     t.index ["job_id", "state"], name: "index_runs_on_job_id_and_state"
     t.index ["job_id"], name: "index_runs_on_job_id"
     t.index ["parent_session_id"], name: "index_runs_on_parent_session_id"
+    t.index ["state", "job_id", "updated_at"], name: "idx_runs_state_job_updated"
     t.index ["state", "last_heartbeat_at"], name: "index_runs_on_state_and_last_heartbeat_at"
     t.index ["step_id", "created_at", "id"], name: "idx_runs_step_created"
     t.index ["step_id"], name: "index_runs_on_step_id"
@@ -1295,6 +1299,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_182500) do
     t.integer "wall_timeout_s"
     t.string "workdir", limit: 4096
     t.integer "workflow_id"
+    t.index ["finished_at", "hostname", "pid", "last_chunk_at"], name: "idx_spawned_processes_active_host_pid"
     t.index ["finished_at", "last_chunk_at"], name: "idx_spawned_processes_active"
     t.index ["finished_at"], name: "index_spawned_processes_on_finished_at"
     t.index ["hostname"], name: "index_spawned_processes_on_hostname"

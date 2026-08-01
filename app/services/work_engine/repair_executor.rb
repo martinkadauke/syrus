@@ -110,7 +110,7 @@ module WorkEngine
 
         def target_run
           @target_run ||= if plan.target_type == "Run"
-            Run.includes(:job, :step, :claude_session, :run_failure_classification).find_by(id: plan.target_id)
+            Run.includes(:job, :step, :claude_session_metadata, :run_failure_classification).find_by(id: plan.target_id)
           else
             first_run
           end
@@ -133,7 +133,7 @@ module WorkEngine
         end
 
         def first_run
-          Run.includes(:job, :step, :claude_session, :run_failure_classification).find_by(id: first_id("run_ids"))
+          Run.includes(:job, :step, :claude_session_metadata, :run_failure_classification).find_by(id: first_id("run_ids"))
         end
 
         def first_workflow
@@ -390,7 +390,7 @@ module WorkEngine
         def delayed_retry_kind
           run = target_run
           workflow = run&.workflow || target_workflow
-          if run&.claude_session.present? && workflow&.retry_available? && run.step&.agentic?
+          if run&.claude_session_metadata.present? && workflow&.retry_available? && run.step&.agentic?
             "resume_failed_step"
           elsif workflow&.retry_available?
             "failed_step"

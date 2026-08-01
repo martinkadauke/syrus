@@ -24,7 +24,7 @@ class ProcessRunner
   TERM_GRACE_SECONDS = 5
   READ_CHUNK_BYTES = 16 * 1024
   KILL_POLL_INTERVAL_SECONDS = 1
-  HEARTBEAT_INTERVAL_SECONDS = 1
+  HEARTBEAT_INTERVAL_SECONDS = 15
 
   def self.forwarded_env(keys, extra: {})
     ENV.slice(*keys).merge(extra.compact)
