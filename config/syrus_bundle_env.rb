@@ -13,10 +13,14 @@ vendor_bundle_config = File.join(repo_root, ".bundle")
 vendor_bundle = File.join(repo_root, "vendor", "bundle")
 current_bundle_path = ENV["BUNDLE_PATH"].to_s
 local_ruby_version = RbConfig::CONFIG.fetch("ruby_version")
+locked_rails_version = File.read(File.join(repo_root, "Gemfile.lock"))[/^\s{4}rails \(([^)]+)\)/, 1]
 
 bundle_installed = lambda do |path|
-  pattern = File.join(path, "ruby", local_ruby_version, "specifications", "*.gemspec")
-  !Dir.glob(pattern).empty?
+  specs_dir = File.join(path, "ruby", local_ruby_version, "specifications")
+  return false if Dir.glob(File.join(specs_dir, "*.gemspec")).empty?
+  return true if locked_rails_version.to_s.empty?
+
+  File.file?(File.join(specs_dir, "rails-#{locked_rails_version}.gemspec"))
 end
 
 configured_bundle = lambda do |config_dir, path|
