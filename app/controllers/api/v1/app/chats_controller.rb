@@ -1319,7 +1319,7 @@ module Api
             pending_proposal_count: chat_session.proposals.where(state: "proposed").count,
             messages: messages_json(messages, repository: repository),
             bookmarks: chat_session.bookmarks.includes(:chat_message).map { |bookmark| bookmark_json(bookmark) },
-            recent_chats: recent_chats_json(chat_session),
+            recent_chats: [],
             pending_actions: pending_actions_json(chat_session),
             agent_questions: chat_session.agent_questions_payload,
             queued_messages: chat_session.queued_messages_payload,
