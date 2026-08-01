@@ -61,6 +61,7 @@ class PollRebaseJob < ApplicationJob
     return if pr.mergeable                # mergeable; nothing to do
 
     return unless we_control_head?(pr)    # head from a fork → can't push
+    return if start_blocked?
     return if noop_rebase_already_covers?(pr)
     return if pending_rebase?
     return if attempt_cap_reached?(pr)
@@ -88,6 +89,25 @@ class PollRebaseJob < ApplicationJob
 
     Rails.logger.info("[PollRebaseJob] #{@job.slug} PR ##{@job.pr_number || @job.external_pr_number} still unmergeable after no-op rebase for same head/base; waiting")
     true
+  end
+
+  def start_blocked?
+    if @job.dependencies_failed_for_execution?
+      Rails.logger.info("[PollRebaseJob] #{@job.slug} PR ##{@job.pr_number || @job.external_pr_number} unmergeable but a dependency failed; skipping rebase dispatch")
+      return true
+    end
+
+    unless @job.dependencies_satisfied_for_execution?
+      Rails.logger.info("[PollRebaseJob] #{@job.slug} PR ##{@job.pr_number || @job.external_pr_number} unmergeable but dependencies are not ready for execution; skipping rebase dispatch")
+      return true
+    end
+
+    unless @job.ready_for_execution?
+      Rails.logger.info("[PollRebaseJob] #{@job.slug} PR ##{@job.pr_number || @job.external_pr_number} unmergeable but job is not ready for execution; skipping rebase dispatch")
+      return true
+    end
+
+    false
   end
 
   def attempt_cap_reached?(pr)

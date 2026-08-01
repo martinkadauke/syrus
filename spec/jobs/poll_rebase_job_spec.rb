@@ -127,6 +127,56 @@ RSpec.describe PollRebaseJob do
       expect { described_class.perform_now(job.id) }.not_to change(Run, :count)
     end
 
+    it "skips instead of creating a cancelled rebase workflow when stack dependencies are not ready" do
+      parent = Factories.job_record(
+        user: user,
+        repository: repository,
+        issue_number: 41,
+        state: "implemented",
+        branch_name: "syrus/issue-41-1",
+        pr_number: 6
+      )
+      job.dependencies.create!(depends_on_job: parent, source: "manual")
+      stub_pr(pr_resource(mergeable: false))
+
+      expect(job.reload).not_to be_dependencies_satisfied_for_execution
+
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+    end
+
+    it "skips instead of creating a cancelled rebase workflow when a dependency was cancelled" do
+      parent = Factories.job_record(
+        user: user,
+        repository: repository,
+        issue_number: 41,
+        state: "closed",
+        closure_reason: "cancelled",
+        branch_name: "syrus/issue-41-1",
+        pr_number: 6
+      )
+      job.dependencies.create!(depends_on_job: parent, source: "manual")
+      stub_pr(pr_resource(mergeable: false))
+
+      expect(job.reload).to be_dependencies_failed_for_execution
+
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+    end
+
+    it "skips instead of creating a cancelled rebase workflow when the job is not ready for execution" do
+      job.update!(validity: "duplicate", invalidation_reason: "chaos", invalidation_evidence: "test")
+      stub_pr(pr_resource(mergeable: false))
+
+      expect(job.reload).not_to be_ready_for_execution
+
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+    end
+
     it "skips when a rebase Workflow is already active on this Job" do
       stub_pr(pr_resource(mergeable: false))
       workflow = Workflows::Rebase.instantiate(job: job)

@@ -882,7 +882,7 @@ module WorkEngine
     end
 
     def dependency_block_reason?(reason)
-      %w[stack_dependencies_not_ready job_not_ready_for_execution].include?(reason.to_s)
+      %w[dependency_failed stack_dependencies_not_ready job_not_ready_for_execution].include?(reason.to_s)
     end
 
     def current_start_block_active?(workflow, reason)

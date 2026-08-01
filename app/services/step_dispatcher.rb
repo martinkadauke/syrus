@@ -30,6 +30,18 @@ class StepDispatcher
       return
     end
 
+    if workflow.job.dependencies_failed_for_execution?
+      return fail_unstartable_landing_workflow!(workflow, "landing start blocked: dependency failed") if workflow.landing_workflow?
+
+      cancel_unstartable_rebase_workflow!(workflow, DEPENDENCY_FAILED_BLOCK_REASON)
+      unless RebaseWorkflowSelector::TRIGGER_KINDS.include?(workflow.trigger_kind)
+        record_start_blocked!(workflow, DEPENDENCY_FAILED_BLOCK_REASON, backoff: START_BLOCKED_BACKOFF) unless start_blocked_backoff_active?(workflow, DEPENDENCY_FAILED_BLOCK_REASON)
+      end
+      warn_if_stuck_queued(workflow, DEPENDENCY_FAILED_BLOCK_REASON)
+      return
+    end
+    clear_start_blocked!(workflow, DEPENDENCY_FAILED_BLOCK_REASON)
+
     unless workflow.job.stack_ready_for_execution?
       return fail_unstartable_landing_workflow!(workflow, "landing start blocked: stack dependencies not ready") if workflow.landing_workflow?
 
@@ -94,6 +106,7 @@ class StepDispatcher
   MAIN_HEALTH_EXEMPT_TRIGGERS = %w[ rebase stack_rebase main_grader ].freeze
   MAIN_HEALTH_BLOCK_REASON = "main_branch_broken"
   URGENT_BLOCK_REASON = "urgent_job_active"
+  DEPENDENCY_FAILED_BLOCK_REASON = "dependency_failed"
   STACK_BLOCK_REASON = "stack_dependencies_not_ready"
   JOB_BLOCK_REASON = "job_not_ready_for_execution"
   START_BLOCKED_BACKOFF = 5.minutes

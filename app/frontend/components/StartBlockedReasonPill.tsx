@@ -2,12 +2,14 @@ import { useT } from "../hooks/useT"
 import { TonePill } from "./StatusPill"
 
 type StartBlockedReason =
+  | "dependency_failed"
   | "stack_dependencies_not_ready"
   | "job_not_ready_for_execution"
   | "main_branch_broken"
   | "urgent_job_active"
 
 const TONES: Record<StartBlockedReason, "amber" | "red" | "gray"> = {
+  dependency_failed: "red",
   stack_dependencies_not_ready: "amber",
   job_not_ready_for_execution: "amber",
   main_branch_broken: "red",

@@ -120,6 +120,47 @@ RSpec.describe PollMergeStateJob, :ci_only do
     }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
   end
 
+  it "does not instantiate a rebase workflow when stack dependencies are not ready" do
+    parent = Factories.job_record(
+      user: user,
+      repository: repository,
+      issue_number: 41,
+      state: "implemented",
+      branch_name: "syrus/issue-41-1",
+      pr_number: 6
+    )
+    job.dependencies.create!(depends_on_job: parent, source: "manual")
+    allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(pr(mergeable_state: "dirty", mergeable: false))
+    allow_any_instance_of(GithubClient).to receive(:pr_reviews).and_return([])
+
+    expect(job.reload).not_to be_dependencies_satisfied_for_execution
+
+    expect {
+      described_class.perform_now(job.id)
+    }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+  end
+
+  it "does not instantiate a rebase workflow when a dependency was cancelled" do
+    parent = Factories.job_record(
+      user: user,
+      repository: repository,
+      issue_number: 41,
+      state: "closed",
+      closure_reason: "cancelled",
+      branch_name: "syrus/issue-41-1",
+      pr_number: 6
+    )
+    job.dependencies.create!(depends_on_job: parent, source: "manual")
+    allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(pr(mergeable_state: "dirty", mergeable: false))
+    allow_any_instance_of(GithubClient).to receive(:pr_reviews).and_return([])
+
+    expect(job.reload).to be_dependencies_failed_for_execution
+
+    expect {
+      described_class.perform_now(job.id)
+    }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+  end
+
   describe "proactive rebase is limited to the front of the landing queue" do
     before do
       allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(

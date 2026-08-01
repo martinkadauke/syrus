@@ -1450,6 +1450,22 @@ it "auto-creates and starts a workflow for direct jobs on advance_after_triage" 
       expect(job.unsatisfied_dependencies.first).to be_pending
     end
 
+    it "treats cancelled dependencies as failed for execution" do
+      prerequisite = Factories.job_record(
+        user: user,
+        repository: repository,
+        issue_number: 42,
+        state: "closed",
+        closure_reason: "cancelled"
+      )
+      job = Factories.job_record(user: user, repository: repository, issue_number: 43)
+      job.dependencies.create!(depends_on_job: prerequisite, source: "manual")
+
+      expect(job).not_to be_dependencies_satisfied_for_execution
+      expect(job).to be_dependencies_failed_for_execution
+      expect(job.failed_dependencies_for_execution.map(&:depends_on_job)).to contain_exactly(prerequisite)
+    end
+
     it "treats pending dependencies on done Epic issues as satisfied" do
       Epic.create!(
         user: user,

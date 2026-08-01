@@ -149,6 +149,7 @@ class PollMergeStateJob < ApplicationJob
 
     return if attempt_cap_reached?
     return if repo_rebase_concurrency_reached?
+    return if start_blocked?
     return if stack_rebase_blocked_by_unchanged_deps?
 
     workflow = RebaseWorkflowSelector.instantiate(job: @job, pr: @pr)
@@ -181,6 +182,28 @@ class PollMergeStateJob < ApplicationJob
   def repo_rebase_concurrency_reached?
     active = RebaseWorkflowSelector.active_in_repository(@job.repository).count
     active >= PollRebaseJob::CONCURRENT_REBASES_PER_REPO
+  end
+
+  def start_blocked?
+    if @job.dependencies_failed_for_execution?
+      audit("auto_merge: PR ##{@job.pr_number} needs rebase but a dependency failed; waiting for operator action")
+      Rails.logger.info("[PollMergeStateJob] #{@job.slug} PR ##{@job.pr_number} needs rebase but a dependency failed; skipping dispatch")
+      return true
+    end
+
+    unless @job.dependencies_satisfied_for_execution?
+      audit("auto_merge: PR ##{@job.pr_number} needs rebase but dependencies are not ready for execution; waiting")
+      Rails.logger.info("[PollMergeStateJob] #{@job.slug} PR ##{@job.pr_number} needs rebase but dependencies are not ready for execution; skipping dispatch")
+      return true
+    end
+
+    unless @job.ready_for_execution?
+      audit("auto_merge: PR ##{@job.pr_number} needs rebase but the job is not ready for execution; waiting")
+      Rails.logger.info("[PollMergeStateJob] #{@job.slug} PR ##{@job.pr_number} needs rebase but job is not ready for execution; skipping dispatch")
+      return true
+    end
+
+    false
   end
 
   # Skip dispatching a stack_rebase when the last rebase workflow was

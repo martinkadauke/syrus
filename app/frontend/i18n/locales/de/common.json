@@ -273,12 +273,14 @@
     "load_error_instance": "Diese Syrus-Instanz konnte nicht geladen werden."
   },
   "start_blocked_reasons": {
+    "dependency_failed": "Abhängigkeit fehlgeschlagen",
     "stack_dependencies_not_ready": "Wartet auf Abhängigkeit",
     "job_not_ready_for_execution": "Noch nicht bereit",
     "main_branch_broken": "Hauptbranch defekt",
     "urgent_job_active": "Dringende Aufgabe läuft"
   },
   "start_blocked_reason_tooltips": {
+    "dependency_failed": "Eine erforderliche Job- oder Epic-Abhängigkeit endete ohne erfolgreiche Auflösung. Überschreibe oder entferne die Abhängigkeit, um fortzufahren.",
     "stack_dependencies_not_ready": "Eine erforderliche Job- oder Epic-Abhängigkeit ist noch nicht erfolgreich abgeschlossen.",
     "job_not_ready_for_execution": "Der Job ist noch nicht gültig für die Ausführung oder sein Epic hat ihn nicht freigegeben.",
     "main_branch_broken": "Landing ist pausiert, weil der Hauptbranch des Repositorys nicht gesund ist.",

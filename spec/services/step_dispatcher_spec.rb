@@ -168,14 +168,14 @@ RSpec.describe StepDispatcher do
 
       expect(RebaseWorkflowSelector.active_for_stack?(blocked_job)).to be(false)
 
-      expect(Rails.logger).not_to receive(:warn).with(include("stack_dependencies_not_ready", "workflow #{rebase.id}"))
+      expect(Rails.logger).not_to receive(:warn).with(include("dependency_failed", "workflow #{rebase.id}"))
 
       expect {
         described_class.start_workflow(rebase)
       }.not_to change { Run.count }
 
       expect(rebase.reload).to be_cancelled
-      expect(rebase.artifact("start_blocked_reason")).to eq("stack_dependencies_not_ready")
+      expect(rebase.artifact("start_blocked_reason")).to eq("dependency_failed")
       expect(rebase.steps.pluck(:state).uniq).to eq([ "cancelled" ])
       expect(RebaseWorkflowSelector.active_for_stack?(blocked_job)).to be(false)
     end
@@ -1190,6 +1190,20 @@ RSpec.describe StepDispatcher, "stack_dependencies_not_ready block reason" do
     expect(workflow.reload.artifact("start_blocked_reason")).to eq("stack_dependencies_not_ready")
   end
 
+  it "records dependency_failed when a dependency closed unsuccessfully" do
+    prerequisite = Factories.job_record(
+      repository: job_model.repository,
+      issue_number: 99,
+      state: "closed",
+      closure_reason: "cancelled"
+    )
+    JobDependency.create!(job: job_model, depends_on_job: prerequisite, source: "manual")
+
+    described_class.start_workflow(workflow)
+
+    expect(workflow.reload.artifact("start_blocked_reason")).to eq("dependency_failed")
+  end
+
   it "clears stack_dependencies_not_ready when the dependency becomes satisfied" do
     prerequisite = Factories.job(repository: job_model.repository, issue_number: 99)
     JobDependency.create!(job: job_model, depends_on_job: prerequisite, source: "manual")
@@ -1217,6 +1231,7 @@ RSpec.describe StepDispatcher, "stack_dependencies_not_ready block reason" do
     described_class.start_workflow(rebase)
 
     expect(rebase.reload).to be_cancelled
+    expect(rebase.artifact("start_blocked_reason")).to eq("dependency_failed")
   end
 end
 

@@ -19,6 +19,16 @@ module JobDependencies
     end
   end
 
+  def dependencies_failed_for_execution?
+    failed_dependencies_for_execution.any?
+  end
+
+  def failed_dependencies_for_execution
+    preloaded_dependencies(:depends_on_job, :depends_on_epic).select do |dependency|
+      dependency_terminal_unsuccessful?(dependency)
+    end
+  end
+
   def unsatisfied_dependencies
     preloaded_dependencies(:depends_on_epic, depends_on_job: :repository).reject do |dependency|
       dependency.dependency_succeeded?
@@ -42,6 +52,16 @@ module JobDependencies
   end
 
   private
+
+  def dependency_terminal_unsuccessful?(dependency)
+    if dependency.depends_on_job
+      dependency.depends_on_job.closed? && !dependency.dependency_succeeded?
+    elsif dependency.depends_on_epic
+      dependency.depends_on_epic.archived?
+    else
+      false
+    end
+  end
 
   def preloaded_dependencies(*associations)
     records = dependencies.loaded? ? dependencies.to_a : dependencies.includes(*associations).to_a
