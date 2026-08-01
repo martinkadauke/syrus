@@ -36,8 +36,8 @@ grade:
   steps:
     - name: rspec
       run: bin/rspec
-      fast: COVERAGE=false bin/rspec
-      ci: RUN_CI_ONLY_SPECS=true COVERAGE=false bin/rspec
+      fast: COVERAGE=false bin/rspec-fast
+      ci: COVERAGE=false bin/rspec-ci
       description: Run the Ruby test suite
       required: true
       timeout_minutes: 15
@@ -77,13 +77,15 @@ grade:
 
 `fast` is an optional alternate command for the same grader. Syrus uses it when the grader result is only a pass/fail safety check and no fresh coverage report is consumed: `main_grader`, `main_branch_repair`, `auto_merge`, `merge_train`, and implementation/feedback/coding grade-loop iterations after the first. If `fast` is absent, Syrus falls back to `run`.
 
+For Ruby projects, prefer putting formatter, coverage, parallelization, and CI-only filtering policy in a wrapper script such as `bin/rspec-fast`. Grader infrastructure should run the configured command as-is instead of appending RSpec-specific flags.
+
 For example, a Ruby suite can keep coverage on for the first implementation validation while disabling coverage instrumentation for landing and repair rechecks:
 
 ```yaml
 grade:
   - name: rspec
     run: bin/rspec
-    fast: COVERAGE=false bin/rspec
+    fast: COVERAGE=false bin/rspec-fast
 ```
 
 ### ci
@@ -95,8 +97,10 @@ grade:
   - name: rspec
     run: bin/rspec
     fast: COVERAGE=false bin/rspec-fast
-    ci: RUN_CI_ONLY_SPECS=true COVERAGE=false bin/rspec
+    ci: COVERAGE=false bin/rspec-ci
 ```
+
+Use CI-only specs for checks that are too slow, too environmental, or too broad for the normal Syrus grader loop but still important in GitHub Actions. They should run during `ci_failure` workflows so the agent can verify that a CI failure is actually fixed. Normal implementation, feedback, landing, and main-grader workflows should use `run` or `fast`, not the CI-only command.
 
 ### when_files_changed
 

@@ -1037,7 +1037,9 @@ Local dev:
 ```
 bin/setup          # initial install + DB
 bin/dev            # foreman: web + worker + tailwind:watch
-bin/rspec          # Ruby suite (~2500 examples)
+bin/rspec          # serial Ruby suite
+bin/rspec-fast     # parallel Ruby suite, excludes :ci_only specs
+bin/rspec-ci       # rspec-fast plus :ci_only specs
 bin/rspec spec/jobs/run_job_spec.rb   # one file
 bin/test-react     # React/Vitest suite + TypeScript typecheck
 bin/test           # Ruby and React suites; reports separately
@@ -1045,6 +1047,22 @@ bin/test           # Ruby and React suites; reports separately
 
 React tests run through Vitest and TypeScript. Use `bin/test-react` for
 frontend-only changes, or `bin/test` to chain Ruby and React.
+
+Ruby specs are split into the normal fast suite and explicit CI-only specs.
+`bin/rspec-fast` is the default full-suite check for local work and Syrus
+graders: it runs RSpec in parallel, excludes examples tagged `:ci_only`, emits
+normal progress output to stdout, and writes per-worker JSON files to
+`.syrus/rspec-json/`. `bin/rspec-ci` first runs `bin/rspec-fast`, then runs
+the `:ci_only` examples and writes `rspec-ci-only.json` in the same JSON
+directory.
+
+Use CI-only specs sparingly. They are for checks that are too slow, too
+environmental, or too broad for normal agent grade loops but still important in
+GitHub Actions. A future agent should run CI-only specs when working on a CI
+failure workflow, when changing CI/test infrastructure itself, or when the
+change touches behavior that is only covered by an existing `:ci_only` spec. Do
+not add a spec to `:ci_only` merely because it is failing or inconvenient; first
+try to make it fast with fakes, dependency injection, or a narrower assertion.
 
 `bin/rspec` and Rails boot load `config/syrus_bundle_env.rb` before
 Bundler setup so prepared bundles under `.syrus/deps/bundle` or

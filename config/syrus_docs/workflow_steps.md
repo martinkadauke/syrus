@@ -56,6 +56,8 @@ Non-agentic. Reads grader definitions from `.syrus.yml` and materializes one `gr
 
 Non-agentic. Runs a single grader command (e.g., `bin/rspec`). Required graders must pass; non-required graders warn on failure.
 
+Syrus does not mutate grader commands for specific test frameworks. If a command needs multiple formatters, coverage toggles, parallelization, or CI-only filtering, put that policy in `.syrus.yml` or a repository wrapper script such as `bin/rspec-fast`.
+
 When a grader defines a `.syrus.yml` `fast:` command, Syrus uses that alternate command in pass/fail-only validation contexts: `main_grader`, `main_branch_repair`, `auto_merge`, `merge_train`, and implementation/feedback/coding grade-loop iterations after the first. If `fast:` is absent, the normal `run:` command is used.
 
 When a grader defines a `.syrus.yml` `ci:` command, Syrus uses it in `ci_failure` workflows so CI-only checks can run when the workflow is specifically repairing a failed CI signal. If `ci:` is absent, `ci_failure` workflows fall back to `run:`, not `fast:`.
