@@ -6,6 +6,13 @@ export COVERAGE="${COVERAGE:-false}"
 export PARALLEL_TEST_PROCESSORS="${RSPEC_PROCESSES:-8}"
 export RSPEC_JSON_DIR="${RSPEC_JSON_DIR:-.syrus/rspec-json}"
 
+mkdir -p .syrus
+exec 9>.syrus/rspec-fast.lock
+if ! ruby -e 'exit(File.for_fd(9).flock(File::LOCK_EX | File::LOCK_NB) ? 0 : 1)'; then
+  echo "Another bin/rspec-fast run is already active in this checkout; refusing to share SQLite test databases." >&2
+  exit 1
+fi
+
 mkdir -p "$RSPEC_JSON_DIR"
 rm -f "$RSPEC_JSON_DIR"/rspec-*.json
 if [ "$COVERAGE" = "true" ]; then

@@ -9,6 +9,7 @@ RSpec.describe "API: /api/v1/app/admin/performance", type: :request do
 
   before do
     allow(Rails).to receive(:cache).and_return(cache_store)
+    PerformanceLogging::Store.clear!
     allow(SyrusVersion).to receive(:current).and_return("new-sha")
     Feature.where(slug: "performance_logging").delete_all
     Feature.create!(slug: "performance_logging", category: "Operations", name: "Performance logging", enabled: true)
