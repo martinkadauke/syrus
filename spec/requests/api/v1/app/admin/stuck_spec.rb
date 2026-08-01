@@ -115,6 +115,12 @@ RSpec.describe "API: /api/v1/app/admin/stuck", type: :request do
   it "labels blocked queued workflows as waiting instead of operator-required" do
     sign_in_as(admin)
     job = Factories.job(user: admin)
+    job.repository.update!(
+      main_branch_health_enabled: true,
+      ci_health: "broken",
+      grader_health: "broken",
+      landing_paused: true
+    )
     workflow = job.latest_workflow
     run = job.initial_run
     run.destroy!

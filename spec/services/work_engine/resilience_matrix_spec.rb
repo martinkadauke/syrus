@@ -385,7 +385,8 @@ RSpec.describe "Work engine resilience regression matrix" do
       action: :wait_for_main_recovery,
       auto_executable: false,
       setup: lambda {
-        _job, workflow, step, run = matrix_graph
+        job, workflow, step, run = matrix_graph
+        job.repository.update!(ci_health: "broken", landing_paused: true)
         fail_run!(workflow, step, run, classification: "timeout", retryable: true)
         workflow.update!(artifacts: { "main_broken" => true })
         { workflow_id: workflow.id }

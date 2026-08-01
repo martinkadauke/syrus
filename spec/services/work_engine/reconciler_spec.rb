@@ -161,6 +161,43 @@ RSpec.describe WorkEngine::Reconciler do
     )
   end
 
+  it "does not re-enqueue a queued inline successor while the root RunJob is still claimed" do
+    ensure_solid_queue_test_tables!
+    run.update_columns(state: "succeeded", finished_at: 6.minutes.ago)
+    successor = step.runs.create!(
+      job: job,
+      user: job.user,
+      trigger_kind: workflow.trigger_kind,
+      agent_provider: workflow.agent_provider,
+      state: "queued",
+      created_at: 5.minutes.ago,
+      updated_at: 5.minutes.ago
+    )
+    workflow.update_columns(state: "running", started_at: 6.minutes.ago)
+    step.update_columns(state: "queued")
+    solid_queue_run_job(run, claimed: true, created_at: 5.minutes.ago)
+
+    result = reconcile(workflow_id: workflow.id)
+    affected_run_ids = result.issues
+      .select { |issue| issue.kind.start_with?("queued_run_") }
+      .flat_map { |issue| issue.affected_ids.fetch(:run_ids, []) }
+
+    expect(affected_run_ids).not_to include(successor.id)
+  end
+
+  it "does not repair a queued Run when a healthy queue job exists beside stale failed queue jobs" do
+    run.update_columns(state: "queued", created_at: 5.minutes.ago, updated_at: 5.minutes.ago)
+    workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_hostname: "syrus-worker-dead")
+    solid_queue_run_job(run, ready: true, queue_name: "resume-syrus-worker-dead", created_at: 5.minutes.ago)
+    solid_queue_run_job(run, ready: true, queue_name: "runs", created_at: 4.minutes.ago)
+
+    result = reconcile(run_id: run.id)
+
+    expect(kind(result, :queued_run_on_dead_resume_queue)).to be_nil
+    expect(kind(result, :queued_run_solid_queue_failed_execution)).to be_nil
+    expect(result.repair_plans.select { |repair_plan| repair_plan.action == "reenqueue_run" }).to be_empty
+  end
+
   it "executes safe queued Run re-enqueue repairs when requested" do
     ensure_solid_queue_test_tables!
     run.update_columns(state: "queued", created_at: 5.minutes.ago, updated_at: 5.minutes.ago)
@@ -485,6 +522,7 @@ RSpec.describe WorkEngine::Reconciler do
 
   it "classifies main-health start blocks with the matching wait-only action" do
     run.destroy!
+    job.repository.update!(ci_health: "broken", landing_paused: true)
     workflow.update_columns(
       state: "queued",
       artifacts: {
@@ -500,6 +538,42 @@ RSpec.describe WorkEngine::Reconciler do
     expect(issue.safe_to_auto_repair).to eq(false)
     expect(issue.recommended_repair_action).to eq("wait_for_main_health")
     expect(plan(result, :wait_for_main_health).auto_executable).to eq(false)
+  end
+
+  it "ignores stale main-health start blocks after repository health recovers" do
+    run.destroy!
+    job.repository.update!(ci_health: "healthy", grader_health: "healthy", landing_paused: false)
+    workflow.update_columns(
+      state: "queued",
+      created_at: 5.minutes.ago,
+      updated_at: 5.minutes.ago,
+      artifacts: {
+        "start_blocked_reason" => StepDispatcher::MAIN_HEALTH_BLOCK_REASON,
+        "start_blocked_next_check_at" => 3.minutes.from_now.iso8601
+      }
+    )
+    step.update_columns(state: "queued")
+
+    result = reconcile(workflow_id: workflow.id)
+
+    expect(kind(result, :main_health_start_block)).to be_nil
+    expect(kind(result, :queued_workflow_without_first_run)).to have_attributes(
+      safe_to_auto_repair: true,
+      recommended_repair_action: "start_workflow"
+    )
+  end
+
+  it "ignores stale main-broken workflow artifacts after repository health recovers" do
+    job.repository.update!(ci_health: "healthy", grader_health: "healthy", landing_paused: false)
+    workflow.update_columns(
+      state: "failed",
+      finished_at: Time.current,
+      artifacts: { "main_broken" => true }
+    )
+
+    result = reconcile(workflow_id: workflow.id)
+
+    expect(kind(result, :main_branch_broken)).to be_nil
   end
 
   it "classifies Job/Workflow state drift" do
@@ -526,6 +600,30 @@ RSpec.describe WorkEngine::Reconciler do
     expect(issue.severity).to eq("critical")
     expect(issue.recommended_repair_action).to eq("start_over_with_fresh_workflow")
     expect(plan(result, :operator_review_missing_workspace).auto_executable).to eq(false)
+  end
+
+  it "does not report missing workspace when a live remote worker owns the workflow" do
+    InstanceVersion.create!(
+      hostname: "syrus-worker-remote",
+      role: "worker",
+      version: "test-sha",
+      started_at: Time.current,
+      last_heartbeat_at: Time.current
+    )
+    workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_hostname: "syrus-worker-remote")
+    step.update_columns(state: "running", started_at: 5.minutes.ago)
+    run.update_columns(state: "running", started_at: 5.minutes.ago, last_heartbeat_at: 5.minutes.ago)
+    allow(File).to receive(:directory?).and_call_original
+    allow(File).to receive(:directory?).with(WorkflowWorkspace.path_for(workflow)).and_return(false)
+
+    result = reconcile(workflow_id: workflow.id)
+
+    expect(kind(result, :workspace_missing)).to be_nil
+    expect(result.snapshot.workspaces[workflow.id]).to include(
+      exists: true,
+      inspected: false,
+      worker_hostname: "syrus-worker-remote"
+    )
   end
 
   it "classifies resumable agent sessions present and missing" do

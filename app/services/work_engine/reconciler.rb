@@ -214,9 +214,9 @@ module WorkEngine
       runs.select(&:queued?).filter_map do |run|
         next unless older_than?(run.created_at, ORPHAN_RUN_GRACE_PERIOD)
 
-        sq = solid_queue_for_run(run)
+        sqs = solid_queue_jobs_for_run(run)
         workflow = run.workflow
-        if sq.nil?
+        if sqs.empty?
           issue(
             kind: :queued_run_without_queue_claim,
             severity: :error,
@@ -226,17 +226,7 @@ module WorkEngine
             evidence: run_evidence(run).merge(solid_queue_state: "missing", age_seconds: seconds_since(run.created_at)),
             explanation: "Run ##{run.id} is queued but no active SolidQueue RunJob references it."
           )
-        elsif sq[:failed]
-          issue(
-            kind: :queued_run_solid_queue_failed_execution,
-            severity: :error,
-            affected_ids: ids_for(run).merge(solid_queue_job_ids: [ sq[:id] ]),
-            safe_to_auto_repair: workflow&.running? || workflow&.queued?,
-            recommended_repair_action: "reenqueue_run",
-            evidence: run_evidence(run).merge(solid_queue: sq, solid_queue_state: "failed_execution"),
-            explanation: "Run ##{run.id} is queued but its SolidQueue RunJob has a failed execution."
-          )
-        elsif sq[:ready] && dead_resume_queue?(sq[:queue_name])
+        elsif sqs.none? { |sq| queue_job_can_progress?(sq) } && (sq = sqs.find { |candidate| candidate[:ready] && dead_resume_queue?(candidate[:queue_name]) })
           issue(
             kind: :queued_run_on_dead_resume_queue,
             severity: :error,
@@ -246,7 +236,17 @@ module WorkEngine
             evidence: run_evidence(run).merge(solid_queue: sq, solid_queue_state: "dead_resume_queue"),
             explanation: "Run ##{run.id} is queued on a per-worker resume queue whose worker is no longer live."
           )
-        elsif sq[:claimed] && older_than?(sq[:claimed_at], QUEUE_STARVATION_AFTER) && !solid_queue_process_live?(sq[:process_id])
+        elsif sqs.none? { |sq| queue_job_can_progress?(sq) } && (sq = sqs.find { |candidate| candidate[:failed] })
+          issue(
+            kind: :queued_run_solid_queue_failed_execution,
+            severity: :error,
+            affected_ids: ids_for(run).merge(solid_queue_job_ids: [ sq[:id] ]),
+            safe_to_auto_repair: workflow&.running? || workflow&.queued?,
+            recommended_repair_action: "reenqueue_run",
+            evidence: run_evidence(run).merge(solid_queue: sq, solid_queue_state: "failed_execution"),
+            explanation: "Run ##{run.id} is queued but its SolidQueue RunJob has a failed execution."
+          )
+        elsif sqs.none? { |sq| queue_job_can_progress?(sq) } && (sq = sqs.find { |candidate| stale_queue_claim?(candidate) })
           issue(
             kind: :queued_run_stale_queue_claim,
             severity: :warning,
@@ -468,6 +468,7 @@ module WorkEngine
     def classify_main_broken_workflows
       workflows.filter_map do |workflow|
         next unless workflow.artifact("main_broken")
+        next unless StepDispatcher.main_health_blocking?(workflow)
 
         issue(
           kind: :main_branch_broken,
@@ -530,6 +531,7 @@ module WorkEngine
 
     def classify_workspace_availability
       workflows.select { |workflow| workflow.running? || workflow.retry_available? }.filter_map do |workflow|
+        next if remote_live_worker_workspace?(workflow)
         next if workflow.worker_hostname.present? && !InstanceVersion.worker_live?(workflow.worker_hostname)
 
         path = WorkflowWorkspace.path_for(workflow)
@@ -685,12 +687,13 @@ module WorkEngine
         instance_version_ids: InstanceVersion.fresh.pluck(:id),
         main_health: repositories.index_with(&:main_health).transform_keys(&:slug),
         rate_limits: ProviderCircuitBreaker.open_circuits(now: now),
-        workspaces: workflows.to_h { |workflow| [ workflow.id, { path: WorkflowWorkspace.path_for(workflow).to_s, exists: File.directory?(WorkflowWorkspace.path_for(workflow)) } ] }
+        workspaces: workflows.to_h { |workflow| [ workflow.id, workspace_snapshot_for(workflow) ] }
       )
     end
 
     def capture_solid_queue
-      root_ids = runs.map(&:id)
+      root_ids = solid_queue_root_run_ids
+      ready_job_ids = SolidQueue::ReadyExecution.pluck(:job_id).to_set
       jobs = SolidQueue::Job.where(class_name: "RunJob").where(finished_at: nil).includes(:claimed_execution, :failed_execution).to_a
       parsed = jobs.filter_map do |job|
         root_run_id = run_id_from_solid_queue_arguments(job.arguments)
@@ -698,14 +701,13 @@ module WorkEngine
 
         claim = job.claimed_execution
         failed = job.failed_execution
-        ready = SolidQueue::ReadyExecution.where(job_id: job.id).exists?
         {
           id: job.id,
           root_run_id: root_run_id,
           queue_name: job.queue_name,
           priority: job.priority,
           finished_at: job.finished_at,
-          ready: ready,
+          ready: ready_job_ids.include?(job.id),
           claimed: claim.present?,
           claimed_at: claim&.created_at,
           process_id: claim&.process_id,
@@ -727,8 +729,35 @@ module WorkEngine
     def solid_queue_for_run(run)
       return nil unless solid_queue[:available]
 
-      solid_queue[:jobs].find { |job| job[:root_run_id] == run.id } ||
-        solid_queue[:jobs].find { |job| workflow_root_run_ids(run.workflow).include?(job[:root_run_id]) }
+      solid_queue_jobs_for_run(run).first
+    end
+
+    def solid_queue_jobs_for_run(run)
+      return [] unless solid_queue[:available]
+
+      workflow_run_ids = workflow_root_run_ids(run.workflow)
+      direct, workflow = solid_queue[:jobs].partition { |job| job[:root_run_id] == run.id }
+      (direct + workflow.select { |job| workflow_run_ids.include?(job[:root_run_id]) }).uniq { |job| job[:id] }
+    end
+
+    def solid_queue_root_run_ids
+      workflow_ids = workflows.map(&:id)
+      return runs.map(&:id).to_set if workflow_ids.empty?
+
+      step_ids = Step.where(workflow_id: workflow_ids).select(:id)
+      Run.where(step_id: step_ids).pluck(:id).to_set
+    end
+
+    def queue_job_can_progress?(sq)
+      return false if sq[:failed]
+      return true if sq[:ready] && !sq[:claimed] && !dead_resume_queue?(sq[:queue_name])
+      return true if sq[:claimed] && solid_queue_process_live?(sq[:process_id])
+
+      false
+    end
+
+    def stale_queue_claim?(sq)
+      sq[:claimed] && older_than?(sq[:claimed_at], QUEUE_STARVATION_AFTER) && !solid_queue_process_live?(sq[:process_id])
     end
 
     def dead_resume_queue?(queue_name)
@@ -736,6 +765,25 @@ module WorkEngine
       return false unless queue_name.start_with?("resume-")
 
       !InstanceVersion.worker_live?(queue_name.delete_prefix("resume-"))
+    end
+
+    def remote_live_worker_workspace?(workflow)
+      host = workflow.worker_hostname
+      host.present? && host != SyrusVersion.hostname && InstanceVersion.worker_live?(host)
+    end
+
+    def workspace_snapshot_for(workflow)
+      path = WorkflowWorkspace.path_for(workflow)
+      if remote_live_worker_workspace?(workflow)
+        return {
+          path: path.to_s,
+          exists: true,
+          inspected: false,
+          worker_hostname: workflow.worker_hostname
+        }
+      end
+
+      { path: path.to_s, exists: File.directory?(path), inspected: true, worker_hostname: workflow.worker_hostname }
     end
 
     def solid_queue_process_live?(process_id)
@@ -769,11 +817,23 @@ module WorkEngine
     end
 
     def start_blocked?(workflow)
-      workflow.artifact("start_blocked_reason").present?
+      reason = workflow.artifact("start_blocked_reason")
+      return false if reason.blank?
+
+      current_start_block_active?(workflow, reason)
     end
 
     def dependency_block_reason?(reason)
       %w[stack_dependencies_not_ready job_not_ready_for_execution].include?(reason.to_s)
+    end
+
+    def current_start_block_active?(workflow, reason)
+      case reason.to_s
+      when StepDispatcher::MAIN_HEALTH_BLOCK_REASON
+        StepDispatcher.main_health_blocking?(workflow)
+      else
+        true
+      end
     end
 
     def run_stale?(run)
