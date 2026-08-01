@@ -323,8 +323,7 @@ module Api
                                 :tags,
                                 job_attachments: { file_attachment: :blob },
                                 dependencies: [ :created_by_user, depends_on_job: :repository ],
-                                dependent_links: [ job: :repository ],
-                                runs: [ :run_health_snapshots, :claude_session, :run_diagnostic, :run_failure_classification ]
+                                dependent_links: [ job: :repository ]
                               )
           find_job_by_ref(scope, params[key])
         end

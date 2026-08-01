@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_01_010500) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_01_114000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -1204,6 +1204,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_010500) do
     t.index ["parent_session_id"], name: "index_runs_on_parent_session_id"
     t.index ["state", "last_heartbeat_at"], name: "index_runs_on_state_and_last_heartbeat_at"
     t.index ["step_id"], name: "index_runs_on_step_id"
+    t.index ["user_id", "agent_provider", "finished_at", "updated_at", "id"], name: "idx_runs_provider_latest_finished"
     t.index ["user_id", "created_at", "cost_usd"], name: "idx_runs_spending_user_window"
     t.index ["user_id"], name: "index_runs_on_user_id"
   end
@@ -1506,6 +1507,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_010500) do
     t.index ["cleaned_up_at"], name: "index_workflows_on_cleaned_up_at"
     t.index ["job_id", "created_at"], name: "index_workflows_on_job_id_and_created_at"
     t.index ["job_id"], name: "index_workflows_on_job_id"
+    t.index ["state", "created_at", "id"], name: "idx_workflows_state_created_at"
+    t.index ["state", "started_at", "id"], name: "idx_workflows_state_started_at"
     t.index ["user_id"], name: "index_workflows_on_user_id"
   end
 

@@ -1,6 +1,22 @@
 module WorkEngine
   class ReconcileJob < ApplicationJob
     queue_as :default
+    limits_concurrency(
+      to: 1,
+      key: ->(source:, job_id: nil, workflow_id: nil, run_id: nil) {
+        if job_id.present?
+          "job:#{job_id}"
+        elsif workflow_id.present?
+          "workflow:#{workflow_id}"
+        elsif run_id.present?
+          "run:#{run_id}"
+        else
+          "global"
+        end
+      },
+      duration: 10.minutes,
+      on_conflict: :discard
+    )
 
     def perform(source:, job_id: nil, workflow_id: nil, run_id: nil)
       Reconciler.call(

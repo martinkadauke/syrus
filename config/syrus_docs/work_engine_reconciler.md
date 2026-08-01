@@ -7,6 +7,14 @@ return structured issue records plus repair plans. The feature-gated recurring
 repair path invokes the same reconciler with repair execution enabled, and it
 executes only plans marked `auto_executable`.
 
+Recurring/global reconcile jobs are concurrency-limited by scope. Only one
+global reconcile runs at a time, and duplicate global requests are discarded
+while one is already pending or executing. Scoped reconciles for a specific Job,
+Workflow, or Run use a separate key for that record scope.
+The legacy stale-run reaper entrypoint is also limited to one execution at a
+time so a feature-flag transition or scheduler burst cannot run multiple broad
+repair scans concurrently.
+
 ## Result shape
 
 `WorkEngine::Reconciler.call(source:, job_id: nil, workflow_id: nil, run_id: nil,

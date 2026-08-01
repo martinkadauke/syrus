@@ -281,7 +281,10 @@ module App
     end
 
     def summary_json
-      run = @job.runs.select { |candidate| candidate.agent_summary.present? }.last
+      run = @job.runs
+                .where.not(agent_summary: [ nil, "" ])
+                .order(created_at: :desc, id: :desc)
+                .first
       return unless run
 
       {
@@ -317,10 +320,7 @@ module App
     end
 
     def has_test_results?
-      run_ids = @job.runs.map(&:id)
-      return false if run_ids.empty?
-
-      TestRun.where(run_id: run_ids).exists?
+      TestRun.where(run_id: @job.runs.select(:id)).exists?
     end
 
     def origin_chat_json
