@@ -4,6 +4,11 @@ RSpec.describe App::ProviderAvailability do
   let(:now) { Time.zone.parse("2026-07-31 12:00:00 UTC") }
   let(:user) { Factories.user }
 
+  before do
+    Rails.cache.clear
+    Current.provider_availability_cache = nil
+  end
+
   def failed_run(provider:, owner: user, outcome: "provider_usage_limit", message: "model gpt-5.5 weekly usage limit exhausted", step_kind: nil, classification: nil)
     job = Factories.job(repository: Factories.repository(user: owner), user: owner, agent_provider: provider)
     step = if step_kind
@@ -169,5 +174,21 @@ RSpec.describe App::ProviderAvailability do
 
     expect(status).to be_nil
     expect(queries).to be_empty
+  end
+
+  it "caches provider availability outside the request-local cache" do
+    original_cache = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    failed_run(provider: "codex")
+
+    first = described_class.for_user(user, "codex", now: now)
+    Current.provider_availability_cache = nil
+
+    expect(described_class).not_to receive(:new)
+    second = described_class.for_user(user, "codex", now: now)
+
+    expect(second).to eq(first)
+  ensure
+    Rails.cache = original_cache if original_cache
   end
 end

@@ -162,16 +162,31 @@ class ChatSession < ApplicationRecord
   end
 
   def turn_in_flight?
-    latest_user_message = messages.where(role: "user").order(:created_at, :id).last
-    return false unless latest_user_message
+    self[:turn_in_flight]
+  end
 
-    messages
-      .where("created_at > ? OR (created_at = ? AND id > ?)",
-             latest_user_message.created_at,
-             latest_user_message.created_at,
-             latest_user_message.id)
-      .where.not(role: "user")
-      .none?
+  def record_message_turn_state!(message)
+    update_columns(turn_in_flight: message.role == "user")
+    self.turn_in_flight = message.role == "user"
+  end
+
+  def recalculate_turn_state!
+    latest_user_message = messages.where(role: "user").order(:created_at, :id).last
+    next_value = if latest_user_message
+      messages
+        .where("created_at > ? OR (created_at = ? AND id > ?)",
+               latest_user_message.created_at,
+               latest_user_message.created_at,
+               latest_user_message.id)
+        .where.not(role: "user")
+        .none?
+    else
+      false
+    end
+
+    update_columns(turn_in_flight: next_value)
+    self.turn_in_flight = next_value
+    next_value
   end
 
   def agent_busy?

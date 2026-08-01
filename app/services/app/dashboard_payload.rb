@@ -117,6 +117,8 @@ module App
     end
 
     def chrome_payload
+      health_blocked_repositories = PerformanceLogging.phase("dashboard_chrome.health_blocked_repositories", subject: subject) { health_blocked_repositories_json }
+
       {
         subject: subject,
         view: view,
@@ -130,8 +132,8 @@ module App
         filter: current_filter.to_h,
         landing_queue: PerformanceLogging.phase("dashboard_chrome.landing_queue", subject: subject) { landing_queue_chrome_json },
         provider_availability: PerformanceLogging.phase("dashboard_chrome.provider_availability", subject: subject) { provider_availability_by_provider },
-        broken_repositories: PerformanceLogging.phase("dashboard_chrome.health_blocked_repositories", subject: subject) { health_blocked_repositories_json },
-        health_blocked_repositories: PerformanceLogging.phase("dashboard_chrome.health_blocked_repositories", subject: subject) { health_blocked_repositories_json },
+        broken_repositories: health_blocked_repositories,
+        health_blocked_repositories: health_blocked_repositories,
         smart_folders: PerformanceLogging.phase("dashboard_chrome.smart_folders", subject: subject) { smart_folders_json },
         active_smart_folder_id: active_smart_folder&.id,
         setup: PerformanceLogging.phase("dashboard_chrome.setup", subject: subject) { ::App::SetupStatus.call(user: user) },

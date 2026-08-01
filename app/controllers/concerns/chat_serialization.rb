@@ -46,7 +46,7 @@ module ChatSerialization
         pending_proposal_count: PerformanceLogging.phase("chat_payload.pending_proposal_count", chat_id: chat_session.id) { chat_session.proposals.where(state: "proposed").count },
         messages: PerformanceLogging.phase("chat_payload.messages_json", chat_id: chat_session.id, message_count: messages.size) { messages_json(messages, repository: repository) },
         bookmarks: PerformanceLogging.phase("chat_payload.bookmarks", chat_id: chat_session.id) { chat_session.bookmarks.includes(:chat_message).map { |bookmark| bookmark_json(bookmark) } },
-        recent_chats: PerformanceLogging.phase("chat_payload.recent_chats", chat_id: chat_session.id) { recent_chats_json(chat_session) },
+        recent_chats: [],
         pending_actions: PerformanceLogging.phase("chat_payload.pending_actions", chat_id: chat_session.id) { pending_actions_json(chat_session) },
         agent_questions: PerformanceLogging.phase("chat_payload.agent_questions", chat_id: chat_session.id) { chat_session.agent_questions_payload },
         queued_messages: PerformanceLogging.phase("chat_payload.queued_messages", chat_id: chat_session.id) { chat_session.queued_messages_payload },

@@ -1,15 +1,20 @@
 module App
   class ProviderAvailability
+    CACHE_TTL = 2.minutes
+    CACHE_VERSION = "v1"
+
     def self.for_user(user, provider, now: Time.current, cached: true)
       return new(user: user, provider: provider, now: now).status unless cached
 
-      key = cache_key(user, provider, now)
+      key = cache_key(user, provider)
       return nil unless key
 
       cache = Current.provider_availability_cache ||= {}
       return cache[key] if cache.key?(key)
 
-      cache[key] = new(user: user, provider: provider, now: now).status
+      cache[key] = Rails.cache.fetch(cache_store_key(key), expires_in: CACHE_TTL) do
+        new(user: user, provider: provider, now: now).status
+      end
     end
 
     def self.broadcast_changed(user:, provider:, now: Time.current)
@@ -33,18 +38,26 @@ module App
 
     def self.clear_cache!(user: nil, provider: nil)
       cache = Current.provider_availability_cache
-      return unless cache
-      return cache.clear unless user && provider.present?
+      unless user && provider.present?
+        cache&.clear
+        return
+      end
 
       user_id = user.respond_to?(:id) ? user.id : user
       provider = provider.to_s
-      cache.delete_if { |(cached_user_id, cached_provider, _), _| cached_user_id == user_id && cached_provider == provider }
+      cache&.delete_if { |(cached_user_id, cached_provider), _| cached_user_id == user_id && cached_provider == provider }
+      Rails.cache.delete(cache_store_key([ user_id, provider ]))
     end
 
-    def self.cache_key(user, provider, now)
+    def self.cache_key(user, provider)
       return if user.blank? || provider.blank?
 
       [ user.id, provider.to_s ]
+    end
+
+    def self.cache_store_key(key)
+      user_id, provider = key
+      "provider_availability/#{CACHE_VERSION}/users/#{user_id}/providers/#{provider}"
     end
 
     def initialize(user:, provider:, now: Time.current)

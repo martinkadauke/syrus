@@ -8,6 +8,7 @@ class ChatMessage < ApplicationRecord
 
   has_many :bookmarks, class_name: "ChatBookmark", dependent: :destroy, inverse_of: :chat_message
 
+  after_create :record_chat_turn_state
   after_create_commit :broadcast_app_event
   after_create_commit :enqueue_search_index
   after_create_commit :clear_suggested_next_step, if: -> { role == "user" }
@@ -65,6 +66,10 @@ class ChatMessage < ApplicationRecord
         queued_messages: chat.queued_messages_payload
       }
     )
+  end
+
+  def record_chat_turn_state
+    chat_session.record_message_turn_state!(self)
   end
 
   def enqueue_search_index

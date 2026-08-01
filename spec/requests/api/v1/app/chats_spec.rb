@@ -1207,7 +1207,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       cumulative_cost_usd: 0.012345,
       last_message_at: Time.current
     )
-    older_chat = ChatSession.create!(
+    ChatSession.create!(
       user: user,
       repository: repository,
       title: "Older chat",
@@ -1244,10 +1244,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       "options" => [ "Fast", "Careful" ],
       "app_answer_path" => "/api/v1/app/chats/#{chat.id}/agent_questions/#{question.id}/answer"
     ))
-    expect(body["recent_chats"]).to include(
-      include("id" => chat.id, "current" => true, "chat_path" => chat_path(chat), "repository" => include("slug" => "acme/widgets")),
-      include("id" => older_chat.id, "current" => false, "title" => "Older chat")
-    )
+    expect(body["recent_chats"]).to eq([])
     expect(body["recent_chats"].to_s).not_to include("Foreign chat")
     expect(body["messages"]).to contain_exactly(include(
       "type" => "message",
@@ -2204,7 +2201,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     )
   end
 
-  it "orders the chat navigation by recent activity" do
+  it "does not embed chat navigation in the chat detail payload" do
     sign_in_as(user)
     current_chat = ChatSession.create!(
       user: user,
@@ -2214,7 +2211,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       updated_at: 3.days.ago,
       last_message_at: Time.current
     )
-    middle_chat = ChatSession.create!(
+    ChatSession.create!(
       user: user,
       repository: repository,
       title: "Middle",
@@ -2223,7 +2220,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       last_message_at: 12.hours.ago,
       last_read_at: Time.current
     )
-    newest_chat = ChatSession.create!(
+    ChatSession.create!(
       user: user,
       repository: repository,
       title: "Newest",
@@ -2236,9 +2233,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
     expect(response).to have_http_status(:ok)
     body = parse_body
-    expect(body["recent_chats"].map { |chat| chat.fetch("id") }).to eq([ current_chat.id, middle_chat.id, newest_chat.id ])
-    expect(body["recent_chats"].map { |chat| chat.fetch("current") }).to eq([ true, false, false ])
-    expect(body["recent_chats"].map { |chat| chat.fetch("unread") }).to eq([ true, false, false ])
+    expect(body["recent_chats"]).to eq([])
   end
 
   it "orders recent chats by last_message_at, ignoring updated_at bumps" do

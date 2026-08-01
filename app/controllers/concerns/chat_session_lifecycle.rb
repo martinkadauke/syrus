@@ -99,6 +99,9 @@ module ChatSessionLifecycle
         "pending_action_id" => nil
       )
     end
-    ChatMessage.insert_all!(rows) if rows.any?
+    if rows.any?
+      ChatMessage.insert_all!(rows)
+      branched_chat.recalculate_turn_state!
+    end
   end
 end
