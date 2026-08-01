@@ -110,4 +110,6 @@ group :test do
   # Code coverage reporting — produces LCOV output for coverage_analyze step
   gem "simplecov"
   gem "simplecov-lcov"
+
+  gem "parallel_tests", "~> 5.7", require: false
 end

@@ -16,7 +16,7 @@ require "open3"
 # diagnostic stderr when env vars are missing. That's enough to catch
 # accidental removal of bundler setup AND removal of the env! guard
 # both — even if it can't catch the specific K3s LoadError mode.
-RSpec.describe "bin/healthcheck" do
+RSpec.describe "bin/healthcheck", :ci_only do
   let(:script) { Rails.root.join("bin/healthcheck").to_s }
 
   # Bundler.with_unbundled_env approximates "process started by K8s with

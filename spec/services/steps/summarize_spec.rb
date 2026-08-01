@@ -2,7 +2,7 @@ require "rails_helper"
 require "tmpdir"
 require "open3"
 
-RSpec.describe Steps::Summarize do
+RSpec.describe Steps::Summarize, :ci_only do
   let(:user)     { Factories.user(name: "Ada Lovelace", email_address: "ada@example.com") }
   let(:repository) { Factories.repository(user: user) }
   let(:job)      { Factories.job(repository: repository) }   # issue_number: 42

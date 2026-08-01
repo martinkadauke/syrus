@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export RAILS_ENV="${RAILS_ENV:-test}"
+export COVERAGE="${COVERAGE:-false}"
+export PARALLEL_TEST_PROCESSORS="${RSPEC_PROCESSES:-8}"
+
+bundle exec rake parallel:prepare
+exec bundle exec parallel_rspec -n "$PARALLEL_TEST_PROCESSORS" --quiet "$@"

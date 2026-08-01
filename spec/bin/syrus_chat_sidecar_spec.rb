@@ -5,7 +5,7 @@ require "open3"
 require "timeout"
 require "rails_helper"
 
-RSpec.describe "bin/syrus-chat-sidecar" do
+RSpec.describe "bin/syrus-chat-sidecar", :ci_only do
   self.use_transactional_tests = false
 
   let(:root) { Rails.root.to_s }

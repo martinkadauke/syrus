@@ -1,7 +1,7 @@
 require "rails_helper"
 require Rails.root.join("db/migrate/20260703051210_refactor_repositories_uniqueness_and_add_memberships")
 
-RSpec.describe RefactorRepositoriesUniquenessAndAddMemberships do
+RSpec.describe RefactorRepositoriesUniquenessAndAddMemberships, :ci_only do
   let(:conn) { ActiveRecord::Base.connection }
   let(:migration) { described_class.new }
 

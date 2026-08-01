@@ -3,7 +3,7 @@
 require "open3"
 require "rails_helper"
 
-RSpec.describe "bin/check-production-build-boot" do
+RSpec.describe "bin/check-production-build-boot", :ci_only do
   let(:root) { Rails.root.to_s }
   let(:script) { File.join(root, "bin/check-production-build-boot") }
 

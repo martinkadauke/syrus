@@ -1,7 +1,7 @@
 require "rails_helper"
 require Rails.root.join("db/migrate/20260517225759_backfill_approval_propagates_to_github_default")
 
-RSpec.describe BackfillApprovalPropagatesToGithubDefault do
+RSpec.describe BackfillApprovalPropagatesToGithubDefault, :ci_only do
   let(:connection) { ActiveRecord::Base.connection }
   let(:migration) { described_class.new }
 

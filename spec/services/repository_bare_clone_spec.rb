@@ -2,7 +2,7 @@ require "rails_helper"
 require "tmpdir"
 require "fileutils"
 
-RSpec.describe RepositoryBareClone do
+RSpec.describe RepositoryBareClone, :ci_only do
   let(:syrus_data_root) { Pathname.new(Dir.mktmpdir("syrus-data")) }
   let(:origin_dir) { Pathname.new(Dir.mktmpdir("syrus-origin")) }
   let(:user) { Factories.user(github_token: "ghp_test") }

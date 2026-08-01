@@ -2,7 +2,7 @@ require "rails_helper"
 require "rbconfig"
 require "tmpdir"
 
-RSpec.describe ProcessRunner do
+RSpec.describe ProcessRunner, :ci_only do
   around do |example|
     Dir.mktmpdir("process-runner") do |dir|
       @dir = dir

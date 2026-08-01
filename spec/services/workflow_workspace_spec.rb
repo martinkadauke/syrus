@@ -1,7 +1,7 @@
 require "rails_helper"
 require "tmpdir"
 
-RSpec.describe WorkflowWorkspace do
+RSpec.describe WorkflowWorkspace, :ci_only do
   let(:bare_remote_dir) { Pathname.new(Dir.mktmpdir("syrus-wfws-bare")) }
   let(:user) { Factories.user(name: "Ada Lovelace", github_handle: "ada", email_address: "ada@example.com", github_token: "ghp_test_token") }
   let(:repository) do

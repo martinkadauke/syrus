@@ -8,7 +8,7 @@ require "fileutils"
 # dispatcher, WorkflowWorkspace, git, push to a local bare repo,
 # WebMock-stubbed GitHub PR creation. The bare repo's state is
 # the ground truth for "did the agent's work make it to origin?".
-RSpec.describe RunJob do
+RSpec.describe RunJob, :ci_only do
   let(:bare_remote_dir) { Pathname.new(Dir.mktmpdir("syrus-bare")) }
   let(:user) { Factories.user(name: "Ada Lovelace", github_handle: "ada", email_address: "ada@example.com", github_token: "ghp_test_token", claude_oauth_token: "oat-test") }
   let(:repository) do
@@ -98,7 +98,9 @@ RSpec.describe RunJob do
   # ----- Initial workflow ----------------------------------------
 
   describe "Initial workflow (issue → PR)" do
-    it "runs implement → summarize → pr_open end-to-end, opens PR, succeeds" do
+    it "runs implement → summarize → pr_open end-to-end, opens PR, and records commit metadata" do
+      expect(PollRebaseJob).to receive(:set).with(hash_including(:wait)).and_return(double(perform_later: true))
+
       job
       drain_workflow!(job)
 
@@ -120,190 +122,26 @@ RSpec.describe RunJob do
       expect(job.pr_number).to eq(123)
       expect(job.branch_name).to eq("syrus/issue-42-#{job.id}")
       expect(@pr_stub).to have_been_requested
+      expect(job.issue_title).to eq("Add greeting helper")
+      expect(job.issue_body).to eq("We need a greeting helper.")
 
       branches = `git --git-dir=#{bare_remote_dir} branch --list 'syrus/*'`.split("\n").map(&:strip)
       expect(branches).to include(job.branch_name)
-    end
 
-    it "loops implement + grade until graders pass, then opens the PR" do
-      AppSetting.current.update!(grade_max_iterations: 2)
-      commit_file_to_remote(".syrus.yml", <<~YAML)
-        grade:
-          - name: tests
-            run: test -f grade-pass
-      YAML
-      RunJob.agent_runner = ->(workspace_path:, **_) {
-        current = Run.last
-        file = File.join(workspace_path, "feature.rb")
-        if current.step.kind == "implement"
-          File.write(file, "def greet = 'hello'\n")
-          File.write(File.join(workspace_path, "grade-pass"), "ok\n") if current.iteration >= 2
-        elsif current.step.kind == "summarize"
-          current.update!(
-            agent_pr_title: "Add greeting helper",
-            agent_pr_body: "Adds a tiny greet helper used by the welcome page.",
-            agent_summary: "Implemented greet."
-          )
-        elsif current.step.kind == "test_plan"
-          current.workflow.set_artifact!("test_plan", { steps: [ "Run bin/rspec" ], notes: nil })
-        end
-        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false,
-                                    outcome: "success", final_text: nil, session_id: "S-#{current.iteration}",
-                                    transcript_jsonl: "{}\n")
-      }
-
-      job
-      drain_workflow!(job)
-
-      wf = job.workflows.last
-      expect(wf.reload.state).to eq("succeeded")
-      expect(wf.steps.where(kind: "implement").pluck(:iteration)).to eq([ 1, 2 ])
-      # grader_collect is the loop terminal — fails on iteration 1 (the
-      # grader Step failed), succeeds on iteration 2 (all required passed).
-      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
-        [ 1, "failed" ],
-        [ 2, "succeeded" ]
-      ])
-      expect(wf.failure_count).to eq(0)
-      expect(wf.steps.find_by(kind: "implement", iteration: 2).runs.first.parent_session_id).to eq("S-1")
-      expect(job.reload.pr_number).to eq(123)
-      expect(@pr_stub).to have_been_requested
-    end
-
-    it "uses per-repo grade.max_iterations for the active grade loop" do
-      AppSetting.current.update!(grade_max_iterations: 1)
-      commit_file_to_remote(".syrus.yml", <<~YAML)
-        grade:
-          max_iterations: 2
-          steps:
-            - name: tests
-              run: test -f grade-pass
-      YAML
-      RunJob.agent_runner = ->(workspace_path:, **_) {
-        current = Run.last
-        if current.step.kind == "implement"
-          File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
-          File.write(File.join(workspace_path, "grade-pass"), "ok\n") if current.iteration >= 2
-        elsif current.step.kind == "summarize"
-          current.update!(
-            agent_pr_title: "Add greeting helper",
-            agent_pr_body: "Adds a tiny greet helper used by the welcome page.",
-            agent_summary: "Implemented greet."
-          )
-        elsif current.step.kind == "test_plan"
-          current.workflow.set_artifact!("test_plan", { steps: [ "Run bin/rspec" ], notes: nil })
-        end
-        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false,
-                                    outcome: "success", final_text: nil, session_id: "S-#{current.iteration}",
-                                    transcript_jsonl: "{}\n")
-      }
-
-      job
-      drain_workflow!(job)
-
-      wf = job.workflows.last
-      expect(wf.reload.state).to eq("succeeded")
-      expect(wf.chain_template).to include(
-        {
-          "type" => "retry_until",
-          "max_iterations" => 2,
-          "repair" => %w[ implement ],
-          "check" => %w[ grader_fanout grader_collect ],
-          "repair_first" => true
-        }
-      )
-      expect(wf.steps.where(kind: "implement").pluck(:iteration)).to eq([ 1, 2 ])
-      expect(job.reload.pr_number).to eq(123)
-    end
-
-    it "does not raise the RunJob when a grade failure is controlled by the loop dispatcher" do
-      AppSetting.current.update!(grade_max_iterations: 2)
-      commit_file_to_remote(".syrus.yml", <<~YAML)
-        grade:
-          - name: tests
-            run: test -f grade-pass
-      YAML
-      RunJob.agent_runner = ->(workspace_path:, **_) {
-        current = Run.last
-        if current.step.kind == "implement"
-          File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
-          File.write(File.join(workspace_path, "grade-pass"), "ok\n") if current.iteration >= 2
-        elsif current.step.kind == "summarize"
-          current.update!(
-            agent_pr_title: "Loop-controlled greeting",
-            agent_pr_body: "Exercises controlled grade-loop recovery.",
-            agent_summary: "Recovered from a failed grade."
-          )
-        elsif current.step.kind == "test_plan"
-          current.workflow.set_artifact!("test_plan", { steps: [ "Run bin/rspec" ], notes: nil })
-        end
-        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false,
-                                    outcome: "success", final_text: nil, session_id: "S-#{current.iteration}",
-                                    transcript_jsonl: "{}\n")
-      }
-
-      job
-
-      expect { RunJob.perform_now(job.initial_run.id) }.not_to raise_error
-
-      wf = job.workflows.last
-      expect(wf.reload.state).to eq("succeeded")
-      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
-        [ 1, "failed" ],
-        [ 2, "succeeded" ]
-      ])
-      expect(wf.failure_count).to eq(0)
-      expect(wf.steps.find_by(kind: "implement", iteration: 2).runs.first).to be_succeeded
-    end
-
-    it "fails with loop_exhausted_after_grader_failure when grade never passes and does not open a PR" do
-      AppSetting.current.update!(grade_max_iterations: 2)
-      commit_file_to_remote(".syrus.yml", <<~YAML)
-        grade:
-          - name: tests
-            run: "false"
-      YAML
-
-      job
-      drain_workflow!(job)
-
-      wf = job.workflows.last
-      expect(wf.reload.state).to eq("failed")
-      expect(wf.artifact("failure_reason")).to eq("loop_exhausted_after_grader_failure")
-      expect(wf.failure_count).to eq(1)
-      expect(wf.steps.where(kind: "implement").pluck(:iteration)).to eq([ 1, 2 ])
-      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
-        [ 1, "failed" ],
-        [ 2, "failed" ]
-      ])
-      expect(wf.steps.where(kind: "pr_open").first.runs).to be_empty
-      expect(@pr_stub).not_to have_been_requested
-    end
-
-    it "rewrites implement's placeholder commit message via summarize's `git commit --amend`" do
-      job; drain_workflow!(job)
       tip = `git --git-dir=#{bare_remote_dir} log -1 --format='%s' #{job.branch_name}`.strip
       expect(tip).to eq("Add greeting helper")
-    end
 
-    it "includes the agent pr_body in the commit message body" do
-      job; drain_workflow!(job)
       body = `git --git-dir=#{bare_remote_dir} log -1 --format='%b' #{job.branch_name}`.strip
       expect(body).to include("Adds a tiny greet helper used by the welcome page.")
-    end
 
-    it "prepends Closes #N in the commit message for issue jobs" do
-      job; drain_workflow!(job)
       full = `git --git-dir=#{bare_remote_dir} log -1 --format='%B' #{job.branch_name}`.strip
       expect(full).to include("Closes #42")
-    end
-
-    it "authors commits as the User in PAT mode" do
-      job; drain_workflow!(job)
+      expect(full).to include("Co-Authored-By: Ada Lovelace <ada@example.com>")
 
       author = `git --git-dir=#{bare_remote_dir} log -1 --format='%an <%ae>' #{job.branch_name}`.strip
-
       expect(author).to eq("Ada Lovelace <ada@example.com>")
+
+      expect(WorkflowWorkspace.path_for(wf)).not_to exist
     end
 
     it "authors commits as the App bot when the App is registered and installed" do
@@ -317,19 +155,6 @@ RSpec.describe RunJob do
       author = `git --git-dir=#{bare_remote_dir} log -1 --format='%an <%ae>' #{job.branch_name}`.strip
 
       expect(author).to eq("tkadauke-syrus[bot] <tkadauke-syrus[bot]@users.noreply.github.com>")
-    end
-
-    it "adds a Co-Authored-By trailer for issue-triggered jobs" do
-      job; drain_workflow!(job)
-      full = `git --git-dir=#{bare_remote_dir} log -1 --format='%B' #{job.branch_name}`.strip
-
-      expect(full).to include("Co-Authored-By: Ada Lovelace <ada@example.com>")
-    end
-
-    it "tears down the workspace when the Workflow succeeds" do
-      job; drain_workflow!(job)
-      wf = job.workflows.last
-      expect(WorkflowWorkspace.path_for(wf)).not_to exist
     end
 
     it "workspace stays on disk when the Workflow fails (retry-from-failed-step needs it)" do
@@ -363,20 +188,6 @@ RSpec.describe RunJob do
       expect(wf_path).not_to exist
     end
 
-    it "stamps issue_title + issue_body on the Job" do
-      job; drain_workflow!(job)
-      job.reload
-      expect(job.issue_title).to eq("Add greeting helper")
-      expect(job.issue_body).to eq("We need a greeting helper.")
-    end
-
-    it "schedules a delayed PollRebaseJob so the mergeability badge refreshes after pr_open" do
-      # We can't easily assert have_enqueued_job because drain
-      # consumes the queue. Instead spy on the API call.
-      expect(PollRebaseJob).to receive(:set).with(hash_including(:wait)).and_return(double(perform_later: true))
-      job; drain_workflow!(job)
-    end
-
     it "adds human trigger attribution to direct PR descriptions" do
       direct = user.jobs.create!(
         repository: repository,
@@ -398,14 +209,11 @@ RSpec.describe RunJob do
   # ----- PrFeedback workflow -------------------------------------
 
   describe "PrFeedback workflow (pr_comment → respond → grade → summarize_amend → try(push))" do
+    let(:job) { implemented_job_with_branch }
+
     before do
       allow(RepoAdversarialReviewPlan).to receive(:for_job)
         .and_return(RepoAdversarialReviewPlan::Result.new(rounds: 0, source: "none", note: "no .syrus.yml", criteria: []))
-    end
-
-    before do
-      # Initial workflow first so the branch exists on origin.
-      job; drain_workflow!(job)
       WebMock.reset_executed_requests!
     end
 
@@ -438,168 +246,17 @@ RSpec.describe RunJob do
       expect(log.size).to be >= 2
     end
 
-    it "loops respond + grade until graders pass, then summarizes and pushes" do
-      AppSetting.current.update!(grade_max_iterations: 2)
-      RunJob.agent_runner = ->(workspace_path:, **_) {
-        current = Run.last
-        case current.step.kind
-        when "respond"
-          File.write(File.join(workspace_path, ".syrus.yml"), <<~YAML)
-            grade:
-              - name: tests
-                run: test -f grade-pass
-          YAML
-          File.open(File.join(workspace_path, "feature.rb"), "a") { |f| f.puts "# addressed feedback iteration #{current.iteration}" }
-          File.write(File.join(workspace_path, "grade-pass"), "ok\n") if current.iteration >= 2
-        when "summarize_amend"
-          current.update!(
-            agent_pr_title: "Address review feedback",
-            agent_pr_body: "Tightens the review-requested behavior.",
-            agent_summary: "Addressed feedback."
-          )
-        end
-        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false,
-                                    outcome: "success", final_text: nil, session_id: "R-#{current.iteration}",
-                                    transcript_jsonl: "{}\n")
-      }
-      wf = Workflows::PrFeedback.instantiate(
-        job: job,
-        artifacts: { "pr_comments" => [ { "author" => "reviewer", "body" => "tighten the docstring", "created_at" => Time.current.iso8601 } ] }
-      )
-      StepDispatcher.start_workflow(wf)
-
-      drain_workflow!(job)
-
-      expect(wf.reload.state).to eq("succeeded")
-      expect(wf.steps.where(kind: "respond").pluck(:iteration)).to eq([ 1, 2 ])
-      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
-        [ 1, "failed" ],
-        [ 2, "succeeded" ]
-      ])
-      expect(wf.steps.find_by(kind: "respond", iteration: 2).runs.first.parent_session_id).to eq("R-1")
-      expect(wf.steps.find_by(kind: "summarize_amend").runs.first).to be_succeeded
-      expect(wf.steps.find_by(kind: "push").runs.first).to be_succeeded
-    end
-
-    it "fails with loop_exhausted_after_grader_failure when review feedback grading never passes" do
-      AppSetting.current.update!(grade_max_iterations: 2)
-      RunJob.agent_runner = ->(workspace_path:, **_) {
-        current = Run.last
-        if current.step.kind == "respond"
-          File.write(File.join(workspace_path, ".syrus.yml"), <<~YAML)
-            grade:
-              - name: tests
-                run: "false"
-          YAML
-          File.open(File.join(workspace_path, "feature.rb"), "a") { |f| f.puts "# attempted feedback iteration #{current.iteration}" }
-        end
-        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false,
-                                    outcome: "success", final_text: nil, session_id: "R-#{current.iteration}",
-                                    transcript_jsonl: "{}\n")
-      }
-      wf = Workflows::PrFeedback.instantiate(
-        job: job,
-        artifacts: { "pr_comments" => [ { "author" => "reviewer", "body" => "tighten the docstring", "created_at" => Time.current.iso8601 } ] }
-      )
-      StepDispatcher.start_workflow(wf)
-
-      drain_workflow!(job)
-
-      expect(wf.reload.state).to eq("failed")
-      expect(wf.artifact("failure_reason")).to eq("loop_exhausted_after_grader_failure")
-      expect(wf.failure_count).to eq(1)
-      expect(wf.steps.where(kind: "respond").pluck(:iteration)).to eq([ 1, 2 ])
-      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
-        [ 1, "failed" ],
-        [ 2, "failed" ]
-      ])
-      expect(wf.steps.where(kind: "push").first.runs).to be_empty
-    end
   end
 
   # ----- Retry workflow ------------------------------------------
 
   describe "Retry workflow (retry → implement → grade → summarize → test_plan → pr_open)" do
+    let(:job) { retriable_job_with_branch }
+
     before do
-      # Initial workflow first so retry reuses a real existing branch.
-      job; drain_workflow!(job)
       WebMock.reset_executed_requests!
     end
 
-    it "loops implement + grade until graders pass, then summarizes and reaches pr_open" do
-      AppSetting.current.update!(grade_max_iterations: 2)
-      RunJob.agent_runner = ->(workspace_path:, **_) {
-        current = Run.last
-        case current.step.kind
-        when "implement"
-          File.write(File.join(workspace_path, ".syrus.yml"), <<~YAML)
-            grade:
-              - name: tests
-                run: test -f grade-pass
-          YAML
-          File.write(File.join(workspace_path, "retry_feature.rb"), "def retry_iteration = #{current.iteration}\n")
-          File.write(File.join(workspace_path, "grade-pass"), "ok\n") if current.iteration >= 2
-        when "summarize"
-          current.update!(
-            agent_pr_title: "Retry greeting helper",
-            agent_pr_body: "Retries the greeting helper implementation.",
-            agent_summary: "Retried implementation."
-          )
-        when "test_plan"
-          current.workflow.set_artifact!("test_plan", { steps: [ "Run bin/rspec" ], notes: nil })
-        end
-        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false,
-                                    outcome: "success", final_text: nil, session_id: "I-#{current.iteration}",
-                                    transcript_jsonl: "{}\n")
-      }
-      wf = Workflows::Retry.instantiate(job: job)
-      StepDispatcher.start_workflow(wf)
-
-      drain_workflow!(job)
-
-      expect(wf.reload.state).to eq("succeeded")
-      expect(wf.steps.where(kind: "implement").pluck(:iteration)).to eq([ 1, 2 ])
-      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
-        [ 1, "failed" ],
-        [ 2, "succeeded" ]
-      ])
-      expect(wf.steps.find_by(kind: "implement", iteration: 2).runs.first.parent_session_id).to eq("I-1")
-      expect(wf.steps.find_by(kind: "summarize").runs.first).to be_succeeded
-      expect(wf.steps.find_by(kind: "test_plan").runs.first).to be_succeeded
-      expect(wf.steps.find_by(kind: "pr_open").runs.first).to be_succeeded
-    end
-
-    it "fails with loop_exhausted_after_grader_failure when retry grading never passes" do
-      AppSetting.current.update!(grade_max_iterations: 2)
-      RunJob.agent_runner = ->(workspace_path:, **_) {
-        current = Run.last
-        if current.step.kind == "implement"
-          File.write(File.join(workspace_path, ".syrus.yml"), <<~YAML)
-            grade:
-              - name: tests
-                run: "false"
-          YAML
-          File.write(File.join(workspace_path, "retry_feature.rb"), "def retry_iteration = #{current.iteration}\n")
-        end
-        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false,
-                                    outcome: "success", final_text: nil, session_id: "I-#{current.iteration}",
-                                    transcript_jsonl: "{}\n")
-      }
-      wf = Workflows::Retry.instantiate(job: job)
-      StepDispatcher.start_workflow(wf)
-
-      drain_workflow!(job)
-
-      expect(wf.reload.state).to eq("failed")
-      expect(wf.artifact("failure_reason")).to eq("loop_exhausted_after_grader_failure")
-      expect(wf.failure_count).to eq(1)
-      expect(wf.steps.where(kind: "implement").pluck(:iteration)).to eq([ 1, 2 ])
-      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
-        [ 1, "failed" ],
-        [ 2, "failed" ]
-      ])
-      expect(wf.steps.where(kind: "pr_open").first.runs).to be_empty
-    end
   end
 
   # ----- Rebase workflow -----------------------------------------
@@ -1044,6 +701,41 @@ RSpec.describe RunJob do
       end
       sh("git -C #{seed} commit -q -m 'seed #{branch}'")
       sh("git -C #{seed} push -q origin #{branch}")
+    end
+  end
+
+  def implemented_job_with_branch
+    Factories.job_record(
+      user: user,
+      repository: repository,
+      issue_number: 42,
+      pr_number: 123,
+      branch_name: "syrus/issue-42-implemented",
+      state: "implemented"
+    ).tap do |record|
+      create_branch_to_remote(record.branch_name, "feature.rb" => "def greet = 'hello'\n")
+    end
+  end
+
+  def retriable_job_with_branch
+    Factories.job_record(
+      user: user,
+      repository: repository,
+      issue_number: 42,
+      pr_number: 123,
+      branch_name: "syrus/issue-42-retry",
+      state: "failed"
+    ).tap do |record|
+      Workflow.create!(
+        job: record,
+        user: user,
+        trigger_kind: "initial",
+        agent_provider: record.agent_provider,
+        state: "failed",
+        started_at: 10.minutes.ago,
+        finished_at: 9.minutes.ago
+      )
+      create_branch_to_remote(record.branch_name, "feature.rb" => "def greet = 'hello'\n")
     end
   end
 

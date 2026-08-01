@@ -2,7 +2,7 @@ require "rails_helper"
 require "tmpdir"
 require "fileutils"
 
-RSpec.describe PushPendingCommitsJob do
+RSpec.describe PushPendingCommitsJob, :ci_only do
   let(:bare_remote_dir) { Pathname.new(Dir.mktmpdir("syrus-push-bare")) }
   let(:user)       { Factories.user(github_token: "ghp_test") }
   let(:repository) { Factories.repository(user: user, owner: "acme", name: "widgets", default_branch: "main") }

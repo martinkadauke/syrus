@@ -14,6 +14,9 @@
 #
 # See https://rubydoc.info/gems/rspec-core/RSpec/Core/Configuration
 RSpec.configure do |config|
+  run_ci_only_specs = ENV["CI"].to_s != "" || ENV["RUN_CI_ONLY_SPECS"].to_s == "true"
+  config.filter_run_excluding(ci_only: true) unless run_ci_only_specs
+
   # rspec-expectations config goes here. You can use an alternate
   # assertion/expectation library such as wrong or the stdlib/minitest
   # assertions if you prefer.

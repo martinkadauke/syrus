@@ -1,7 +1,7 @@
 require "rails_helper"
 require Rails.root.join("db/migrate/20260623170414_add_pending_action_to_chat_messages")
 
-RSpec.describe AddPendingActionToChatMessages do
+RSpec.describe AddPendingActionToChatMessages, :ci_only do
   it "is idempotent when run more than once" do
     migration = described_class.new
 

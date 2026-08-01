@@ -5,7 +5,7 @@ require "open3"
 require "spec_helper"
 require "tmpdir"
 
-RSpec.describe "bin/check_feature_slugs" do
+RSpec.describe "bin/check_feature_slugs", :ci_only do
   let(:root) { File.expand_path("../..", __dir__) }
   let(:script) { File.join(root, "bin/check_feature_slugs") }
 

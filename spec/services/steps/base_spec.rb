@@ -457,7 +457,7 @@ RSpec.describe Steps::Base do
     end
   end
 
-  describe "#assert_branch_history_intact!" do
+  describe "#assert_branch_history_intact!", :ci_only do
     # Build a workspace that mirrors the stacked-PR clone shape: a
     # working tree with origin/<default_branch> as the only ref to
     # the upstream, and the agent branch checked out off a sibling

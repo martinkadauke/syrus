@@ -2,7 +2,7 @@ require "rails_helper"
 require "tmpdir"
 require "shellwords"
 
-RSpec.describe ChatWorkspace do
+RSpec.describe ChatWorkspace, :ci_only do
   let(:bare_remote_dir) { Pathname.new(Dir.mktmpdir("syrus-chatws-bare")) }
   let(:user) { Factories.user(name: "Ada Lovelace", github_token: "ghp_test_token") }
   let(:repository) do

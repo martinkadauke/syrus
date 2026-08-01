@@ -1,7 +1,7 @@
 require "rails_helper"
 require Rails.root.join("db/migrate/20260624131211_backfill_proposal_chat_attachments")
 
-RSpec.describe BackfillProposalChatAttachments do
+RSpec.describe BackfillProposalChatAttachments, :ci_only do
   let(:migration) { described_class.new }
 
   it "creates missing attachments for confirmed proposal Jobs and Epics idempotently" do

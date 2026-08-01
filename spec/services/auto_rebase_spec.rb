@@ -3,7 +3,7 @@ require "tmpdir"
 require "fileutils"
 require "open3"
 
-RSpec.describe AutoRebase do
+RSpec.describe AutoRebase, :ci_only do
   # Build a real bare repo on the local filesystem to play the role of
   # github.com — push lands here, exercising the full clone/rebase/push
   # plumbing without leaving the box.

@@ -2,7 +2,7 @@
 
 require "open3"
 
-RSpec.describe "thread budget check" do
+RSpec.describe "thread budget check", :ci_only do
   it "evaluates queue and database config ERB outside Rails" do
     stdout, stderr, status = Open3.capture3("ruby", "bin/check-thread-budget")
 

@@ -11,7 +11,7 @@ require "spec_helper"
 # interface: flag surface, NDJSON progress protocol, exit-code classes, and
 # the encryption-key guard. Dynamic examples run the real script against a
 # stubbed `docker` binary — no daemon, no side effects, fast.
-RSpec.describe "install.sh GUI interface" do
+RSpec.describe "install.sh GUI interface", :ci_only do
   let(:repo_root) { File.expand_path("../..", __dir__) }
   let(:script) { File.join(repo_root, "install.sh") }
   let(:script_text) { File.read(script, encoding: "UTF-8") }

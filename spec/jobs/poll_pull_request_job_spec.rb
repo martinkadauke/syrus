@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe PollPullRequestJob do
+RSpec.describe PollPullRequestJob, :ci_only do
   let(:user) { Factories.user(github_token: "ghp_test_token") }
   let(:repository) { Factories.repository(user: user, owner: "acme", name: "widgets", feedback_policy: "auto") }
   let(:job) do

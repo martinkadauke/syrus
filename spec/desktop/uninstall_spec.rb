@@ -19,7 +19,7 @@ require "spec_helper"
 # is its Windows port; PowerShell isn't available on the mac/linux CI hosts,
 # so its section is a static parity contract in the style of
 # install_parity_spec.rb.
-RSpec.describe "uninstall scripts" do
+RSpec.describe "uninstall scripts", :ci_only do
   let(:repo_root) { File.expand_path("../..", __dir__) }
   let(:script) { File.join(repo_root, "uninstall.sh") }
   let(:script_text) { File.read(script, encoding: "UTF-8") }

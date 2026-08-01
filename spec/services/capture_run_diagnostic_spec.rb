@@ -1,7 +1,7 @@
 require "rails_helper"
 require "tmpdir"
 
-RSpec.describe CaptureRunDiagnostic do
+RSpec.describe CaptureRunDiagnostic, :ci_only do
   let(:user) { Factories.user }
   let(:repo) { Factories.repository(user: user) }
   let(:job)  { Factories.job(repository: repo) }

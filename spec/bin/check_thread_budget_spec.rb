@@ -3,7 +3,7 @@
 require "open3"
 require "spec_helper"
 
-RSpec.describe "bin/check-thread-budget" do
+RSpec.describe "bin/check-thread-budget", :ci_only do
   let(:root) { File.expand_path("../..", __dir__) }
   let(:script) { File.join(root, "bin/check-thread-budget") }
 

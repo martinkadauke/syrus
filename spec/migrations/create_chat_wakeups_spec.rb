@@ -1,7 +1,7 @@
 require "rails_helper"
 require Rails.root.join("db/migrate/20260624135815_create_chat_wakeups")
 
-RSpec.describe CreateChatWakeups do
+RSpec.describe CreateChatWakeups, :ci_only do
   it "is idempotent when run more than once" do
     migration = described_class.new
 

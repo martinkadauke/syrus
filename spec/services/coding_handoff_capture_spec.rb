@@ -2,7 +2,7 @@ require "rails_helper"
 require "open3"
 require "tmpdir"
 
-RSpec.describe CodingHandoffCapture do
+RSpec.describe CodingHandoffCapture, :ci_only do
   let(:user) { Factories.user }
   let(:repository) { Factories.repository(user: user, owner: "tkadauke", name: "syrus", default_branch: "main") }
   let(:chat_session) { ChatSession.create!(user: user, repository: repository) }

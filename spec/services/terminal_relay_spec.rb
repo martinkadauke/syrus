@@ -3,7 +3,7 @@ require "socket"
 require "timeout"
 require "base64"
 
-RSpec.describe TerminalRelay do
+RSpec.describe TerminalRelay, :ci_only do
   RELAY_READY_TIMEOUT = 15
 
   class FakePtyInput

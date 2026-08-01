@@ -1,7 +1,7 @@
 require "rails_helper"
 require Rails.root.join("db/migrate/20260702011906_backfill_sticky_whiteboard_elements")
 
-RSpec.describe BackfillStickyWhiteboardElements do
+RSpec.describe BackfillStickyWhiteboardElements, :ci_only do
   let(:migration) { described_class.new }
   let(:user) { Factories.user }
   let(:repository) { Factories.repository(user: user) }

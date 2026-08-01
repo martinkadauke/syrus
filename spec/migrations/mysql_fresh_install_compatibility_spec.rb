@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe "MySQL fresh install compatibility" do
+RSpec.describe "MySQL fresh install compatibility", :ci_only do
   let(:migration_paths) { Rails.root.glob("db/migrate/*.rb").sort }
   let(:migration_sources) { migration_paths.to_h { |path| [ path.basename.to_s, path.read ] } }
 

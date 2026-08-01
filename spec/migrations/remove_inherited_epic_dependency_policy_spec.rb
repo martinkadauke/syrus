@@ -1,7 +1,7 @@
 require "rails_helper"
 require Rails.root.join("db/migrate/20260731171000_remove_inherited_epic_dependency_policy")
 
-RSpec.describe RemoveInheritedEpicDependencyPolicy do
+RSpec.describe RemoveInheritedEpicDependencyPolicy, :ci_only do
   let(:connection) { ActiveRecord::Base.connection }
   let(:migration) { described_class.new }
 

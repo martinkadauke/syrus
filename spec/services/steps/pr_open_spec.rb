@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe Steps::PrOpen do
+RSpec.describe Steps::PrOpen, :ci_only do
   let(:user) { Factories.user }
   let(:repository) { Factories.repository(user: user) }
   let(:job) { Factories.job(repository: repository, issue_number: 42) }
