@@ -134,6 +134,26 @@ RSpec.describe AutoRetryJob do
     expect(attempt.performed_at).to be_nil
   end
 
+  it "skips stale attempts after a newer workflow has already succeeded" do
+    attempt = failed_attempt!(retry_kind: "retry_workflow")
+    Workflow.create!(
+      job: job,
+      trigger_kind: "retry",
+      state: "succeeded",
+      created_at: workflow.finished_at + 1.minute,
+      started_at: workflow.finished_at + 1.minute,
+      finished_at: workflow.finished_at + 2.minutes
+    )
+    job.update!(state: "implemented")
+    allow(RetryWorkflowEnqueuer).to receive(:call)
+
+    described_class.perform_now(attempt.id)
+
+    expect(attempt.reload.skipped_reason).to eq("source workflow was already superseded by a successful workflow")
+    expect(attempt.performed_at).to be_nil
+    expect(RetryWorkflowEnqueuer).not_to have_received(:call)
+  end
+
   it "reschedules the same attempt when the provider circuit is still open" do
     attempt = failed_attempt!(retry_kind: "retry_workflow")
     retry_after = 10.minutes.from_now

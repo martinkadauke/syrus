@@ -140,6 +140,7 @@ module WorkEngine
       issues.concat(classify_paused_queues)
       issues.concat(classify_running_runs)
       issues.concat(classify_workflows)
+      issues.concat(classify_stale_auto_retry_workflows)
       issues.concat(classify_job_workflow_drift)
       issues.concat(classify_jobs_without_active_workflows)
       issues.concat(classify_unambiguous_job_state_drift)
@@ -353,6 +354,33 @@ module WorkEngine
       end
     end
 
+    def classify_stale_auto_retry_workflows
+      workflows.filter_map do |workflow|
+        next unless workflow.trigger_kind == "retry" && workflow.queued?
+        attempt_id = workflow.artifact("auto_retry_attempt_id")
+        next if attempt_id.blank?
+
+        attempt = AutoRetryAttempt.includes(:workflow).find_by(id: attempt_id)
+        source = attempt&.workflow
+        next unless source && newer_successful_workflow?(workflow.job, source)
+
+        issue(
+          kind: :stale_auto_retry_workflow,
+          severity: :warning,
+          affected_ids: ids_for(workflow).merge(job_ids: [ workflow.job_id ]),
+          safe_to_auto_repair: true,
+          recommended_repair_action: "cancel_stale_auto_retry_workflow",
+          evidence: workflow_evidence(workflow).merge(
+            auto_retry_attempt_id: attempt.id,
+            source_workflow_id: source.id,
+            source_workflow_state: source.state,
+            job_state: workflow.job.state
+          ),
+          explanation: "Workflow ##{workflow.id} is an auto-retry for Workflow ##{source.id}, but that source failure was already superseded by a successful Workflow."
+        )
+      end
+    end
+
     def classify_job_workflow_drift
       jobs.filter_map do |job|
         active = workflows.select { |workflow| workflow.job_id == job.id && %w[queued running].include?(workflow.state) }
@@ -368,6 +396,16 @@ module WorkEngine
           explanation: "Job ##{job.id} is #{job.state} while it still has active Workflows."
         )
       end
+    end
+
+    def newer_successful_workflow?(job, source)
+      cutoff = source.finished_at || source.created_at
+      return false unless cutoff
+
+      job.workflows
+         .where(state: "succeeded")
+         .where("created_at > ? OR (created_at = ? AND id > ?)", cutoff, cutoff, source.id)
+         .exists?
     end
 
     def classify_unambiguous_job_state_drift

@@ -208,6 +208,57 @@ RSpec.describe WorkEngine::Reconciler do
     expect(result.repair_plans.select { |repair_plan| repair_plan.action == "reenqueue_run" }).to be_empty
   end
 
+  it "cancels stale queued auto-retry workflows after a newer workflow succeeds" do
+    source = workflow
+    run.update_columns(state: "failed", agent_outcome: "worker_died", finished_at: 30.minutes.ago)
+    step.update_columns(state: "failed", finished_at: 30.minutes.ago)
+    source.update_columns(state: "failed", finished_at: 30.minutes.ago)
+
+    successful = Workflow.create!(
+      job: job,
+      trigger_kind: "retry",
+      state: "succeeded",
+      created_at: 25.minutes.ago,
+      started_at: 25.minutes.ago,
+      finished_at: 20.minutes.ago
+    )
+    job.update!(state: "implemented")
+
+    attempt = AutoRetryAttempt.create!(
+      job: job,
+      workflow: source,
+      run: run,
+      agent_provider: "claude",
+      failure_classification: "worker_died",
+      retry_kind: "retry_workflow",
+      attempt_number: 2,
+      scheduled_at: 10.minutes.ago,
+      performed_at: 9.minutes.ago
+    )
+    stale = Workflows::Retry.instantiate(
+      job: job,
+      artifacts: { "auto_retry_attempt_id" => attempt.id },
+      agent_provider: "claude"
+    )
+    stale.update_columns(created_at: 9.minutes.ago)
+    StepDispatcher.start_workflow(stale)
+    stale.reload
+
+    result = reconcile_and_execute(job_id: job.id)
+    issue = kind(result, :stale_auto_retry_workflow)
+
+    expect(issue).to be_present
+    expect(plan(result, :cancel_stale_auto_retry_workflow)).to have_attributes(
+      auto_executable: true,
+      target_type: "Workflow",
+      target_id: stale.id
+    )
+    expect(result.repair_executions.map(&:message)).to include("cancelled stale auto-retry Workflow ##{stale.id}")
+    expect(stale.reload).to be_cancelled
+    expect(stale.first_step.runs.first.reload).to be_cancelled
+    expect(attempt.reload.skipped_reason).to eq("source workflow was already superseded by a successful workflow")
+  end
+
   it "does not re-enqueue a queued Run while a normal-queue RunJob is scheduled for retry" do
     run.update_columns(state: "queued", created_at: 5.minutes.ago, updated_at: 5.minutes.ago)
     workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_hostname: "syrus-worker-dead")

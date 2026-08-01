@@ -248,6 +248,45 @@ module WorkEngine
         end
       end
 
+      class CancelStaleAutoRetryWorkflow < Base
+        def perform
+          workflow = target_workflow
+          return skipped("Workflow no longer exists") unless workflow
+          return skipped("Workflow is #{workflow.state}, not queued") unless workflow.queued?
+          return skipped("Workflow is #{workflow.trigger_kind}, not retry") unless workflow.trigger_kind == "retry"
+
+          attempt_id = workflow.artifact("auto_retry_attempt_id")
+          attempt = AutoRetryAttempt.find_by(id: attempt_id)
+          return skipped("Workflow is missing its auto-retry attempt") unless attempt
+          return skipped("Source workflow is not superseded") unless source_superseded?(workflow.job, attempt.workflow)
+
+          StateTransition.with_source("reconciler") do
+            workflow.artifacts = (workflow.artifacts || {}).merge(
+              "retry_cancelled_reason" => "stale_auto_retry",
+              "retry_cancelled_at" => Time.current.iso8601
+            )
+            workflow.cancel! if workflow.may_cancel?
+            workflow.save!
+            attempt.update!(skipped_reason: "source workflow was already superseded by a successful workflow") if attempt.skipped_reason.blank?
+          end
+          success("cancelled stale auto-retry Workflow ##{workflow.id}")
+        end
+
+        private
+
+        def source_superseded?(job, source)
+          return false unless job && source
+
+          cutoff = source.finished_at || source.created_at
+          return false unless cutoff
+
+          job.workflows
+             .where(state: "succeeded")
+             .where("created_at > ? OR (created_at = ? AND id > ?)", cutoff, cutoff, source.id)
+             .exists?
+        end
+      end
+
       class FinishWorkflowFromTerminalDescendants < Base
         def perform
           workflow = target_workflow

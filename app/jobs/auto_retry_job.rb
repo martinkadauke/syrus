@@ -7,6 +7,12 @@ class AutoRetryJob < ApplicationJob
     attempt = AutoRetryAttempt.includes(:job, :workflow, run: :claude_session).find(auto_retry_attempt_id)
     return if attempt.performed_at.present? || attempt.skipped_reason.present?
 
+    if stale_attempt?(attempt)
+      attempt.update!(skipped_reason: "source workflow was already superseded by a successful workflow")
+      log(attempt, "auto-retry skipped: #{attempt.skipped_reason}")
+      return
+    end
+
     return if reschedule_if_provider_blocked(attempt)
 
     result = perform_retry(attempt)
@@ -43,6 +49,23 @@ class AutoRetryJob < ApplicationJob
 
   def perform_retry(attempt)
     send(RETRY_DISPATCH.fetch(attempt.retry_kind, :retry_workflow), attempt)
+  end
+
+  def stale_attempt?(attempt)
+    source = attempt.workflow
+    return false unless source
+
+    newer_successful_workflow?(attempt.job, source)
+  end
+
+  def newer_successful_workflow?(job, source)
+    cutoff = source.finished_at || source.created_at
+    return false unless cutoff
+
+    job.workflows
+       .where(state: "succeeded")
+       .where("created_at > ? OR (created_at = ? AND id > ?)", cutoff, cutoff, source.id)
+       .exists?
   end
 
   def retry_failed_step(attempt)

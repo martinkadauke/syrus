@@ -316,6 +316,24 @@ module WorkEngine
         end
       end
 
+      class StaleAutoRetryWorkflow < Base
+        def plan
+          automatic_plan(
+            "cancel_stale_auto_retry_workflow",
+            primary_workflow,
+            "The auto-retry workflow was created from a failure that a newer successful workflow already superseded.",
+            execution_steps: [ "Workflow#cancel!" ],
+            preconditions: {
+              workflow_state: "queued",
+              trigger_kind: "retry",
+              auto_retry_attempt_id: issue.evidence["auto_retry_attempt_id"],
+              source_workflow_id: issue.evidence["source_workflow_id"],
+              job_state: issue.evidence["job_state"]
+            }
+          )
+        end
+      end
+
       class RunsPaused < Base
         def plan
           waiting_plan(
