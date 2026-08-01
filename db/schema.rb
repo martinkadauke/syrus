@@ -64,6 +64,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_124855) do
     t.integer "max_job_failures", default: 3, null: false
     t.boolean "merge_train_enabled", default: false, null: false
     t.integer "merge_train_max_size", default: 20, null: false
+    t.string "mode", default: "advanced"
+    t.datetime "mode_configured_at"
     t.boolean "polling_paused", default: false, null: false
     t.integer "proactive_rebase_commit_threshold", default: 20, null: false
     t.string "report_issue_repo_slug", default: "tkadauke/syrus", null: false
@@ -482,6 +484,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_124855) do
     t.string "state", default: "backlog", null: false
     t.string "title", null: false
     t.datetime "updated_at", null: false
+    t.datetime "user_approved_at"
     t.integer "user_id", null: false
     t.index ["claimed_at"], name: "index_epics_on_claimed_at"
     t.index ["number"], name: "index_epics_on_number", unique: true
@@ -726,6 +729,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_124855) do
     t.datetime "approved_at"
     t.integer "approved_by_user_id"
     t.string "approved_via"
+    t.boolean "auto_merge_enabled", default: false, null: false
     t.datetime "branch_deleted_at"
     t.string "branch_name"
     t.datetime "claimed_at"

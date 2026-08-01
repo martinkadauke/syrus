@@ -20,6 +20,8 @@
   "more_actions": "More actions",
 
   "description": "Description",
+  "summary": "Summary",
+  "summary_pending": "Syrus is still preparing this feature summary.",
   "blocked": "Blocked",
   "merge_train_phase": {
     "assembling": "Merge train assembling",
@@ -122,11 +124,26 @@
   "start_implementing": "Start implementing",
   "waiting_on_dependencies": "Waiting on {{names}}",
   "starting": "Starting...",
+  "start_preview": "Start Preview",
+  "looks_good": "Looks Good",
+  "something_wrong": "Something's Wrong",
+  "review_feedback_title": "What should change?",
+  "review_feedback_placeholder": "Describe what looks wrong.",
+  "submit_feedback": "Submit feedback",
+  "submitting": "Submitting...",
+  "review_command_error": "Unable to update review.",
 
   "preview_see_more": "See more",
 
   "view_in_chat": "View in Chat",
 
   "furthest_behind_one": "furthest behind: {{count}} commit",
-  "furthest_behind_other": "furthest behind: {{count}} commits"
+  "furthest_behind_other": "furthest behind: {{count}} commits",
+  "simple_status": {
+    "working_on_it": "Working on it",
+    "wrapping_up": "Wrapping up",
+    "ready_for_your_review": "Ready for your review",
+    "done": "Done",
+    "something_went_wrong": "Something went wrong"
+  }
 }

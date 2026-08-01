@@ -2,7 +2,7 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
 import { RelativeTimestamp } from "../../components/RelativeTimestamp"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ErrorInfo, MouseEvent as ReactMouseEvent, ReactNode } from "react"
-import { Component, useCallback, useEffect, useRef, useState } from "react"
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import "@excalidraw/excalidraw/index.css"
 import { ApiError } from "../../api/client"
@@ -18,7 +18,7 @@ import { errorMessage } from "../../lib/errorMessage"
 import { highlightCode, inferToolResultLanguage } from "../../lib/syntaxHighlight"
 import { asExcalidrawElements, asExcalidrawFiles, cleanWhiteboardAppState, cleanWhiteboardFiles, cloneWhiteboardScene, signatureForScene, whiteboardScene, withFreshElementIds } from "./whiteboardScene"
 import { type ChatQueryKey, WHITEBOARD_MAX_ELEMENTS, WHITEBOARD_SAVE_DEBOUNCE_MS } from "./constants"
-import { chatDisplayTitle, codingFilesTabVisible, jobsTabVisible, snapshotKindLabel, secondaryButton, errorAsError, formatCurrency, formatTokenCount, truncateSnapshotName, withRoutePrefix } from "./utils"
+import { chatDisplayTitle, snapshotKindLabel, diffLineClass, secondaryButton, errorAsError, formatCurrency, formatTokenCount, truncateSnapshotName, withRoutePrefix } from "./utils"
 import { ImageLightbox } from "./MessageCards"
 import { Attachments } from "./Attachments"
 import type { WorkspaceTab } from "./workspaceTabs"
@@ -26,8 +26,8 @@ import type { ChatMessageImageAttachment } from "./messageDisplay"
 import type { FileTreeNode } from "./fileTree"
 import { buildFileTree } from "./fileTree"
 import { attachmentDataUrl, imageAttachments } from "./messageDisplay"
-import { defaultWorkspaceTab, workspaceTabClass, workspaceTabLabel } from "./workspaceTabs"
-import { diffGutterClass, diffLineClass, diffMarkerClass, parseUnifiedDiff } from "../jobDetail/diffRendering"
+import { availableWorkspaceTabs, defaultWorkspaceTab, workspaceTabClass, workspaceTabLabel } from "./workspaceTabs"
+import { diffGutterClass, diffMarkerClass, parseUnifiedDiff } from "../jobDetail/diffRendering"
 
 
 
@@ -51,7 +51,8 @@ export function ChatWorkspacePanel({
   prefix,
   queryKey,
   onNotice,
-  onBookmarkSelect
+  onBookmarkSelect,
+  simpleMode = false
 }: {
   activeTab: WorkspaceTab
   fullscreen: boolean
@@ -64,19 +65,20 @@ export function ChatWorkspacePanel({
   queryKey: ChatQueryKey
   onNotice: (message: string | null) => void
   onBookmarkSelect: (messageId: number) => void
+  simpleMode?: boolean
 }) {
   const { t } = useT("chat")
+  const tabs = useMemo(() => availableWorkspaceTabs(payload, simpleMode), [payload, simpleMode])
+
   useEffect(() => {
-    if (activeTab === "files" && !codingFilesTabVisible(payload)) {
-      onSelectTab(defaultWorkspaceTab(payload))
-    }
-  }, [activeTab, onSelectTab, payload])
+    if (!tabs.includes(activeTab)) onSelectTab(defaultWorkspaceTab(payload, simpleMode))
+  }, [activeTab, onSelectTab, payload, simpleMode, tabs])
 
   return (
     <aside aria-label={t("aria_chat_workspace")} className={`flex min-h-0 min-w-0 flex-1 flex-col rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 ${fullscreen ? "" : "h-full w-full"}`}>
       {fullscreen || !showTabs ? null : (
         <nav aria-label={t("aria_workspace_tabs")} className="flex items-center border-b border-gray-200 px-3 pt-3 text-sm font-medium dark:border-gray-700">
-          {(["whiteboard", "context", "media", ...(codingFilesTabVisible(payload) ? (["files"] as WorkspaceTab[]) : []), ...(payload.local_tunnel_connected ? (["diff"] as WorkspaceTab[]) : []), ...(jobsTabVisible(payload) ? (["jobs"] as WorkspaceTab[]) : [])] as WorkspaceTab[]).map((tab) => (
+          {tabs.map((tab) => (
             <button
               className={workspaceTabClass(activeTab === tab)}
               key={tab}
@@ -109,7 +111,7 @@ export function ChatWorkspacePanel({
             <WhiteboardPanel fullscreen={fullscreen} onToggleFullscreen={onToggleWhiteboardFullscreen} payload={payload} />
           </WhiteboardBoundary>
         ) : null}
-        {activeTab === "context" ? <Attachments payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : null}
+        {activeTab === "context" && !simpleMode ? <Attachments payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : null}
         {activeTab === "media" ? <MediaGallery messages={payload.messages} payload={payload} queryKey={queryKey} onNotice={onNotice} /> : null}
         {activeTab === "files" ? <CodingFilesPanel payload={payload} /> : null}
         {activeTab === "diff" && payload.local_tunnel_connected ? <LocalDiffPanel /> : null}

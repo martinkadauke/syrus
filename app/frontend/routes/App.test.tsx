@@ -1975,8 +1975,8 @@ describe("App", () => {
       expect(await screen.findByRole("main", { name: "Onboarding" })).toBeInTheDocument()
       expect(screen.getByRole("heading", { name: "Set up Syrus" })).toBeInTheDocument()
       expect(screen.queryByText("Work through the shortest path to a successful first run.")).not.toBeInTheDocument()
-      expect(screen.queryByText(/of 6 complete/)).not.toBeInTheDocument()
-      expect(screen.getAllByRole("listitem")).toHaveLength(6)
+      expect(screen.queryByText(/of 7 complete/)).not.toBeInTheDocument()
+      expect(screen.getAllByRole("listitem")).toHaveLength(7)
       // "Configure GitHub" opens an in-page token modal rather than navigating away.
       expect(screen.getByRole("button", { name: "Configure GitHub" })).toBeInTheDocument()
       expect(screen.getByText("Connect a personal access token and the GitHub App — both are required.")).toBeInTheDocument()
@@ -2024,9 +2024,9 @@ describe("App", () => {
       )
 
       expect(await screen.findByRole("main", { name: "Onboarding" })).toBeInTheDocument()
-      // Six steps remain for orientation, without the old header progress counter.
-      expect(screen.getAllByRole("listitem")).toHaveLength(6)
-      expect(screen.queryByText(/of 6 complete/)).not.toBeInTheDocument()
+      // Seven steps remain for orientation, without the old header progress counter.
+      expect(screen.getAllByRole("listitem")).toHaveLength(7)
+      expect(screen.queryByText(/of 7 complete/)).not.toBeInTheDocument()
       expect(screen.getByText("Land your first Epic")).toBeInTheDocument()
       expect(screen.getByText("Your first Epic is in progress. Approve its Jobs so they can land.")).toBeInTheDocument()
       expect(screen.queryByText("You've started the Syrus chat. The other tabs are now unlocked.")).not.toBeInTheDocument()
@@ -14224,7 +14224,9 @@ function bootstrapPayload(overrides: Record<string, unknown> & { setupStatus?: R
     team_user_count: 1,
     app: {
       revision: "dev",
-      revision_url: null
+      revision_url: null,
+      mode: "advanced" as const,
+      mode_configured: true
     },
     public: {
       first_signup: false,
@@ -14610,7 +14612,7 @@ function credentialsPayload(overrides: {
   }
 }
 
-function notificationPreferencesPayload(overrides: Partial<Record<"job_failed" | "job_implemented" | "desktop_job_failed" | "desktop_job_implemented" | "pr_comment_addressed" | "pr_merged" | "epic_completed", boolean>> & { message?: string } = {}) {
+function notificationPreferencesPayload(overrides: Partial<Record<"job_failed" | "job_implemented" | "desktop_job_failed" | "desktop_job_implemented" | "pr_comment_addressed" | "pr_merged" | "epic_completed" | "epic_review_ready" | "epic_failed" | "epic_feedback_queued", boolean>> & { message?: string } = {}) {
   return {
     notification_preferences: {
       job_failed: overrides.job_failed ?? true,
@@ -14619,7 +14621,10 @@ function notificationPreferencesPayload(overrides: Partial<Record<"job_failed" |
       desktop_job_implemented: overrides.desktop_job_implemented ?? true,
       pr_comment_addressed: overrides.pr_comment_addressed ?? true,
       pr_merged: overrides.pr_merged ?? true,
-      epic_completed: overrides.epic_completed ?? false
+      epic_completed: overrides.epic_completed ?? false,
+      epic_review_ready: overrides.epic_review_ready ?? true,
+      epic_failed: overrides.epic_failed ?? true,
+      epic_feedback_queued: overrides.epic_feedback_queued ?? true
     },
     message: overrides.message
   }

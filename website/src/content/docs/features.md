@@ -39,6 +39,20 @@ Job kinds:
 | `cron` | A scheduled task fire. |
 | `direct` | An operator-created prompt with no GitHub issue. |
 
+## Simple Mode
+
+When the instance is set to simple mode, Syrus assumes the operator reviews
+results visually rather than by reading code. Implementation, PR-feedback,
+and CI-repair agent prompts tell the agent to ask one focused question only
+when the request has multiple substantially different valid interpretations,
+use project memory heavily, make technical choices itself, write tests, and
+finish the stated sub-task without leaving TODOs for the operator.
+
+Simple-mode chat reads like a conversation: tool call names, JSON inputs, file
+paths, commands, and raw outputs are hidden. Running calls show brief progress
+text, successful calls leave no transcript entry, failed calls show only "Hit a
+snag", and the chat workspace does not show the Context tab.
+
 ## Notifications
 
 Signed-in operators see a bell in the app chrome with the current unread
@@ -121,6 +135,25 @@ dispatches any automation.
 
 Epics group related Jobs inside one repository. They are useful when a
 goal is larger than one PR but still needs visible sequencing.
+
+In simple mode, the Epic is the feature the operator reviews. Child Jobs are
+created with automatic approval and auto-merge enabled, so they land after
+graders pass without a per-Job approval step. When every child Job in the Epic
+has merged, the feature becomes ready for review at the Epic level. From the
+Epic page the operator can start a preview, mark the feature as looking good,
+or submit plain-text feedback. Feedback creates a new child Job at the end of
+the Epic's linear chain and moves the feature back to working status.
+The simple-mode dashboard shows only these features, not Jobs or Workflows,
+and uses human statuses such as **Working on it**, **Wrapping up**,
+**Ready for your review**, **Done**, and **Something went wrong**. The feature
+detail page keeps the implementation machinery out of view: no child Job list,
+workflow history, diffs, grader output, PR numbers, branch names, commit SHAs,
+timeline, or dependency graph. Scheduled tasks and the repository GitHub
+Issues tab are also hidden in simple mode.
+Simple mode notifications use the feature title only: they announce
+ready-for-review, terminal feature problems that need attention, and accepted
+review feedback; Job IDs, PR numbers, branch names, commit SHAs, and grader
+details are suppressed.
 
 An Epic has a board state: `backlog`, `ready`, `in_progress`, `done`, or
 `archived`. Child Jobs can be blocked until the Epic starts, and Epics can

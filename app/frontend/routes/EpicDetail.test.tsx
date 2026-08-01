@@ -13,6 +13,7 @@ function job(state: string, overrides: Partial<EpicDetailJob> = {}): EpicDetailJ
 function detailPayload(overrides: Partial<EpicDetailPayload["epic"]> = {}): EpicDetailPayload {
   return {
     message: null,
+    simple_mode: false,
     epic: {
       id: 3,
       number: 3,
@@ -20,6 +21,7 @@ function detailPayload(overrides: Partial<EpicDetailPayload["epic"]> = {}): Epic
       title: "Onboarding",
       description: "",
       state: "ready",
+      simple_status: "working_on_it",
       stuck: false,
       startable: true,
       start_blocked_on: [],
@@ -36,6 +38,8 @@ function detailPayload(overrides: Partial<EpicDetailPayload["epic"]> = {}): Epic
       owner_status: "unclaimed",
       owner_user: null,
       repository: { id: 1, slug: "acme/widgets", repository_path: "/repositories/1", epic_dependency_policy: "linear" },
+      review_ready: false,
+      user_approved_at: null,
       max_commits_behind_base: null,
       furthest_behind_job_id: null,
       furthest_behind_job_path: null,
@@ -43,7 +47,7 @@ function detailPayload(overrides: Partial<EpicDetailPayload["epic"]> = {}): Epic
       resolved_epic_dependency_policy: "linear",
       ...overrides
     },
-    summary: { done_jobs_count: 0, total_jobs_count: 0, dependency_edge_count: 0, blocked: false, blocked_reason: null },
+    summary: { done_jobs_count: 0, total_jobs_count: 0, dependency_edge_count: 0, blocked: false, blocked_reason: null, review_summary: null },
     state_transitions: [],
     graph: { empty: true, node_count: 0, epic_dependency_count: 0, job_blocker_count: 0, initially_open: false, nodes: [], edges: [] },
     dependencies: [],
@@ -59,7 +63,10 @@ function detailPayload(overrides: Partial<EpicDetailPayload["epic"]> = {}): Epic
       app_claim_path: "/api/v1/app/epics/3/claim",
       app_unclaim_path: "/api/v1/app/epics/3/unclaim",
       app_reassign_path: "/api/v1/app/epics/3/reassign",
-      app_dependencies_path: "/api/v1/app/epics/3/dependencies"
+      app_dependencies_path: "/api/v1/app/epics/3/dependencies",
+      app_review_approve_path: "/api/v1/app/epics/3/review/approve",
+      app_review_feedback_path: "/api/v1/app/epics/3/review/feedback",
+      app_start_preview_path: null
     }
   }
 }
@@ -74,6 +81,36 @@ function renderDetail(payload: EpicDetailPayload) {
     </QueryClientProvider>
   )
 }
+
+describe("EpicDetail simple mode", () => {
+  it("shows the feature summary and omits implementation details", () => {
+    const payload = detailPayload({
+      title: "Checkout polish",
+      description: "Original implementation prompt.",
+      review_ready: true,
+      startable: false,
+      simple_status: "ready_for_your_review"
+    })
+    payload.simple_mode = true
+    payload.summary.review_summary = "Checkout settings now save correctly."
+    payload.jobs = [job("closed", { pr_number: 12, pr_url: "https://github.com/acme/widgets/pull/12" })]
+    payload.graph = { empty: false, node_count: 1, epic_dependency_count: 1, job_blocker_count: 0, initially_open: true, nodes: [], edges: [] }
+    payload.dependencies = [{ epic_id: 2, title: "Dependency", state: "done", url: "/epics/2" }]
+
+    renderDetail(payload)
+
+    expect(screen.getByRole("heading", { name: "Checkout polish" })).toBeInTheDocument()
+    expect(screen.getByText("Ready for your review")).toBeInTheDocument()
+    expect(screen.getByText("Checkout settings now save correctly.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Looks Good" })).toBeInTheDocument()
+    expect(screen.queryByText("Jobs")).not.toBeInTheDocument()
+    expect(screen.queryByText("Dependency graph")).not.toBeInTheDocument()
+    expect(screen.queryByText("History")).not.toBeInTheDocument()
+    expect(screen.queryByText("Details")).not.toBeInTheDocument()
+    expect(screen.queryByText("PR #12")).not.toBeInTheDocument()
+    expect(screen.queryByText("EPIC-3")).not.toBeInTheDocument()
+  })
+})
 
 describe("EpicDetail origin_chat link", () => {
   it("renders a View in Chat link when origin_chat is present", () => {
@@ -248,6 +285,49 @@ describe("EpicDetail dependency graph", () => {
     renderDetail(payload)
 
     expect(screen.getByLabelText("Dependency graph scroll region")).toHaveClass("overflow-x-auto")
+  })
+})
+
+describe("EpicDetail simple-mode review controls", () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it("shows review controls for a review-ready Epic and posts Looks Good", async () => {
+    const reviewed = detailPayload({ review_ready: false, user_approved_at: new Date().toISOString() })
+    reviewed.message = "Feature approved."
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse(reviewed))
+    renderDetail(detailPayload({ review_ready: true, startable: false }))
+
+    expect(screen.getByRole("button", { name: "Start Preview" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Looks Good" }))
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    const [url, init] = fetchSpy.mock.calls[0]
+    expect(url).toBe("/api/v1/app/epics/3/review/approve")
+    expect(init?.method).toBe("POST")
+  })
+
+  it("submits Something's Wrong feedback", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse(detailPayload({ review_ready: false, state: "in_progress" })))
+    renderDetail(detailPayload({ review_ready: true, startable: false }))
+
+    fireEvent.click(screen.getByRole("button", { name: "Something's Wrong" }))
+    fireEvent.change(screen.getByPlaceholderText("Describe what looks wrong."), { target: { value: "The contrast is too low." } })
+    fireEvent.click(screen.getByRole("button", { name: "Submit feedback" }))
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    const [url, init] = fetchSpy.mock.calls[0]
+    expect(url).toBe("/api/v1/app/epics/3/review/feedback")
+    expect(init?.method).toBe("POST")
+    expect(JSON.parse(String(init?.body))).toEqual({ feedback: "The contrast is too low." })
+  })
+
+  it("hides the Jobs section while the simple-mode Epic waits for review", () => {
+    const payload = detailPayload({ review_ready: true, startable: false })
+    payload.jobs = [job("closed")]
+    payload.summary.total_jobs_count = 1
+    renderDetail(payload)
+
+    expect(screen.queryByRole("heading", { name: "Jobs" })).not.toBeInTheDocument()
   })
 })
 

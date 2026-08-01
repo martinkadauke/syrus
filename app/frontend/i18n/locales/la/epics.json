@@ -20,6 +20,8 @@
   "more_actions": "Actiones plures",
 
   "description": "Descriptio",
+  "summary": "Summarium",
+  "summary_pending": "Syrus summarium huius rei adhuc parat.",
   "blocked": "Impedita",
   "merge_train_phase": {
     "assembling": "Merge train assembling",
@@ -122,11 +124,26 @@
   "start_implementing": "Effectionem incipe",
   "waiting_on_dependencies": "Exspectat {{names}}",
   "starting": "Incipitur...",
+  "start_preview": "Praevisum incipe",
+  "looks_good": "Bene videtur",
+  "something_wrong": "Aliquid errat",
+  "review_feedback_title": "Quid mutandum est?",
+  "review_feedback_placeholder": "Describe quid male videatur.",
+  "submit_feedback": "Responsum mitte",
+  "submitting": "Mittitur...",
+  "review_command_error": "Recognitio renovari non potuit.",
 
   "preview_see_more": "Vide amplius",
 
   "view_in_chat": "In colloquio vide",
 
   "furthest_behind_one": "maxime post: {{count}} comissio",
-  "furthest_behind_other": "maxime post: {{count}} comissiones"
+  "furthest_behind_other": "maxime post: {{count}} comissiones",
+  "simple_status": {
+    "working_on_it": "In opere",
+    "wrapping_up": "Concluditur",
+    "ready_for_your_review": "Paratum recognitui tuo",
+    "done": "Factum",
+    "something_went_wrong": "Aliquid erravit"
+  }
 }
