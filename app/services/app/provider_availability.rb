@@ -1,7 +1,12 @@
+require "set"
+
 module App
   class ProviderAvailability
     CACHE_TTL = 2.minutes
-    CACHE_VERSION = "v1"
+    CACHE_VERSION = "v2"
+    @cache_mutex = Mutex.new
+    @process_cache = {}
+    @shared_cache_keys = Set.new
 
     def self.for_user(user, provider, now: Time.current, cached: true)
       return new(user: user, provider: provider, now: now).status unless cached
@@ -12,8 +17,10 @@ module App
       cache = Current.provider_availability_cache ||= {}
       return cache[key] if cache.key?(key)
 
-      cache[key] = Rails.cache.fetch(cache_store_key(key), expires_in: CACHE_TTL) do
-        new(user: user, provider: provider, now: now).status
+      cache[key] = fetch_process_cache(key, now: now) do
+        fetch_shared_cache(key) do
+          new(user: user, provider: provider, now: now).status
+        end
       end
     end
 
@@ -40,19 +47,68 @@ module App
       cache = Current.provider_availability_cache
       unless user && provider.present?
         cache&.clear
+        clear_process_cache!
         return
       end
 
       user_id = user.respond_to?(:id) ? user.id : user
       provider = provider.to_s
       cache&.delete_if { |(cached_user_id, cached_provider), _| cached_user_id == user_id && cached_provider == provider }
-      Rails.cache.delete(cache_store_key([ user_id, provider ]))
+      delete_process_cache([ user_id, provider ])
+      delete_shared_cache([ user_id, provider ])
     end
 
     def self.cache_key(user, provider)
       return if user.blank? || provider.blank?
 
       [ user.id, provider.to_s ]
+    end
+
+    def self.fetch_process_cache(key, now:)
+      entry = @cache_mutex.synchronize do
+        cached = @process_cache[key]
+        cached if cached && cached[:expires_at] > now
+      end
+      return entry[:value] if entry
+
+      value = yield
+      @cache_mutex.synchronize do
+        @process_cache[key] = { value: value, expires_at: now + CACHE_TTL }
+      end
+      value
+    end
+
+    def self.fetch_shared_cache(key)
+      store_key = cache_store_key(key)
+      @cache_mutex.synchronize { @shared_cache_keys.add(store_key) }
+      wrapped = Rails.cache.read(store_key)
+      return wrapped.fetch("value") if wrapped.is_a?(Hash) && wrapped.key?("value")
+
+      value = yield
+      Rails.cache.write(store_key, { "value" => value }, expires_in: CACHE_TTL)
+      value
+    rescue StandardError
+      yield
+    end
+
+    def self.delete_process_cache(key)
+      @cache_mutex.synchronize { @process_cache.delete(key) }
+    end
+
+    def self.delete_shared_cache(key)
+      Rails.cache.delete(cache_store_key(key))
+    rescue StandardError
+      nil
+    end
+
+    def self.clear_process_cache!
+      keys = @cache_mutex.synchronize do
+        @process_cache = {}
+        @shared_cache_keys.to_a
+      end
+      keys.each { |key| Rails.cache.delete(key) }
+    rescue StandardError
+      nil
     end
 
     def self.cache_store_key(key)

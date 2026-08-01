@@ -9,9 +9,11 @@ RSpec.describe PerformanceLogging do
     allow(SyrusVersion).to receive(:current).and_return("sha-current")
     Feature.where(slug: "performance_logging").delete_all
     Current.reset
+    described_class::Store.clear!
   end
 
   after do
+    described_class::Store.clear!
     Current.reset
   end
 
@@ -116,5 +118,20 @@ RSpec.describe PerformanceLogging do
       "phase" => "dashboard_payload",
       "metadata" => { "subject" => "job", "view" => "list" }
     )
+  end
+
+  it "does not flush the admin buffer to Rails.cache on every event" do
+    Feature.create!(slug: "performance_logging", category: "Operations", name: "Performance logging", enabled: true)
+    Current.reset
+    described_class::Store.clear!
+    allow(described_class).to receive(:slow_phase_threshold_ms).and_return(0.0)
+    allow(cache_store).to receive(:write).and_call_original
+
+    3.times do |index|
+      described_class.phase("phase-#{index}") { "done" }
+    end
+
+    expect(described_class::Store.recent.size).to eq(3)
+    expect(cache_store).not_to have_received(:write)
   end
 end

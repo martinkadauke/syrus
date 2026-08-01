@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_01_124855) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_01_150000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -323,6 +323,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_124855) do
     t.string "workspace_path"
     t.index ["cumulative_cost_usd"], name: "idx_chat_sessions_spending_cost"
     t.index ["share_token"], name: "index_chat_sessions_on_share_token", unique: true
+    t.index ["turn_in_flight", "last_message_at"], name: "idx_chat_sessions_stale_turns"
     t.index ["user_id", "cumulative_cost_usd"], name: "idx_chat_sessions_spending_user_cost"
     t.index ["user_id", "hidden_at"], name: "index_chat_sessions_on_user_id_and_hidden_at"
     t.index ["user_id"], name: "index_chat_sessions_on_user_id"

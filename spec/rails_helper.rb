@@ -72,6 +72,7 @@ RSpec.configure do |config|
   # settle in the auto_merge step (see Steps::AutoMerge).
   config.before do
     Current.reset
+    App::ProviderAvailability.clear_cache!
     Steps::AutoMerge.mergeability_settle_delay = 0
     # Stub the GitHub API call made by RepoAdversarialReviewPlan#resolve so
     # that specs using Factories.job (which instantiates an Initial workflow)
@@ -82,6 +83,7 @@ RSpec.configure do |config|
   end
 
   config.after do
+    App::ProviderAvailability.clear_cache!
     Current.reset
   end
 

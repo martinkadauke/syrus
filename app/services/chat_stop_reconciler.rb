@@ -45,26 +45,9 @@ class ChatStopReconciler
   end
 
   def self.stale_turn_candidate_sessions(stale_before)
-    latest_old_user_message = ChatMessage
-      .where(role: "user")
-      .where("chat_messages.created_at < ?", stale_before)
-      .where(<<~SQL.squish)
-        NOT EXISTS (
-          SELECT 1
-          FROM chat_messages newer_chat_messages
-          WHERE newer_chat_messages.chat_session_id = chat_messages.chat_session_id
-            AND (
-              newer_chat_messages.created_at > chat_messages.created_at
-              OR (
-                newer_chat_messages.created_at = chat_messages.created_at
-                AND newer_chat_messages.id > chat_messages.id
-              )
-            )
-        )
-      SQL
-      .select(:chat_session_id)
-
-    ChatSession.where(id: latest_old_user_message)
+    ChatSession
+      .where(turn_in_flight: true)
+      .where("last_message_at < ? OR last_message_at IS NULL", stale_before)
   end
   private_class_method :chat_session_for_workdir, :chat_session_from_default_workdir, :stale_turn_candidate_sessions
 

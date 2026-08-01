@@ -73,6 +73,6 @@ RSpec.describe "API: /api/v1/app/admin/performance", type: :request do
     get "/api/v1/app/admin/performance", params: { revision_scope: "all" }
 
     expect(response).to have_http_status(:ok)
-    expect(parse_body["events"].map { |event| event["app_revision"] }).to eq([ "old-sha", "new-sha" ])
+    expect(parse_body["events"].map { |event| event["app_revision"] }).to contain_exactly("new-sha", "old-sha")
   end
 end

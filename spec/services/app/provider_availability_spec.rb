@@ -6,6 +6,7 @@ RSpec.describe App::ProviderAvailability do
 
   before do
     Rails.cache.clear
+    described_class.clear_cache!
     Current.provider_availability_cache = nil
   end
 
@@ -192,9 +193,8 @@ RSpec.describe App::ProviderAvailability do
   end
 
   it "caches provider availability outside the request-local cache" do
-    original_cache = Rails.cache
-    Rails.cache = ActiveSupport::Cache::MemoryStore.new
     failed_run(provider: "codex")
+    allow(Rails.cache).to receive(:fetch).and_call_original
 
     first = described_class.for_user(user, "codex", now: now)
     Current.provider_availability_cache = nil
@@ -203,7 +203,6 @@ RSpec.describe App::ProviderAvailability do
     second = described_class.for_user(user, "codex", now: now)
 
     expect(second).to eq(first)
-  ensure
-    Rails.cache = original_cache if original_cache
+    expect(Rails.cache).not_to have_received(:fetch)
   end
 end

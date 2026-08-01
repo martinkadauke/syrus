@@ -288,11 +288,13 @@ RSpec.describe ChatSession do
 
     expect(session).not_to be_turn_in_flight
 
-    session.messages.create!(role: "user", content: { "text" => "Ave" })
+    user_message = session.messages.create!(role: "user", content: { "text" => "Ave" })
     expect(session).to be_turn_in_flight
+    expect(session.last_message_at.to_i).to eq(user_message.created_at.to_i)
 
-    session.messages.create!(role: "assistant", content: { "text" => "Salve" })
+    assistant_message = session.messages.create!(role: "assistant", content: { "text" => "Salve" })
     expect(session).not_to be_turn_in_flight
+    expect(session.last_message_at.to_i).to eq(assistant_message.created_at.to_i)
   end
 
   it "reports whether an agent process is running in its workspace" do

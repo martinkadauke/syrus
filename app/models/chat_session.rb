@@ -166,7 +166,11 @@ class ChatSession < ApplicationRecord
   end
 
   def record_message_turn_state!(message)
-    update_columns(turn_in_flight: message.role == "user")
+    update_columns(
+      turn_in_flight: message.role == "user",
+      last_message_at: message.created_at || Time.current
+    )
+    self.last_message_at = message.created_at || Time.current
     self.turn_in_flight = message.role == "user"
   end
 
