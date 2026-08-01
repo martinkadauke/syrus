@@ -4,9 +4,11 @@ class Current < ActiveSupport::CurrentAttributes
             :feature_enabled_cache,
             :provider_availability_cache,
             :performance_logging_enabled,
+            :performance_request_context,
             :performance_sql_count,
             :performance_sql_duration_ms,
-            :performance_slow_sql_count
+            :performance_slow_sql_count,
+            :performance_sql_fingerprints
 
   def user
     api_user || session&.user

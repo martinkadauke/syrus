@@ -454,6 +454,16 @@ the instance declares features in `config/features.yml`. The page groups
 declared flags by category, shows the slug and description for each flag,
 and hides the admin navigation item entirely when no flags are declared.
 
+The `performance_logging` operations flag records structured slow-request,
+slow-SQL, and slow application-phase events for production debugging. Slow
+request events include request/user context, SQL counters, and top SQL
+fingerprints for that request; phase events cover expensive dashboard, chat,
+repository, job detail, bootstrap, spending, and admin payload builders. The
+admin performance endpoint returns recent raw events plus grouped summaries for
+slow routes, phases, and SQL fingerprints. The in-app diagnostics buffer is
+cache-backed, capped at 200 events, and expires after 6 hours; structured log
+retention follows the deployment's log sink policy.
+
 ## Direct Jobs
 
 Direct Jobs are for work that should start from an operator prompt instead

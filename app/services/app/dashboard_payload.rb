@@ -106,11 +106,12 @@ module App
 
         case section
         when "chrome"
-          chrome_payload
+          PerformanceLogging.phase("dashboard_payload.chrome", subject: subject, view: view, ownership_scope: ownership_scope) { chrome_payload }
         when "rows"
-          rows_payload
+          PerformanceLogging.phase("dashboard_payload.rows", subject: subject, view: view, ownership_scope: ownership_scope) { rows_payload }
         else
-          chrome_payload.merge(rows_payload)
+          PerformanceLogging.phase("dashboard_payload.chrome", subject: subject, view: view, ownership_scope: ownership_scope) { chrome_payload }
+            .merge(PerformanceLogging.phase("dashboard_payload.rows", subject: subject, view: view, ownership_scope: ownership_scope) { rows_payload })
         end
       end
     end
@@ -121,34 +122,35 @@ module App
         view: view,
         page: page,
         per_page: PER_PAGE,
-        counts: counts,
-        ownership_scope: ownership_scope_json,
-        preferences: preferences_json,
-        controls: controls_json,
-        ownership: ownership_json,
+        counts: PerformanceLogging.phase("dashboard_chrome.counts", subject: subject) { counts },
+        ownership_scope: PerformanceLogging.phase("dashboard_chrome.ownership_scope", subject: subject) { ownership_scope_json },
+        preferences: PerformanceLogging.phase("dashboard_chrome.preferences", subject: subject) { preferences_json },
+        controls: PerformanceLogging.phase("dashboard_chrome.controls", subject: subject) { controls_json },
+        ownership: PerformanceLogging.phase("dashboard_chrome.ownership", subject: subject) { ownership_json },
         filter: current_filter.to_h,
-        landing_queue: landing_queue_chrome_json,
-        provider_availability: provider_availability_by_provider,
-        broken_repositories: health_blocked_repositories_json,
-        health_blocked_repositories: health_blocked_repositories_json,
-        smart_folders: smart_folders_json,
+        landing_queue: PerformanceLogging.phase("dashboard_chrome.landing_queue", subject: subject) { landing_queue_chrome_json },
+        provider_availability: PerformanceLogging.phase("dashboard_chrome.provider_availability", subject: subject) { provider_availability_by_provider },
+        broken_repositories: PerformanceLogging.phase("dashboard_chrome.health_blocked_repositories", subject: subject) { health_blocked_repositories_json },
+        health_blocked_repositories: PerformanceLogging.phase("dashboard_chrome.health_blocked_repositories", subject: subject) { health_blocked_repositories_json },
+        smart_folders: PerformanceLogging.phase("dashboard_chrome.smart_folders", subject: subject) { smart_folders_json },
         active_smart_folder_id: active_smart_folder&.id,
-        setup: ::App::SetupStatus.call(user: user),
+        setup: PerformanceLogging.phase("dashboard_chrome.setup", subject: subject) { ::App::SetupStatus.call(user: user) },
         paths: paths_json
       }
     end
 
     def rows_payload
+      result = PerformanceLogging.phase("dashboard_rows.current_result", subject: subject, view: view, ownership_scope: ownership_scope) { current_result }
       {
         subject: subject,
         view: view,
         page: page,
         per_page: PER_PAGE,
-        total: current_result.fetch(:total),
-        total_pages: total_pages(current_result.fetch(:total)),
-        landing_queue: landing_queue_json,
-        items: current_result.fetch(:items),
-        lanes: lanes_json,
+        total: result.fetch(:total),
+        total_pages: total_pages(result.fetch(:total)),
+        landing_queue: PerformanceLogging.phase("dashboard_rows.landing_queue", subject: subject, view: view) { landing_queue_json },
+        items: result.fetch(:items),
+        lanes: PerformanceLogging.phase("dashboard_rows.lanes", subject: subject, view: view) { lanes_json },
         kanban_limit: view == "kanban" ? kanban_limit : nil
       }
     end
@@ -349,43 +351,51 @@ module App
     end
 
     def jobs_result
-      ensure_landing_queue_snapshot! if landing_queue_visible?
-      scope = filtered_jobs_scope
-      total = scope.count
-      scope = scope.with_latest_workflow_snapshot.preload(
-        :repository,
-        :user,
-        :owner_user,
-        :claimed_by_user,
-        :tags,
-        :workflows,
-        :runs,
-        :deployment_stage_statuses,
-        { dependencies: [ :depends_on_epic, { depends_on_job: :repository } ] },
-        { chat_proposals: [ :chat_session, :messages ] },
-        { epic: { chat_proposals: [ :chat_session, :messages ] } }
-      )
-      jobs = sorted_jobs(scope).to_a
-      @current_jobs = jobs
-      items = jobs.map { |job| job_json(job) }
+      PerformanceLogging.phase("dashboard_jobs_result", view: view, ownership_scope: ownership_scope) do
+        PerformanceLogging.phase("dashboard_jobs.landing_queue_snapshot", view: view) { ensure_landing_queue_snapshot! if landing_queue_visible? }
+        scope = filtered_jobs_scope
+        total = PerformanceLogging.phase("dashboard_jobs.total") { scope.count }
+        scope = scope.with_latest_workflow_snapshot.preload(
+          :repository,
+          :user,
+          :owner_user,
+          :claimed_by_user,
+          :tags,
+          :workflows,
+          :runs,
+          :deployment_stage_statuses,
+          { dependencies: [ :depends_on_epic, { depends_on_job: :repository } ] },
+          { chat_proposals: [ :chat_session, :messages ] },
+          { epic: { chat_proposals: [ :chat_session, :messages ] } }
+        )
+        jobs = PerformanceLogging.phase("dashboard_jobs.query", page: page, view: view) { sorted_jobs(scope).to_a }
+        @current_jobs = jobs
+        items = PerformanceLogging.phase("dashboard_jobs.serialize", count: jobs.size, view: view) { jobs.map { |job| job_json(job) } }
 
-      { total: total, items: items }
+        { total: total, items: items }
+      end
     end
 
     def epics_result
-      scope = filtered_epics_scope.includes(:owner, :repository, :owner_user, :jobs)
-      total = scope.count
-      items = paginate(apply_sort(scope, :epic)).map { |epic| epic_json(epic) }
+      PerformanceLogging.phase("dashboard_epics_result", view: view, ownership_scope: ownership_scope) do
+        scope = filtered_epics_scope.includes(:owner, :repository, :owner_user, :jobs)
+        total = PerformanceLogging.phase("dashboard_epics.total") { scope.count }
+        epics = PerformanceLogging.phase("dashboard_epics.query", page: page, view: view) { paginate(apply_sort(scope, :epic)).to_a }
+        items = PerformanceLogging.phase("dashboard_epics.serialize", count: epics.size, view: view) { epics.map { |epic| epic_json(epic) } }
 
-      { total: total, items: items }
+        { total: total, items: items }
+      end
     end
 
     def workflows_result
-      scope = filtered_workflows_scope.includes(:steps, job: [ :repository, :user, :owner_user ])
-      total = scope.count
-      items = paginate(apply_sort(scope, :workflow)).map { |workflow| workflow_json(workflow) }
+      PerformanceLogging.phase("dashboard_workflows_result", view: view, ownership_scope: ownership_scope) do
+        scope = filtered_workflows_scope.includes(:steps, job: [ :repository, :user, :owner_user ])
+        total = PerformanceLogging.phase("dashboard_workflows.total") { scope.count }
+        workflows = PerformanceLogging.phase("dashboard_workflows.query", page: page, view: view) { paginate(apply_sort(scope, :workflow)).to_a }
+        items = PerformanceLogging.phase("dashboard_workflows.serialize", count: workflows.size, view: view) { workflows.map { |workflow| workflow_json(workflow) } }
 
-      { total: total, items: items }
+        { total: total, items: items }
+      end
     end
 
     def jobs_filter

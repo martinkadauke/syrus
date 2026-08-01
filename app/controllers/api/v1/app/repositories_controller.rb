@@ -426,57 +426,63 @@ module Api
         end
 
         def repository_detail_payload(repository, page:, message: nil)
-          jobs_scope = repository.jobs
-            .with_latest_workflow_snapshot
-            .includes(:repository, :scheduled_task)
-            .order(updated_at: :desc)
-          total_jobs = repository.jobs.count
-          total_pages = [ (total_jobs / PER_PAGE.to_f).ceil, 1 ].max
-          jobs = jobs_scope
-            .limit(PER_PAGE)
-            .offset((page - 1) * PER_PAGE)
-            .to_a
-          preload_repository_detail_job_state(jobs)
+          PerformanceLogging.phase("repository_detail_payload", repository_id: repository.id, page: page) do
+            jobs_scope = repository.jobs
+              .with_latest_workflow_snapshot
+              .includes(:repository, :scheduled_task)
+              .order(updated_at: :desc)
+            total_jobs = PerformanceLogging.phase("repository_detail.total_jobs", repository_id: repository.id) { repository.jobs.count }
+            total_pages = [ (total_jobs / PER_PAGE.to_f).ceil, 1 ].max
+            jobs = PerformanceLogging.phase("repository_detail.jobs_query", repository_id: repository.id, page: page) do
+              jobs_scope
+                .limit(PER_PAGE)
+                .offset((page - 1) * PER_PAGE)
+                .to_a
+            end
+            PerformanceLogging.phase("repository_detail.preload_job_state", repository_id: repository.id, job_count: jobs.size) do
+              preload_repository_detail_job_state(jobs)
+            end
 
-          payload = {
-            message: message,
-            repository: repository_detail_json(repository),
-            tabs: repository_tabs_json(repository),
-            counts: repository_counts_json(repository),
-            retry_failed_jobs: retry_failed_jobs_json(repository),
-            can_release_triage_jobs: can_release_triage_jobs?,
-            needs_triage_jobs: needs_triage_jobs_json(repository),
-            credential_status: credential_status_json(repository),
-            health_history: health_history_json(repository),
-            jobs: jobs.map { |job| job_json(job) },
-            pagination: pagination_json(page: page, total_jobs: total_jobs, total_pages: total_pages, repository: repository),
-            paths: {
-              new_job_path: new_job_path(repository_id: repository.id),
-              edit_repository_path: edit_repository_path(repository),
-              app_poll_repository_path: "/api/v1/app/repositories/#{repository.id}/poll",
-              app_archive_repository_path: "/api/v1/app/repositories/#{repository.id}/archive",
-              app_retry_failed_jobs_repository_path: "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs",
-              app_release_needs_triage_job_repository_path: "/api/v1/app/repositories/#{repository.id}/release_needs_triage_job",
-              app_resume_landing_repository_path: "/api/v1/app/repositories/#{repository.id}/resume_landing",
-              app_run_main_branch_graders_repository_path: "/api/v1/app/repositories/#{repository.id}/run_main_branch_graders",
-              app_repair_main_branch_repository_path: "/api/v1/app/repositories/#{repository.id}/repair_main_branch",
-              app_check_ci_now_repository_path: "/api/v1/app/repositories/#{repository.id}/check_ci_now",
-              repositories_path: repositories_path,
-              repository_documents_path: repository_documents_path(repository),
-              repository_scheduled_tasks_path: repository_scheduled_tasks_path(repository),
-              app_flaky_tests_path: "/api/v1/app/repositories/#{repository.id}/flaky_tests"
+            payload = {
+              message: message,
+              repository: PerformanceLogging.phase("repository_detail.repository", repository_id: repository.id) { repository_detail_json(repository) },
+              tabs: PerformanceLogging.phase("repository_detail.tabs", repository_id: repository.id) { repository_tabs_json(repository) },
+              counts: PerformanceLogging.phase("repository_detail.counts", repository_id: repository.id) { repository_counts_json(repository) },
+              retry_failed_jobs: PerformanceLogging.phase("repository_detail.retry_failed_jobs", repository_id: repository.id) { retry_failed_jobs_json(repository) },
+              can_release_triage_jobs: can_release_triage_jobs?,
+              needs_triage_jobs: PerformanceLogging.phase("repository_detail.needs_triage_jobs", repository_id: repository.id) { needs_triage_jobs_json(repository) },
+              credential_status: PerformanceLogging.phase("repository_detail.credential_status", repository_id: repository.id) { credential_status_json(repository) },
+              health_history: PerformanceLogging.phase("repository_detail.health_history", repository_id: repository.id) { health_history_json(repository) },
+              jobs: PerformanceLogging.phase("repository_detail.jobs_json", repository_id: repository.id, job_count: jobs.size) { jobs.map { |job| job_json(job) } },
+              pagination: pagination_json(page: page, total_jobs: total_jobs, total_pages: total_pages, repository: repository),
+              paths: {
+                new_job_path: new_job_path(repository_id: repository.id),
+                edit_repository_path: edit_repository_path(repository),
+                app_poll_repository_path: "/api/v1/app/repositories/#{repository.id}/poll",
+                app_archive_repository_path: "/api/v1/app/repositories/#{repository.id}/archive",
+                app_retry_failed_jobs_repository_path: "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs",
+                app_release_needs_triage_job_repository_path: "/api/v1/app/repositories/#{repository.id}/release_needs_triage_job",
+                app_resume_landing_repository_path: "/api/v1/app/repositories/#{repository.id}/resume_landing",
+                app_run_main_branch_graders_repository_path: "/api/v1/app/repositories/#{repository.id}/run_main_branch_graders",
+                app_repair_main_branch_repository_path: "/api/v1/app/repositories/#{repository.id}/repair_main_branch",
+                app_check_ci_now_repository_path: "/api/v1/app/repositories/#{repository.id}/check_ci_now",
+                repositories_path: repositories_path,
+                repository_documents_path: repository_documents_path(repository),
+                repository_scheduled_tasks_path: repository_scheduled_tasks_path(repository),
+                app_flaky_tests_path: "/api/v1/app/repositories/#{repository.id}/flaky_tests"
+              }
             }
-          }
 
-          if Feature.agent_insights_enabled?
-            payload[:agent_insights_enabled] = true
-            payload[:active_insight_job] = active_insight_job_json(repository)
-            payload[:insight_schedule_config] = insight_schedule_config_json(repository)
-            payload[:paths][:app_run_insight_analysis_repository_path] = "/api/v1/app/repositories/#{repository.id}/run_insight_analysis"
-            payload[:paths][:repository_insights_path] = "/repositories/#{repository.id}/insights"
+            if Feature.agent_insights_enabled?
+              payload[:agent_insights_enabled] = true
+              payload[:active_insight_job] = PerformanceLogging.phase("repository_detail.active_insight_job", repository_id: repository.id) { active_insight_job_json(repository) }
+              payload[:insight_schedule_config] = PerformanceLogging.phase("repository_detail.insight_schedule_config", repository_id: repository.id) { insight_schedule_config_json(repository) }
+              payload[:paths][:app_run_insight_analysis_repository_path] = "/api/v1/app/repositories/#{repository.id}/run_insight_analysis"
+              payload[:paths][:repository_insights_path] = "/repositories/#{repository.id}/insights"
+            end
+
+            payload
           end
-
-          payload
         end
 
         def repository_issues_payload(repository, state:, message: nil)
@@ -513,17 +519,19 @@ module Api
         end
 
         def repositories_payload(message: nil)
-          repos = Current.user.repositories.includes(:user).order(:owner, :name).to_a
-          preload_repository_index_job_state(repos)
+          PerformanceLogging.phase("repositories_index_payload") do
+            repos = PerformanceLogging.phase("repositories_index.repositories_query") { Current.user.repositories.includes(:user).order(:owner, :name).to_a }
+            PerformanceLogging.phase("repositories_index.preload_job_state", repository_count: repos.size) { preload_repository_index_job_state(repos) }
 
-          {
-            active_repositories: repos.select { |repository| !repository.archived? }.map { |repository| repository_json(repository) },
-            archived_repositories: repos.select(&:archived?).map { |repository| repository_json(repository) },
-            repositories: repos.map { |repository| repository_cli_json(repository) },
-            new_repository_path: new_repository_path,
-            setup: ::App::SetupStatus.call(user: Current.user),
-            message: message
-          }
+            {
+              active_repositories: PerformanceLogging.phase("repositories_index.active_repositories_json", repository_count: repos.size) { repos.select { |repository| !repository.archived? }.map { |repository| repository_json(repository) } },
+              archived_repositories: PerformanceLogging.phase("repositories_index.archived_repositories_json", repository_count: repos.size) { repos.select(&:archived?).map { |repository| repository_json(repository) } },
+              repositories: PerformanceLogging.phase("repositories_index.cli_repositories_json", repository_count: repos.size) { repos.map { |repository| repository_cli_json(repository) } },
+              new_repository_path: new_repository_path,
+              setup: PerformanceLogging.phase("repositories_index.setup") { ::App::SetupStatus.call(user: Current.user) },
+              message: message
+            }
+          end
         end
 
         def repository_json(repository)

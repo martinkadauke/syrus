@@ -26,54 +26,60 @@ module App
     end
 
     def payload
-      result = {
-        job: job_json,
-        repository: repository_json(@job.repository),
-        epic: epic_json(@job.epic),
-        merge_train_status: App::MergeTrainStatus.for_job(@job),
-        origin_chat: origin_chat_json,
-        pinned: @user.job_pins.exists?(job: @job),
-        tags: @job.tags.ordered.map { |tag| tag_json(tag) },
-        tag_options: @user.tags.ordered.map { |tag| tag_json(tag) },
-        dependencies: @job.dependencies.includes(:created_by_user, depends_on_job: :repository, depends_on_epic: :repository).map { |dependency| dependency_json(dependency) },
-        dependents: @job.dependent_links.includes(job: :repository).map { |dependency| dependent_json(dependency) },
-        unsatisfied_dependencies: @job.unsatisfied_dependencies.map { |dependency| dependency_json(dependency) },
-        dependency_target_options: dependency_target_options,
-        epic_dependency_target_options: epic_dependency_target_options,
-        attachments: @job.job_attachments.includes(file_attachment: :blob).map { |attachment| attachment_json(attachment) },
-        summary: summary_json,
-        test_plan: test_plan_json,
-        has_test_results: has_test_results?,
-        feedback_history: feedback_history_json,
-        pending_feedback: pending_feedback_json,
-        landing_queue_entry: landing_queue_entry_json,
-        workflows: workflows_json,
-        workflows_pagination: workflows_pagination_json,
-        feature_flags: feature_flags_json,
-        actions: actions_json,
-        paths: paths_json
-      }
-      stages = App::DeploymentStagesPayload.for_job(@job)
-      result[:deployment_stages] = stages if @job.landed_sha.present? && stages
-      result
+      PerformanceLogging.phase("job_detail_payload", job_id: @job.id) do
+        result = {
+          job: PerformanceLogging.phase("job_detail.job", job_id: @job.id) { job_json },
+          repository: PerformanceLogging.phase("job_detail.repository", job_id: @job.id) { repository_json(@job.repository) },
+          epic: PerformanceLogging.phase("job_detail.epic", job_id: @job.id) { epic_json(@job.epic) },
+          merge_train_status: PerformanceLogging.phase("job_detail.merge_train_status", job_id: @job.id) { App::MergeTrainStatus.for_job(@job) },
+          origin_chat: PerformanceLogging.phase("job_detail.origin_chat", job_id: @job.id) { origin_chat_json },
+          pinned: PerformanceLogging.phase("job_detail.pinned", job_id: @job.id) { @user.job_pins.exists?(job: @job) },
+          tags: PerformanceLogging.phase("job_detail.tags", job_id: @job.id) { @job.tags.ordered.map { |tag| tag_json(tag) } },
+          tag_options: PerformanceLogging.phase("job_detail.tag_options", job_id: @job.id) { @user.tags.ordered.map { |tag| tag_json(tag) } },
+          dependencies: PerformanceLogging.phase("job_detail.dependencies", job_id: @job.id) { @job.dependencies.includes(:created_by_user, depends_on_job: :repository, depends_on_epic: :repository).map { |dependency| dependency_json(dependency) } },
+          dependents: PerformanceLogging.phase("job_detail.dependents", job_id: @job.id) { @job.dependent_links.includes(job: :repository).map { |dependency| dependent_json(dependency) } },
+          unsatisfied_dependencies: PerformanceLogging.phase("job_detail.unsatisfied_dependencies", job_id: @job.id) { @job.unsatisfied_dependencies.map { |dependency| dependency_json(dependency) } },
+          dependency_target_options: PerformanceLogging.phase("job_detail.dependency_target_options", job_id: @job.id) { dependency_target_options },
+          epic_dependency_target_options: PerformanceLogging.phase("job_detail.epic_dependency_target_options", job_id: @job.id) { epic_dependency_target_options },
+          attachments: PerformanceLogging.phase("job_detail.attachments", job_id: @job.id) { @job.job_attachments.includes(file_attachment: :blob).map { |attachment| attachment_json(attachment) } },
+          summary: PerformanceLogging.phase("job_detail.summary", job_id: @job.id) { summary_json },
+          test_plan: PerformanceLogging.phase("job_detail.test_plan", job_id: @job.id) { test_plan_json },
+          has_test_results: PerformanceLogging.phase("job_detail.has_test_results", job_id: @job.id) { has_test_results? },
+          feedback_history: PerformanceLogging.phase("job_detail.feedback_history", job_id: @job.id) { feedback_history_json },
+          pending_feedback: PerformanceLogging.phase("job_detail.pending_feedback", job_id: @job.id) { pending_feedback_json },
+          landing_queue_entry: PerformanceLogging.phase("job_detail.landing_queue_entry", job_id: @job.id) { landing_queue_entry_json },
+          workflows: PerformanceLogging.phase("job_detail.workflows", job_id: @job.id, page: workflows_page) { workflows_json },
+          workflows_pagination: PerformanceLogging.phase("job_detail.workflows_pagination", job_id: @job.id) { workflows_pagination_json },
+          feature_flags: feature_flags_json,
+          actions: PerformanceLogging.phase("job_detail.actions", job_id: @job.id) { actions_json },
+          paths: paths_json
+        }
+        stages = PerformanceLogging.phase("job_detail.deployment_stages", job_id: @job.id) { App::DeploymentStagesPayload.for_job(@job) }
+        result[:deployment_stages] = stages if @job.landed_sha.present? && stages
+        result
+      end
     end
 
     def workflows_payload
-      {
-        job: job_json,
-        workflows: workflows_json,
-        workflows_pagination: workflows_pagination_json,
-        feature_flags: feature_flags_json,
-        actions: actions_json,
-        paths: paths_json
-      }
+      PerformanceLogging.phase("job_workflows_payload", job_id: @job.id, page: workflows_page) do
+        {
+          job: PerformanceLogging.phase("job_workflows.job", job_id: @job.id) { job_json },
+          workflows: PerformanceLogging.phase("job_workflows.workflows", job_id: @job.id, page: workflows_page) { workflows_json },
+          workflows_pagination: workflows_pagination_json,
+          feature_flags: feature_flags_json,
+          actions: PerformanceLogging.phase("job_workflows.actions", job_id: @job.id) { actions_json },
+          paths: paths_json
+        }
+      end
     end
 
     def timeline_payload
-      {
-        job_id: @job.id,
-        events: Jobs::Timeline.for(@job).map { |event| timeline_event_json(event) }
-      }
+      PerformanceLogging.phase("job_timeline_payload", job_id: @job.id) do
+        {
+          job_id: @job.id,
+          events: PerformanceLogging.phase("job_timeline.events", job_id: @job.id) { Jobs::Timeline.for(@job).map { |event| timeline_event_json(event) } }
+        }
+      end
     end
 
     private

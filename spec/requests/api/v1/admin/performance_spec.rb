@@ -13,7 +13,26 @@ RSpec.describe "API: /api/v1/admin/performance", type: :request do
     Feature.where(slug: "performance_logging").delete_all
     Feature.create!(slug: "performance_logging", category: "Operations", name: "Performance logging", enabled: true)
     Current.reset
-    PerformanceLogging::Store.append("event" => "syrus.performance.slow_request", "path" => "/dashboard/jobs")
+    PerformanceLogging::Store.append(
+      "event" => "syrus.performance.slow_request",
+      "method" => "GET",
+      "path" => "/dashboard/jobs",
+      "controller" => "DashboardController",
+      "action" => "show",
+      "duration_ms" => 1_500.0,
+      "sql_count" => 12,
+      "sql_duration_ms" => 300.0,
+      "top_sql_fingerprints" => [
+        {
+          "fingerprint" => "SELECT * FROM jobs WHERE id = ?",
+          "sample_sql" => "SELECT * FROM jobs WHERE id = 1",
+          "name" => "Job Load",
+          "count" => 2,
+          "total_duration_ms" => 80.0,
+          "max_duration_ms" => 45.0
+        }
+      ]
+    )
   end
 
   it "401s without a token" do
@@ -31,5 +50,16 @@ RSpec.describe "API: /api/v1/admin/performance", type: :request do
     expect(body["thresholds"]).to include("slow_request_ms", "slow_sql_ms", "slow_phase_ms")
     expect(body["storage"]).to include("max_events" => PerformanceLogging::Store::MAX_EVENTS)
     expect(body["events"].first).to include("event" => "syrus.performance.slow_request", "path" => "/dashboard/jobs")
+    expect(body.dig("summaries", "slow_requests").first).to include(
+      "method" => "GET",
+      "path" => "/dashboard/jobs",
+      "count" => 1,
+      "average_sql_count" => 12.0
+    )
+    expect(body.dig("summaries", "sql_fingerprints").first).to include(
+      "fingerprint" => "SELECT * FROM jobs WHERE id = ?",
+      "count" => 2,
+      "total_duration_ms" => 80.0
+    )
   end
 end

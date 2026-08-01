@@ -10,12 +10,17 @@ module App
       # / JOB_KANBAN_LANES constants, and the shared *_json helpers through the ancestry.
 
       def smart_folders_json
-        folders = SmartFolder.for_subject(subject)
-                             .where("user_id IS NULL OR user_id = ?", user.id)
-                             .order(Arel.sql("CASE WHEN user_id IS NULL THEN 0 ELSE 1 END"), :position, :id)
+        folders = PerformanceLogging.phase("dashboard_smart_folders.query", subject: subject) do
+          SmartFolder.for_subject(subject)
+                     .where("user_id IS NULL OR user_id = ?", user.id)
+                     .order(Arel.sql("CASE WHEN user_id IS NULL THEN 0 ELSE 1 END"), :position, :id)
+                     .to_a
+        end
 
         folders.filter_map do |folder|
-          count = smart_folder_count(folder)
+          count = PerformanceLogging.phase("dashboard_smart_folders.count", subject: subject, folder_id: folder.id, builtin_key: folder.builtin_key) do
+            smart_folder_count(folder)
+          end
           next unless smart_folder_visible?(folder, count)
 
           json = {
@@ -84,17 +89,19 @@ module App
       end
 
       def controls_json
-        {
-          views: available_views,
-          ownership_scopes: ownership_scope_options_json,
-          owners: owner_options.map { |owner| owner_option_json(owner) },
-          sort_columns: User::DASHBOARD_SORT_COLUMNS.fetch(subject),
-          sort_directions: User::DASHBOARD_SORT_DIRECTIONS,
-          columns: column_options_json,
-          kanban_lanes: kanban_lane_options_json,
-          filter_schema: Filters::Schema.for(subject: subject.to_sym, user: user),
-          filter_suggestions: filter_suggestions_json
-        }
+        PerformanceLogging.phase("dashboard_controls", subject: subject) do
+          {
+            views: available_views,
+            ownership_scopes: ownership_scope_options_json,
+            owners: PerformanceLogging.phase("dashboard_controls.owners", subject: subject) { owner_options.map { |owner| owner_option_json(owner) } },
+            sort_columns: User::DASHBOARD_SORT_COLUMNS.fetch(subject),
+            sort_directions: User::DASHBOARD_SORT_DIRECTIONS,
+            columns: column_options_json,
+            kanban_lanes: kanban_lane_options_json,
+            filter_schema: PerformanceLogging.phase("dashboard_controls.filter_schema", subject: subject) { Filters::Schema.for(subject: subject.to_sym, user: user) },
+            filter_suggestions: PerformanceLogging.phase("dashboard_controls.filter_suggestions", subject: subject) { filter_suggestions_json }
+          }
+        end
       end
 
       def filter_suggestions_json
@@ -141,19 +148,23 @@ module App
       end
 
       def health_blocked_repositories_json
-        @health_blocked_repositories_json ||= user.repositories.active.select { |repo| repo.main_health_broken? || repo.main_health_inconclusive? }.map do |repo|
-          repair_status = MainHealthChangedService.new(repo).repair_status
-          {
-            id: repo.id,
-            slug: repo.slug,
-            main_health: repo.main_health,
-            ci_health: repo.ci_health,
-            grader_health: repo.grader_health,
-            landing_paused: repo.landing_paused,
-            repository_path: repository_path(repo),
-            repair_path: "/api/v1/app/repositories/#{repo.id}/repair_main_branch",
-            main_branch_repair: main_branch_repair_json(repair_status)
-          }
+        @health_blocked_repositories_json ||= PerformanceLogging.phase("dashboard_health_blocked_repositories", subject: subject) do
+          user.repositories.active.select { |repo| repo.main_health_broken? || repo.main_health_inconclusive? }.map do |repo|
+            repair_status = PerformanceLogging.phase("dashboard_health_blocked_repositories.repair_status", repository_id: repo.id) do
+              MainHealthChangedService.new(repo).repair_status
+            end
+            {
+              id: repo.id,
+              slug: repo.slug,
+              main_health: repo.main_health,
+              ci_health: repo.ci_health,
+              grader_health: repo.grader_health,
+              landing_paused: repo.landing_paused,
+              repository_path: repository_path(repo),
+              repair_path: "/api/v1/app/repositories/#{repo.id}/repair_main_branch",
+              main_branch_repair: main_branch_repair_json(repair_status)
+            }
+          end
         end
       end
 

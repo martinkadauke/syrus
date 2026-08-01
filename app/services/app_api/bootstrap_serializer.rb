@@ -8,21 +8,23 @@ module AppApi
     end
 
     def as_json(*)
-      {
-        current_user: user_payload,
-        team_user_count: user ? User.count : 0,
-        app: app_payload,
-        setup_status: setup_status_payload,
-        provider_availability: provider_availability_payload,
-        public: public_payload,
-        navigation: navigation_payload,
-        setup: setup_payload,
-        flash: flash_payload,
-        system_alerts: system_alerts_payload,
-        unread_notifications_count: unread_notifications_count,
-        csrf_token: @csrf_token,
-        feature_flags: feature_flags_payload
-      }
+      PerformanceLogging.phase("bootstrap_payload", authenticated: user.present?) do
+        {
+          current_user: PerformanceLogging.phase("bootstrap.current_user") { user_payload },
+          team_user_count: PerformanceLogging.phase("bootstrap.team_user_count") { user ? User.count : 0 },
+          app: PerformanceLogging.phase("bootstrap.app") { app_payload },
+          setup_status: PerformanceLogging.phase("bootstrap.setup_status") { setup_status_payload },
+          provider_availability: PerformanceLogging.phase("bootstrap.provider_availability") { provider_availability_payload },
+          public: PerformanceLogging.phase("bootstrap.public") { public_payload },
+          navigation: navigation_payload,
+          setup: PerformanceLogging.phase("bootstrap.setup") { setup_payload },
+          flash: flash_payload,
+          system_alerts: PerformanceLogging.phase("bootstrap.system_alerts") { system_alerts_payload },
+          unread_notifications_count: PerformanceLogging.phase("bootstrap.unread_notifications_count") { unread_notifications_count },
+          csrf_token: @csrf_token,
+          feature_flags: PerformanceLogging.phase("bootstrap.feature_flags") { feature_flags_payload }
+        }
+      end
     end
 
     private

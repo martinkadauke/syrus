@@ -7,6 +7,8 @@ module PerformanceLogging
   DEFAULT_SLOW_REQUEST_MS = 1_000.0
   DEFAULT_SLOW_SQL_MS = 250.0
   DEFAULT_SLOW_PHASE_MS = 250.0
+  TOP_SQL_FINGERPRINT_LIMIT = 10
+  MAX_SQL_FINGERPRINTS_PER_REQUEST = 100
 
   module Store
     CACHE_KEY = "syrus:performance_logging:events:v1"
@@ -47,6 +49,19 @@ module PerformanceLogging
 
   module_function
 
+  def with_request_context(context)
+    Current.performance_request_context = safe_context(context)
+    Current.performance_sql_count = 0
+    Current.performance_sql_duration_ms = 0.0
+    Current.performance_slow_sql_count = 0
+    Current.performance_sql_fingerprints = {}
+    yield
+  end
+
+  def merge_request_context(context)
+    Current.performance_request_context = request_context.merge(safe_context(context))
+  end
+
   def enabled?
     return false if suppressed?
     return Current.performance_logging_enabled unless Current.performance_logging_enabled.nil?
@@ -64,15 +79,18 @@ module PerformanceLogging
 
     Current.performance_sql_count = Current.performance_sql_count.to_i + 1
     Current.performance_sql_duration_ms = Current.performance_sql_duration_ms.to_f + duration_ms.to_f
+    record_sql_fingerprint(payload, duration_ms)
     return if duration_ms.to_f < slow_sql_threshold_ms
 
     Current.performance_slow_sql_count = Current.performance_slow_sql_count.to_i + 1
     emit(
       base_event(SLOW_SQL_EVENT).merge(
+        request_context,
         "duration_ms" => rounded_duration(duration_ms),
         "name" => safe_string(payload[:name], 200),
-        "sql" => safe_string(payload[:sql], 2_000)
-      )
+        "sql" => safe_string(payload[:sql], 2_000),
+        "fingerprint" => fingerprint_sql(payload[:sql])
+      ).compact
     )
   end
 
@@ -83,6 +101,7 @@ module PerformanceLogging
 
     emit(
       base_event(SLOW_REQUEST_EVENT).merge(
+        request_context_from_payload(payload),
         "duration_ms" => rounded_duration(duration_ms),
         "method" => safe_string(payload[:method], 20),
         "path" => safe_string(payload[:path], 500),
@@ -94,7 +113,8 @@ module PerformanceLogging
         "db_runtime_ms" => rounded_duration(payload[:db_runtime]),
         "sql_count" => Current.performance_sql_count.to_i,
         "sql_duration_ms" => rounded_duration(Current.performance_sql_duration_ms),
-        "slow_sql_count" => Current.performance_slow_sql_count.to_i
+        "slow_sql_count" => Current.performance_slow_sql_count.to_i,
+        "top_sql_fingerprints" => top_sql_fingerprints
       ).compact
     )
   end
@@ -109,6 +129,7 @@ module PerformanceLogging
     if duration_ms && duration_ms >= slow_phase_threshold_ms
       emit(
         base_event(SLOW_PHASE_EVENT).merge(
+          request_context,
           "duration_ms" => rounded_duration(duration_ms),
           "phase" => safe_string(name, 200),
           "metadata" => safe_metadata(metadata)
@@ -133,7 +154,9 @@ module PerformanceLogging
     {
       slow_request_ms: slow_request_threshold_ms,
       slow_sql_ms: slow_sql_threshold_ms,
-      slow_phase_ms: slow_phase_threshold_ms
+      slow_phase_ms: slow_phase_threshold_ms,
+      top_sql_fingerprint_limit: TOP_SQL_FINGERPRINT_LIMIT,
+      max_sql_fingerprints_per_request: MAX_SQL_FINGERPRINTS_PER_REQUEST
     }
   end
 
@@ -178,6 +201,90 @@ module PerformanceLogging
       "occurred_at" => Time.current.iso8601(6),
       "pid" => Process.pid
     }
+  end
+
+  def request_context
+    (Current.performance_request_context || {}).to_h
+  end
+
+  def request_context_from_payload(payload)
+    request = payload[:request]
+    request_context.merge(
+      "request_id" => safe_string(request&.request_id || payload[:request_id] || request_context["request_id"], 100),
+      "method" => safe_string(payload[:method] || request_context["method"], 20),
+      "path" => safe_string(payload[:path] || request_context["path"], 500),
+      "controller" => safe_string(payload[:controller] || request_context["controller"], 200),
+      "action" => safe_string(payload[:action] || request_context["action"], 100)
+    ).compact_blank
+  end
+
+  def safe_context(context)
+    context.to_h.filter_map do |key, value|
+      next if value.nil?
+
+      sanitized = case key.to_sym
+      when :admin
+        ActiveModel::Type::Boolean.new.cast(value)
+      when :user_id
+        Integer(value, exception: false)
+      when :request_id
+        safe_string(value, 100)
+      when :method
+        safe_string(value, 20)
+      when :path
+        safe_string(value, 500)
+      when :controller
+        safe_string(value, 200)
+      when :action
+        safe_string(value, 100)
+      else
+        safe_string(value, 500)
+      end
+      [ key.to_s, sanitized ] unless sanitized.nil?
+    end.to_h
+  end
+
+  def record_sql_fingerprint(payload, duration_ms)
+    fingerprints = Current.performance_sql_fingerprints ||= {}
+    fingerprint = fingerprint_sql(payload[:sql])
+    return if fingerprint.blank?
+    return if fingerprints.size >= MAX_SQL_FINGERPRINTS_PER_REQUEST && !fingerprints.key?(fingerprint)
+
+    entry = fingerprints[fingerprint] ||= {
+      "fingerprint" => fingerprint,
+      "sample_sql" => safe_string(payload[:sql], 1_000),
+      "name" => safe_string(payload[:name], 200),
+      "count" => 0,
+      "total_duration_ms" => 0.0,
+      "max_duration_ms" => 0.0
+    }
+    duration = duration_ms.to_f
+    entry["count"] += 1
+    entry["total_duration_ms"] += duration
+    entry["max_duration_ms"] = [ entry["max_duration_ms"], duration ].max
+  end
+
+  def top_sql_fingerprints
+    (Current.performance_sql_fingerprints || {}).to_h.values
+      .sort_by { |entry| [ -entry["total_duration_ms"].to_f, -entry["count"].to_i, entry["fingerprint"].to_s ] }
+      .first(TOP_SQL_FINGERPRINT_LIMIT)
+      .map do |entry|
+        entry.merge(
+          "total_duration_ms" => rounded_duration(entry["total_duration_ms"]),
+          "max_duration_ms" => rounded_duration(entry["max_duration_ms"])
+        )
+      end
+  end
+
+  def fingerprint_sql(sql)
+    safe_string(sql, 4_000)
+      .gsub(/\b0x[0-9a-f]+\b/i, "?")
+      .gsub(/'(?:''|[^'])*'/, "?")
+      .gsub(/"(?:\"\"|[^"])*"/, "?")
+      .gsub(/\b\d+\b/, "?")
+      .gsub(/\s+/, " ")
+      .strip
+      .safe_byteslice(0, 1_000)
   end
 
   def safe_string(value, limit)

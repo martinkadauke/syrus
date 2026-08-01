@@ -16,19 +16,21 @@ module App
     end
 
     def as_json(*)
-      {
-        complete: complete?,
-        chat_started: chat_started?,
-        onboarding_chat_path: onboarding_chat_path,
-        next_step: next_step,
-        progress: progress,
-        credentials: credentials,
-        system: system,
-        github_app: github_app,
-        repositories: repositories,
-        first_job: first_job,
-        paths: paths
-      }
+      PerformanceLogging.phase("setup_status_payload", user_id: user.id) do
+        {
+          complete: PerformanceLogging.phase("setup_status.complete", user_id: user.id) { complete? },
+          chat_started: PerformanceLogging.phase("setup_status.chat_started", user_id: user.id) { chat_started? },
+          onboarding_chat_path: PerformanceLogging.phase("setup_status.onboarding_chat_path", user_id: user.id) { onboarding_chat_path },
+          next_step: PerformanceLogging.phase("setup_status.next_step", user_id: user.id) { next_step },
+          progress: PerformanceLogging.phase("setup_status.progress", user_id: user.id) { progress },
+          credentials: PerformanceLogging.phase("setup_status.credentials", user_id: user.id) { credentials },
+          system: system,
+          github_app: PerformanceLogging.phase("setup_status.github_app", user_id: user.id) { github_app },
+          repositories: PerformanceLogging.phase("setup_status.repositories", user_id: user.id) { repositories },
+          first_job: PerformanceLogging.phase("setup_status.first_job", user_id: user.id) { first_job },
+          paths: paths
+        }
+      end
     end
 
     private

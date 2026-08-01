@@ -12,13 +12,15 @@ module App
       def lanes_json
         return [] unless view == "kanban"
 
-        case subject
-        when "job"
-          job_lanes_json
-        when "workflow"
-          workflow_lanes_json
-        else
-          epic_lanes_json
+        PerformanceLogging.phase("dashboard_kanban_lanes", subject: subject, limit: kanban_limit) do
+          case subject
+          when "job"
+            job_lanes_json
+          when "workflow"
+            workflow_lanes_json
+          else
+            epic_lanes_json
+          end
         end
       end
 
@@ -26,63 +28,75 @@ module App
         visible_lanes = user.dashboard_visible_kanban_lanes(:jobs)
         lane_defs = JOB_KANBAN_LANES.select { |lane| visible_lanes.include?(lane.fetch(:key)) }
         records_by_lane = lane_defs.to_h { |lane| [ lane.fetch(:key), [] ] }
-        records = filtered_jobs_scope
-                  .where(state: job_kanban_candidate_states(visible_lanes))
-                  .with_latest_workflow_snapshot
-                  .preload(
-                    :repository,
-                    :user,
-                    :owner_user,
-                    :claimed_by_user,
-                    :tags,
-                    :workflows,
-                    :runs,
-                    { dependencies: [ :depends_on_epic, { depends_on_job: :repository } ] },
-                    { chat_proposals: [ :chat_session, :messages ] },
-                    { epic: { chat_proposals: [ :chat_session, :messages ] } }
-                  )
-                  .order(created_at: :desc, id: :desc)
-                  .limit(kanban_limit)
-                  .to_a
+        records = PerformanceLogging.phase("dashboard_kanban_jobs.query", lanes: visible_lanes.join(","), limit: kanban_limit) do
+          filtered_jobs_scope
+            .where(state: job_kanban_candidate_states(visible_lanes))
+            .with_latest_workflow_snapshot
+            .preload(
+              :repository,
+              :user,
+              :owner_user,
+              :claimed_by_user,
+              :tags,
+              :workflows,
+              :runs,
+              { dependencies: [ :depends_on_epic, { depends_on_job: :repository } ] },
+              { chat_proposals: [ :chat_session, :messages ] },
+              { epic: { chat_proposals: [ :chat_session, :messages ] } }
+            )
+            .order(created_at: :desc, id: :desc)
+            .limit(kanban_limit)
+            .to_a
+        end
 
         records.each do |job|
           lane = job_kanban_lane_for(job, visible_lanes)
           records_by_lane[lane] << job if lane && records_by_lane.key?(lane)
         end
 
-        lane_defs.map { |lane| lane_json(lane.fetch(:key), lane.fetch(:title), records_by_lane.fetch(lane.fetch(:key)).map { |job| job_json(job) }) }
+        PerformanceLogging.phase("dashboard_kanban_jobs.serialize", count: records.size) do
+          lane_defs.map { |lane| lane_json(lane.fetch(:key), lane.fetch(:title), records_by_lane.fetch(lane.fetch(:key)).map { |job| job_json(job) }) }
+        end
       end
 
       def epic_lanes_json
         lanes = user.dashboard_visible_kanban_lanes(:epics)
-        records = filtered_epics_scope
-                  .includes(:owner, :repository, :owner_user, :jobs)
-                  .where(state: lanes)
-                  .order(updated_at: :desc, id: :desc)
-                  .limit(kanban_limit)
-                  .to_a
+        records = PerformanceLogging.phase("dashboard_kanban_epics.query", lanes: lanes.join(","), limit: kanban_limit) do
+          filtered_epics_scope
+            .includes(:owner, :repository, :owner_user, :jobs)
+            .where(state: lanes)
+            .order(updated_at: :desc, id: :desc)
+            .limit(kanban_limit)
+            .to_a
+        end
         records_by_lane = lanes.to_h { |lane| [ lane, [] ] }
         records.each { |epic| records_by_lane[epic.state] << epic if records_by_lane.key?(epic.state) }
 
-        lanes.map { |lane| lane_json(lane, lane.humanize, records_by_lane.fetch(lane).map { |epic| epic_json(epic) }) }
+        PerformanceLogging.phase("dashboard_kanban_epics.serialize", count: records.size) do
+          lanes.map { |lane| lane_json(lane, lane.humanize, records_by_lane.fetch(lane).map { |epic| epic_json(epic) }) }
+        end
       end
 
       def workflow_lanes_json
         lanes = user.dashboard_visible_kanban_lanes(:workflows)
         records_by_lane = lanes.to_h { |lane| [ lane, [] ] }
-        records = filtered_workflows_scope
-                  .where(state: workflow_kanban_candidate_states(lanes))
-                  .includes(:steps, job: [ :repository, :user, :owner_user ])
-                  .order(created_at: :desc, id: :desc)
-                  .limit(kanban_limit)
-                  .to_a
+        records = PerformanceLogging.phase("dashboard_kanban_workflows.query", lanes: lanes.join(","), limit: kanban_limit) do
+          filtered_workflows_scope
+            .where(state: workflow_kanban_candidate_states(lanes))
+            .includes(:steps, job: [ :repository, :user, :owner_user ])
+            .order(created_at: :desc, id: :desc)
+            .limit(kanban_limit)
+            .to_a
+        end
 
         records.each do |workflow|
           lane = workflow_kanban_column_for(workflow, lanes)
           records_by_lane[lane] << workflow if lane && records_by_lane.key?(lane)
         end
 
-        lanes.map { |lane| lane_json(lane, lane.humanize, records_by_lane.fetch(lane).map { |workflow| workflow_json(workflow) }) }
+        PerformanceLogging.phase("dashboard_kanban_workflows.serialize", count: records.size) do
+          lanes.map { |lane| lane_json(lane, lane.humanize, records_by_lane.fetch(lane).map { |workflow| workflow_json(workflow) }) }
+        end
       end
 
       def lane_json(key, title, items)

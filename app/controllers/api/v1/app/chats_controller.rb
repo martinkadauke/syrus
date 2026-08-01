@@ -26,9 +26,11 @@ module Api
           "claim the Epic as a developer to elaborate it.".freeze
 
         def index
-          render json: {
-            groups: recent_chats_index_json,
-            repositories: Current.user.repositories.active.order(:owner, :name).map { |repository| repository_json(repository) }
+          render json: PerformanceLogging.phase("chats_index_payload") {
+            {
+              groups: PerformanceLogging.phase("chats_index.groups") { recent_chats_index_json },
+              repositories: PerformanceLogging.phase("chats_index.repositories") { Current.user.repositories.active.order(:owner, :name).map { |repository| repository_json(repository) } }
+            }
           }
         end
 
@@ -49,10 +51,12 @@ module Api
             return
           end
 
-          chats, has_more = paginated_chat_index_group(scope, before_chat: cursor)
-          render json: {
-            chats: chats.map { |chat_session| chat_index_json(chat_session) },
-            has_more: has_more
+          render json: PerformanceLogging.phase("chats_more_payload", before_id: before_id, repository_id: repository_id) {
+            chats, has_more = paginated_chat_index_group(scope, before_chat: cursor)
+            {
+              chats: PerformanceLogging.phase("chats_more.serialize", count: chats.size) { chats.map { |chat_session| chat_index_json(chat_session) } },
+              has_more: has_more
+            }
           }
         end
 
@@ -203,9 +207,11 @@ module Api
           before_id = Integer(params[:before], exception: false)
           messages, has_more_older = paginated_before(chat_session, before_id)
 
-          render json: {
-            has_more_older: has_more_older,
-            messages: messages_json(messages, repository: chat_session.repository)
+          render json: PerformanceLogging.phase("chat_messages_payload", chat_id: chat_session.id, before_id: before_id) {
+            {
+              has_more_older: has_more_older,
+              messages: PerformanceLogging.phase("chat_messages.messages_json", chat_id: chat_session.id, message_count: messages.size) { messages_json(messages, repository: chat_session.repository) }
+            }
           }
         end
 

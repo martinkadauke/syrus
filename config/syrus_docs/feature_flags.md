@@ -54,6 +54,16 @@ Adds subtle motion-safe chat animations: new messages fade in, the jump-to-botto
 
 Records structured slow-request, SQL query, and phase-timing events to logs and a short-lived admin diagnostics buffer. Useful for profiling production performance. No user-facing impact.
 
+When enabled, Syrus emits:
+
+- `syrus.performance.slow_request` for controller requests slower than `SYRUS_PERFORMANCE_SLOW_REQUEST_MS` (default 1000 ms), including request id, method, path, controller/action, status, current user id/admin flag when available, request SQL counts/duration, and the top SQL fingerprints observed during the request.
+- `syrus.performance.slow_sql` for SQL statements slower than `SYRUS_PERFORMANCE_SLOW_SQL_MS` (default 250 ms), including request context, SQL name, a truncated SQL sample, duration, and a normalized fingerprint.
+- `syrus.performance.slow_phase` for instrumented application phases slower than `SYRUS_PERFORMANCE_SLOW_PHASE_MS` (default 250 ms), including request context and sanitized metadata.
+
+Request phase instrumentation covers complex app/admin payloads that are likely to become performance bottlenecks over time, including dashboard rows/chrome, smart folders, job detail, repository list/detail, chat open/index/message payloads, bootstrap/setup status, spending, and admin overview/queue payloads. The phase wrappers are gated by the feature check, so the disabled-path cost is intended to stay very low.
+
+The admin performance endpoint returns the raw recent events plus grouped summaries for slow requests, slow phases, and SQL fingerprints. The diagnostics buffer is stored in `Rails.cache` under `syrus:performance_logging:events:v1`, capped at 200 events, and expires after 6 hours. In production this uses the configured cache store (`solid_cache_store`), not a dedicated durable audit table. Events are also written to structured application logs, so external log retention follows the deployment's log sink policy.
+
 ## unified_work_engine_reconciler
 
 **Category:** Operations

@@ -1,5 +1,6 @@
 class ApplicationController < ActionController::Base
   include Authentication
+  include PerformanceLoggingContext
   # Only allow modern browsers supporting webp images, web push, badges, CSS nesting, and CSS :has.
   allow_browser versions: :modern
 

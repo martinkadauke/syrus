@@ -17,19 +17,21 @@ module App
     end
 
     def as_json(*)
-      {
-        scope: scope_json,
-        filters: filters_json,
-        totals: totals_json,
-        breakdowns: {
-          epics: epic_breakdown,
-          users: user_breakdown,
-          repositories: repository_breakdown,
-          trigger_kinds: trigger_kind_breakdown
-        },
-        top_runs: top_runs,
-        trend: trend
-      }
+      PerformanceLogging.phase("spending_payload", admin: user.admin?) do
+        {
+          scope: scope_json,
+          filters: filters_json,
+          totals: PerformanceLogging.phase("spending.totals") { totals_json },
+          breakdowns: {
+            epics: PerformanceLogging.phase("spending.breakdown.epics") { epic_breakdown },
+            users: PerformanceLogging.phase("spending.breakdown.users") { user_breakdown },
+            repositories: PerformanceLogging.phase("spending.breakdown.repositories") { repository_breakdown },
+            trigger_kinds: PerformanceLogging.phase("spending.breakdown.trigger_kinds") { trigger_kind_breakdown }
+          },
+          top_runs: PerformanceLogging.phase("spending.top_runs") { top_runs },
+          trend: PerformanceLogging.phase("spending.trend") { trend }
+        }
+      end
     end
 
     private

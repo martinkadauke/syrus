@@ -7,6 +7,7 @@ module Api
   class BaseController < ActionController::API
     include ActionController::HttpAuthentication::Token::ControllerMethods
     include JobEpicRefFinder
+    include PerformanceLoggingContext
 
     before_action :authenticate_via_api_token
 
@@ -21,13 +22,15 @@ module Api
     private
 
     def authenticate_via_api_token
-      authenticate_or_request_with_http_token do |token, _options|
+      authenticated = authenticate_or_request_with_http_token do |token, _options|
         # Look up by deterministic-encrypted column — same plaintext
         # always encrypts to the same ciphertext, so a WHERE works.
         # ActiveSupport::SecurityUtils.secure_compare is wrapped by
         # AR's encryption layer; no separate timing-safe step needed.
         @current_api_user = User.find_by(api_token: token)
       end
+      refresh_performance_logging_user_context if @current_api_user
+      authenticated
     end
 
     def request_http_token_authentication(realm = "Syrus API", message = nil)
@@ -38,6 +41,14 @@ module Api
 
     def current_api_user
       @current_api_user
+    end
+
+    def performance_logging_user_id
+      current_api_user&.id
+    end
+
+    def performance_logging_admin?
+      current_api_user&.admin?
     end
 
     def require_admin_api

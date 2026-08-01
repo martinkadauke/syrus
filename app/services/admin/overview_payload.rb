@@ -1,35 +1,43 @@
 module Admin
   class OverviewPayload
     def as_json(*)
-      payload = {
-        active_runs: {
-          total:       Run.where(state: "running").count,
-          by_trigger:  Run.where(state: "running").group(:trigger_kind).count
-        },
-        queued_runs: {
-          total: Run.where(state: "queued").count
-        },
-        recent_failures_24h: {
-          total:      Run.where(state: "failed").where("finished_at >= ?", 24.hours.ago).count,
-          by_trigger: Run.where(state: "failed").where("finished_at >= ?", 24.hours.ago).group(:trigger_kind).count
-        },
-        github_rate_limits: low_rate_limit_users,
-        github_api_blocked_users: blocked_github_api_users,
-        provider_circuits: provider_circuits,
-        agent_session_capture_rate: capture_rate_payload,
-        data_root_disk_usage: data_root_disk_usage_payload,
-        worker_data_root_usages: InstanceVersion.worker_data_root_usages,
-        worker_health: worker_health_payload(sample_limit_per_host: 4),
-        stuck: stuck_items
-      }
+      PerformanceLogging.phase("admin_overview_payload") do
+        payload = {
+          active_runs: PerformanceLogging.phase("admin_overview.active_runs") {
+            {
+              total:       Run.where(state: "running").count,
+              by_trigger:  Run.where(state: "running").group(:trigger_kind).count
+            }
+          },
+          queued_runs: PerformanceLogging.phase("admin_overview.queued_runs") {
+            {
+              total: Run.where(state: "queued").count
+            }
+          },
+          recent_failures_24h: PerformanceLogging.phase("admin_overview.recent_failures_24h") {
+            {
+              total:      Run.where(state: "failed").where("finished_at >= ?", 24.hours.ago).count,
+              by_trigger: Run.where(state: "failed").where("finished_at >= ?", 24.hours.ago).group(:trigger_kind).count
+            }
+          },
+          github_rate_limits: PerformanceLogging.phase("admin_overview.github_rate_limits") { low_rate_limit_users },
+          github_api_blocked_users: PerformanceLogging.phase("admin_overview.github_api_blocked_users") { blocked_github_api_users },
+          provider_circuits: PerformanceLogging.phase("admin_overview.provider_circuits") { provider_circuits },
+          agent_session_capture_rate: PerformanceLogging.phase("admin_overview.capture_rate") { capture_rate_payload },
+          data_root_disk_usage: PerformanceLogging.phase("admin_overview.data_root_disk_usage") { data_root_disk_usage_payload },
+          worker_data_root_usages: PerformanceLogging.phase("admin_overview.worker_data_root_usages") { InstanceVersion.worker_data_root_usages },
+          worker_health: PerformanceLogging.phase("admin_overview.worker_health") { worker_health_payload(sample_limit_per_host: 4) },
+          stuck: PerformanceLogging.phase("admin_overview.stuck") { stuck_items }
+        }
 
-      payload[:workers] = workers_payload
-      payload[:recurring] = recurring_payload
-      payload
+        payload[:workers] = PerformanceLogging.phase("admin_overview.workers") { workers_payload }
+        payload[:recurring] = PerformanceLogging.phase("admin_overview.recurring") { recurring_payload }
+        payload
+      end
     end
 
     def stuck_json
-      { items: stuck_items }
+      PerformanceLogging.phase("admin_stuck_payload") { { items: stuck_items } }
     end
 
     private
