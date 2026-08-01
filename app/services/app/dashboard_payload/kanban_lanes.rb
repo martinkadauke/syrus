@@ -29,7 +29,18 @@ module App
         records = filtered_jobs_scope
                   .where(state: job_kanban_candidate_states(visible_lanes))
                   .with_latest_workflow_snapshot
-                  .preload(:repository, :user, :owner_user, :claimed_by_user, :tags, :workflows, { dependencies: :depends_on_job }, { chat_proposals: [ :chat_session, :messages ] }, epic: { chat_proposals: [ :chat_session, :messages ] })
+                  .preload(
+                    :repository,
+                    :user,
+                    :owner_user,
+                    :claimed_by_user,
+                    :tags,
+                    :workflows,
+                    :runs,
+                    { dependencies: [ :depends_on_epic, { depends_on_job: :repository } ] },
+                    { chat_proposals: [ :chat_session, :messages ] },
+                    { epic: { chat_proposals: [ :chat_session, :messages ] } }
+                  )
                   .order(created_at: :desc, id: :desc)
                   .limit(kanban_limit)
                   .to_a

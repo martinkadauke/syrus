@@ -25,6 +25,7 @@ module ChatSerialization
   end
 
   def chat_payload(chat_session, message: nil)
+    preload_chat_payload_associations(chat_session)
     messages, has_more_older = paginated_tail(chat_session)
     repository = chat_session.repository
     attachment_groups = chat_session.chat_attachments.includes(:attachable).order(:attachable_type, :attached_at, :id).group_by(&:attachable_type)
@@ -91,6 +92,24 @@ module ChatSerialization
       local_mode_enabled: Feature.local_mode_enabled?,
       local_tunnel_connected: Feature.local_mode_enabled? && LocalDaemonSession.connected.exists?(chat_session_id: chat_session.id)
     }
+  end
+
+  def preload_chat_payload_associations(chat_session)
+    ActiveRecord::Associations::Preloader.new(
+      records: [ chat_session ],
+      associations: [
+        :user,
+        :whiteboard,
+        :queued_messages,
+        :scratchpad_items,
+        :agent_questions,
+        :repository_attachments,
+        { chat_attachments: :attachable },
+        { bookmarks: :chat_message },
+        { pending_actions: [ :message, :user, :repository ] },
+        { video_walkthroughs: { file_attachment: :blob } }
+      ]
+    ).call
   end
 
   def bookmark_json(bookmark)

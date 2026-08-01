@@ -12,13 +12,51 @@ module App
 
     def initialize(repository:)
       @repository = repository
+      @proposal_by_chat_and_slug = {}
+      @jobs_by_user_and_id = {}
+      @epics_by_user_and_id = {}
+      @documents_by_id = {}
+      @repositories_by_user_and_id = {}
     end
 
     def messages(messages)
-      messages.map { |message| message_json(message) }
+      records = messages.to_a
+      preload_message_associations(records)
+      records.map { |message| message_json(message) }
     end
 
     private
+
+    def preload_message_associations(messages)
+      return if messages.blank?
+
+      ActiveRecord::Associations::Preloader.new(
+        records: messages,
+        associations: [
+          :chat_session,
+          :pending_action,
+          {
+            proposal: [
+              :chat_session,
+              :repository,
+              :job,
+              :epic,
+              :target_epic,
+              :messages,
+              { dependencies: [ :chat_session, :repository, :job, :epic, :messages ] },
+              { child_proposals: [
+                :chat_session,
+                :repository,
+                :job,
+                :epic,
+                :messages,
+                { dependencies: [ :chat_session, :repository, :job, :epic, :messages ] }
+              ] }
+            ]
+          }
+        ]
+      ).call
+    end
 
     def message_json(message)
       text = text_from_content(message)
@@ -57,26 +95,25 @@ module App
 
       case action.action.presence || action.action_type
       when "cancel_job", "close_job_successfully", "retry_job", "force_fail_job", "rebase_job", "reopen_job", "poll_job_feedback", "check_job_mergeability", "submit_chat_feedback"
-        job_scope = action.user.admin? ? Job.all : action.user.jobs
-        if (job = job_scope.find_by(id: payload["job_id"]))
+        if (job = cached_action_job(action, payload["job_id"]))
           base.merge(resource_title: job.issue_title, resource_url: job_path(job))
         else
           base
         end
       when "create_repo_document", "delete_repo_document"
-        if (document = Document.find_by(id: payload["document_id"]))
+        if (document = cached_document(payload["document_id"]))
           base.merge(resource_title: document.title)
         else
           base
         end
       when "reopen_epic_and_attach_job"
-        if (epic = action.repository.epics.find_by(id: payload["epic_id"]))
+        if (epic = cached_repository_epic(action.repository, payload["epic_id"]))
           base.merge(resource_title: epic.title, resource_url: epic_path(epic))
         else
           base
         end
       when "submit_coding_changes"
-        if (repo = action.user.repositories.active.find_by(id: payload["repository_id"]))
+        if (repo = cached_user_repository(action.user, payload["repository_id"]))
           base.merge(resource_title: repo.slug, resource_url: repository_path(repo))
         else
           base
@@ -93,7 +130,7 @@ module App
       materialized_epic = materialized.is_a?(Epic) ? materialized : nil
       scoped_repository = proposal.effective_repository || @repository
       epic_dependency_tokens = proposal.epic_dependency_tokens
-      dependency_records = proposal.dependencies.order(:slug).reject { |dependency| epic_dependency_tokens.include?(dependency.slug) }
+      dependency_records = ordered_dependencies(proposal).reject { |dependency| epic_dependency_tokens.include?(dependency.slug) }
       epic_dependency_records = epic_dependency_json(proposal)
       job_id_dependency_records = job_id_dependency_json(proposal)
       epic_id_dependency_records = epic_id_dependency_json(proposal)
@@ -133,7 +170,7 @@ module App
       }
 
       if proposal.epic_bundle?
-        child_proposals = proposal.child_proposals.includes(:repository, :dependencies).to_a
+        child_proposals = ordered_child_proposals(proposal)
         active_children = child_proposals.reject(&:rejected?)
         base.merge(
           active_children_count: active_children.size,
@@ -150,7 +187,7 @@ module App
         title: proposal.title,
         state: proposal.state,
         confirmed: proposal.confirmed?,
-        anchor_message_id: proposal.messages.order(:id).last&.id,
+        anchor_message_id: anchor_message_id(proposal),
         materialized_label: proposal.materialized_label,
         materialized_path: materialized_path(proposal.materialized_record)
       }
@@ -159,7 +196,7 @@ module App
     def epic_dependency_json(proposal)
       proposal.epic_dependency_tokens.filter_map do |token|
         if token.match?(/\Aepic:\d+\z/)
-          epic = proposal.chat_session.user.epics.find_by(id: token.split(":", 2).last)
+          epic = cached_user_epics(proposal.chat_session.user, [ token.split(":", 2).last.to_i ])[token.split(":", 2).last.to_i]
           next unless epic
 
           {
@@ -172,7 +209,7 @@ module App
             materialized_path: epic_path(epic)
           }
         else
-          dependency = proposal.chat_session.proposals.find_by(slug: token)
+          dependency = proposal_for_slug(proposal.chat_session, token)
           if dependency&.confirmed? && dependency.epic
             {
               slug: token,
@@ -180,7 +217,7 @@ module App
               display_label: dependency.epic.slug,
               state: dependency.epic.state,
               confirmed: true,
-              anchor_message_id: dependency.messages.order(:id).last&.id,
+              anchor_message_id: anchor_message_id(dependency),
               materialized_path: epic_path(dependency.epic)
             }
           else
@@ -190,7 +227,7 @@ module App
               display_label: token,
               state: dependency&.state || "unresolved",
               confirmed: false,
-              anchor_message_id: dependency&.messages&.order(:id)&.last&.id,
+              anchor_message_id: dependency ? anchor_message_id(dependency) : nil,
               materialized_path: nil
             }
           end
@@ -202,7 +239,7 @@ module App
       job_ids = proposal.depends_on_job_ids.presence
       return [] if job_ids.blank?
 
-      job_records = proposal.chat_session.user.jobs.where(id: job_ids).index_by(&:id)
+      job_records = cached_user_jobs(proposal.chat_session.user, job_ids)
       job_ids.filter_map { |id| job_records[id] }.map do |job|
         {
           slug: job.slug,
@@ -220,7 +257,7 @@ module App
       epic_ids = proposal.depends_on_epic_ids.presence
       return [] if epic_ids.blank?
 
-      epic_records = proposal.chat_session.user.epics.where(id: epic_ids).index_by(&:id)
+      epic_records = cached_user_epics(proposal.chat_session.user, epic_ids)
       epic_ids.filter_map { |id| epic_records[id] }.map do |epic|
         {
           slug: "epic:#{epic.id}",
@@ -235,7 +272,7 @@ module App
     end
 
     def child_proposal_json(proposal, chat_session:)
-      dependency_records = proposal.dependencies.order(:slug).to_a
+      dependency_records = ordered_dependencies(proposal)
       {
         id: proposal.id,
         title: proposal.title,
@@ -282,6 +319,85 @@ module App
       when Job then job_path(record)
       when Epic then epic_path(record)
       end
+    end
+
+    def ordered_dependencies(proposal)
+      records = proposal.dependencies.loaded? ? proposal.dependencies.to_a : proposal.dependencies.includes(:job, :epic, :messages).to_a
+      records.sort_by(&:slug)
+    end
+
+    def ordered_child_proposals(proposal)
+      records = proposal.child_proposals.loaded? ? proposal.child_proposals.to_a : proposal.child_proposals.includes(:repository, :job, :epic, :messages, dependencies: [ :job, :epic, :messages ]).to_a
+      records.sort_by { |child| [ child.child_position || 0, child.created_at || Time.at(0), child.id || 0 ] }
+    end
+
+    def anchor_message_id(proposal)
+      if proposal.messages.loaded?
+        proposal.messages.max_by(&:id)&.id
+      else
+        proposal.messages.order(:id).last&.id
+      end
+    end
+
+    def proposal_for_slug(chat_session, slug)
+      key = [ chat_session.id, slug.to_s ]
+      @proposal_by_chat_and_slug.fetch(key) do
+        scope = chat_session.proposals
+        proposal = if scope.loaded?
+          scope.detect { |candidate| candidate.slug == slug }
+        else
+          scope.includes(:epic, :messages).find_by(slug: slug)
+        end
+        @proposal_by_chat_and_slug[key] = proposal
+      end
+    end
+
+    def cached_user_jobs(user, ids)
+      cache = @jobs_by_user_and_id[user.id] ||= {}
+      missing_ids = ids.map(&:to_i).uniq - cache.keys
+      cache.merge!(user.jobs.where(id: missing_ids).index_by(&:id)) if missing_ids.any?
+      cache
+    end
+
+    def cached_user_epics(user, ids = nil)
+      cache = @epics_by_user_and_id[user.id] ||= {}
+      missing_ids = Array(ids).map(&:to_i).uniq - cache.keys
+      cache.merge!(user.epics.where(id: missing_ids).index_by(&:id)) if missing_ids.any?
+      cache
+    end
+
+    def cached_action_job(action, id)
+      id = id.to_i
+      return if id <= 0
+
+      if action.user.admin?
+        @admin_jobs_by_id ||= {}
+        @admin_jobs_by_id[id] ||= Job.find_by(id: id)
+      else
+        cached_user_jobs(action.user, [ id ])[id]
+      end
+    end
+
+    def cached_document(id)
+      id = id.to_i
+      return if id <= 0
+
+      @documents_by_id[id] ||= Document.find_by(id: id)
+    end
+
+    def cached_repository_epic(repository, id)
+      id = id.to_i
+      return if id <= 0 || !repository
+
+      cached_user_epics(repository.user, [ id ])[id]&.then { |epic| epic.repository_id == repository.id ? epic : nil }
+    end
+
+    def cached_user_repository(user, id)
+      id = id.to_i
+      return if id <= 0
+
+      cache = @repositories_by_user_and_id[user.id] ||= {}
+      cache[id] ||= user.repositories.active.find_by(id: id)
     end
 
     def pending_action_label(action)

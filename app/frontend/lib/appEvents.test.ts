@@ -108,15 +108,20 @@ describe("applyAppEvent", () => {
     })
   })
 
-  it("invalidates non-dashboard query keys immediately", () => {
+  it("invalidates cheap job query keys immediately and coalesces job detail", () => {
+    vi.useFakeTimers()
     const queryClient = new QueryClient()
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
 
     applyAppEvent(queryClient, event("job", 42))
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["jobs"] })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["jobs", "42", "detail"] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["job_run_artifacts", "42"] })
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["jobs", "42", "detail"] })
+
+    vi.runOnlyPendingTimers()
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["jobs", "42", "detail"] })
   })
 
   it("coalesces dashboard invalidations from event bursts", () => {
@@ -185,6 +190,7 @@ describe("applyAppEvent", () => {
   })
 
   it("invalidates chat queries when a typed chat event arrives before chat data is cached", () => {
+    vi.useFakeTimers()
     const queryClient = new QueryClient()
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
 
@@ -198,10 +204,15 @@ describe("applyAppEvent", () => {
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats"] })
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
+
+    vi.runOnlyPendingTimers()
+
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
   })
 
   it("invalidates chat queries instead of crashing when cached chat messages are malformed", () => {
+    vi.useFakeTimers()
     const queryClient = new QueryClient()
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
     queryClient.setQueryData(["chats", "9", ""], {
@@ -219,10 +230,15 @@ describe("applyAppEvent", () => {
     })).not.toThrow()
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats"] })
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
+
+    vi.runOnlyPendingTimers()
+
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
   })
 
   it("invalidates chat queries for queued pending action updates", () => {
+    vi.useFakeTimers()
     const queryClient = new QueryClient()
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
 
@@ -237,6 +253,10 @@ describe("applyAppEvent", () => {
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats"] })
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
+
+    vi.runOnlyPendingTimers()
+
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
   })
 
@@ -515,6 +535,7 @@ describe("applyAppEvent", () => {
   })
 
   it("invalidates cached chat data for pending action updates", () => {
+    vi.useFakeTimers()
     const queryClient = new QueryClient()
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
     queryClient.setQueryData(["chats", "9", ""], chatPayload([message(1, "assistant", "Confirm?")]))
@@ -528,10 +549,15 @@ describe("applyAppEvent", () => {
       }
     })
 
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
+
+    vi.runOnlyPendingTimers()
+
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
   })
 
   it("invalidates cached chat data for orphaned pending action updates", () => {
+    vi.useFakeTimers()
     const queryClient = new QueryClient()
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
 
@@ -544,10 +570,15 @@ describe("applyAppEvent", () => {
       }
     })
 
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
+
+    vi.runOnlyPendingTimers()
+
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
   })
 
   it("invalidates recent chats and chat detail for update_proposal events", () => {
+    vi.useFakeTimers()
     const queryClient = new QueryClient()
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
 
@@ -560,8 +591,12 @@ describe("applyAppEvent", () => {
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats", "recent"] })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
     expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["chats"] })
+
+    vi.runOnlyPendingTimers()
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
   })
 
   it("does not corrupt job_status cache when update_controls arrives", () => {

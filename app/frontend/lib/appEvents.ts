@@ -4,6 +4,10 @@ import { updateRecentChatHeaderCache, updateRecentChatScratchpadCache, updateRec
 
 const DASHBOARD_INVALIDATION_MIN_INTERVAL_MS = 5_000
 const DASHBOARD_INVALIDATION_RETRY_MS = 1_000
+const JOB_DETAIL_INVALIDATION_MIN_INTERVAL_MS = 5_000
+const JOB_DETAIL_INVALIDATION_RETRY_MS = 1_000
+const CHAT_DETAIL_INVALIDATION_MIN_INTERVAL_MS = 5_000
+const CHAT_DETAIL_INVALIDATION_RETRY_MS = 1_000
 
 type DashboardInvalidationState = {
   lastInvalidatedAt: number
@@ -12,6 +16,8 @@ type DashboardInvalidationState = {
 }
 
 const dashboardInvalidations = new WeakMap<QueryClient, DashboardInvalidationState>()
+const jobDetailInvalidations = new WeakMap<QueryClient, Map<string, DashboardInvalidationState>>()
+const chatDetailInvalidations = new WeakMap<QueryClient, Map<string, DashboardInvalidationState>>()
 
 export type AppEvent = {
   type: string
@@ -106,6 +112,16 @@ export function applyAppEvent(queryClient: QueryClient, event: AppEvent) {
       continue
     }
 
+    if (isJobDetailQueryKey(queryKey)) {
+      scheduleJobDetailInvalidation(queryClient, queryKey)
+      continue
+    }
+
+    if (isChatDetailQueryKey(queryKey)) {
+      scheduleChatDetailInvalidation(queryClient, queryKey)
+      continue
+    }
+
     void queryClient.invalidateQueries({ queryKey })
   }
   if (dashboardChanged) scheduleDashboardInvalidation(queryClient)
@@ -179,6 +195,20 @@ function isDashboardQueryKey(queryKey: QueryKey) {
   return queryKey.length === 1 && queryKey[0] === "dashboard"
 }
 
+function isJobDetailQueryKey(queryKey: QueryKey) {
+  return queryKey.length === 3 &&
+    queryKey[0] === "jobs" &&
+    typeof queryKey[1] === "string" &&
+    (queryKey[2] === "detail" || queryKey[2] === "workflows")
+}
+
+function isChatDetailQueryKey(queryKey: QueryKey) {
+  return queryKey.length === 2 &&
+    queryKey[0] === "chats" &&
+    typeof queryKey[1] === "string" &&
+    queryKey[1] !== "recent"
+}
+
 function scheduleDashboardInvalidation(queryClient: QueryClient) {
   const state = dashboardInvalidations.get(queryClient) ?? {
     lastInvalidatedAt: 0,
@@ -210,6 +240,88 @@ function flushDashboardInvalidation(queryClient: QueryClient) {
   state.pending = false
   state.lastInvalidatedAt = Date.now()
   void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+}
+
+function scheduleJobDetailInvalidation(queryClient: QueryClient, queryKey: QueryKey) {
+  let states = jobDetailInvalidations.get(queryClient)
+  if (!states) {
+    states = new Map()
+    jobDetailInvalidations.set(queryClient, states)
+  }
+
+  const stateKey = String(queryKey.join(":"))
+  const state = states.get(stateKey) ?? {
+    lastInvalidatedAt: 0,
+    pending: false,
+    timer: null
+  }
+  state.pending = true
+  states.set(stateKey, state)
+
+  if (state.timer) return
+
+  const elapsed = Date.now() - state.lastInvalidatedAt
+  const delay = Math.max(0, JOB_DETAIL_INVALIDATION_MIN_INTERVAL_MS - elapsed)
+  state.timer = setTimeout(() => flushJobDetailInvalidation(queryClient, queryKey), delay)
+}
+
+function flushJobDetailInvalidation(queryClient: QueryClient, queryKey: QueryKey) {
+  const stateKey = String(queryKey.join(":"))
+  const state = jobDetailInvalidations.get(queryClient)?.get(stateKey)
+  if (!state) return
+
+  state.timer = null
+  if (!state.pending) return
+
+  if (queryClient.isFetching({ queryKey }) > 0) {
+    state.timer = setTimeout(() => flushJobDetailInvalidation(queryClient, queryKey), JOB_DETAIL_INVALIDATION_RETRY_MS)
+    return
+  }
+
+  state.pending = false
+  state.lastInvalidatedAt = Date.now()
+  void queryClient.invalidateQueries({ queryKey })
+}
+
+function scheduleChatDetailInvalidation(queryClient: QueryClient, queryKey: QueryKey) {
+  let states = chatDetailInvalidations.get(queryClient)
+  if (!states) {
+    states = new Map()
+    chatDetailInvalidations.set(queryClient, states)
+  }
+
+  const stateKey = String(queryKey.join(":"))
+  const state = states.get(stateKey) ?? {
+    lastInvalidatedAt: 0,
+    pending: false,
+    timer: null
+  }
+  state.pending = true
+  states.set(stateKey, state)
+
+  if (state.timer) return
+
+  const elapsed = Date.now() - state.lastInvalidatedAt
+  const delay = Math.max(0, CHAT_DETAIL_INVALIDATION_MIN_INTERVAL_MS - elapsed)
+  state.timer = setTimeout(() => flushChatDetailInvalidation(queryClient, queryKey), delay)
+}
+
+function flushChatDetailInvalidation(queryClient: QueryClient, queryKey: QueryKey) {
+  const stateKey = String(queryKey.join(":"))
+  const state = chatDetailInvalidations.get(queryClient)?.get(stateKey)
+  if (!state) return
+
+  state.timer = null
+  if (!state.pending) return
+
+  if (queryClient.isFetching({ queryKey }) > 0) {
+    state.timer = setTimeout(() => flushChatDetailInvalidation(queryClient, queryKey), CHAT_DETAIL_INVALIDATION_RETRY_MS)
+    return
+  }
+
+  state.pending = false
+  state.lastInvalidatedAt = Date.now()
+  void queryClient.invalidateQueries({ queryKey })
 }
 
 function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
@@ -341,14 +453,14 @@ function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
 
   const pendingAction = chatPendingActionUpdatedPayload(event.payload)
   if (pendingAction) {
-    void queryClient.invalidateQueries({ queryKey: ["chats", String(event.id)] })
+    scheduleChatDetailInvalidation(queryClient, ["chats", String(event.id)])
     return true
   }
 
   const updateProposal = chatUpdateProposalPayload(event.payload)
   if (updateProposal) {
     void queryClient.invalidateQueries({ queryKey: ["chats", "recent"] })
-    void queryClient.invalidateQueries({ queryKey: ["chats", String(event.id)] })
+    scheduleChatDetailInvalidation(queryClient, ["chats", String(event.id)])
     return true
   }
 

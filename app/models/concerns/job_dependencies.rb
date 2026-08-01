@@ -5,7 +5,7 @@ module JobDependencies
     return false if epic.present? && !epic.releases_jobs_for_execution?
     return true if dependencies_overridden_at.present?
 
-    dependencies.includes(:depends_on_job, :depends_on_epic).all? do |dependency|
+    preloaded_dependencies(:depends_on_job, :depends_on_epic).all? do |dependency|
       dependency.dependency_succeeded?
     end
   end
@@ -14,13 +14,13 @@ module JobDependencies
     return false if epic.present? && !epic.releases_jobs_for_execution?
     return true if dependencies_overridden_at.present?
 
-    dependencies.includes(:depends_on_job, :depends_on_epic).all? do |dependency|
+    preloaded_dependencies(:depends_on_job, :depends_on_epic).all? do |dependency|
       dependency.execution_dependency_satisfied?
     end
   end
 
   def unsatisfied_dependencies
-    dependencies.includes(:depends_on_epic, depends_on_job: :repository).reject do |dependency|
+    preloaded_dependencies(:depends_on_epic, depends_on_job: :repository).reject do |dependency|
       dependency.dependency_succeeded?
     end
   end
@@ -39,5 +39,13 @@ module JobDependencies
     )
     log_dependency_override!(user)
     start_pending_workflows_if_dependencies_satisfied!
+  end
+
+  private
+
+  def preloaded_dependencies(*associations)
+    records = dependencies.loaded? ? dependencies.to_a : dependencies.includes(*associations).to_a
+    ActiveRecord::Associations::Preloader.new(records: records, associations: associations).call if records.any?
+    records
   end
 end

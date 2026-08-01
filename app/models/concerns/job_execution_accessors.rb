@@ -36,6 +36,8 @@ module JobExecutionAccessors
     runs.where.not(head_sha: [ nil, "" ]).order(:created_at).last&.head_sha
   end
   def any_active_run?
+    return runs.any? { |run| run.state.in?(%w[queued running]) } if runs.loaded?
+
     runs.active.exists?
   end
 end
