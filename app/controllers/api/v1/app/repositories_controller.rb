@@ -205,25 +205,28 @@ module Api
           end
 
           agent_provider = repository.effective_agent_provider
-          circuit = ProviderCircuitBreaker.call(agent_provider)
-          if circuit.open?
-            render_error("provider_circuit_open", provider_circuit_message(circuit), status: :unprocessable_content)
+          result = SmartRetryEnqueuer.call_many(
+            jobs: eligible,
+            agent_provider: agent_provider,
+            provider_validation: :none,
+            automatic: true,
+            by_user: Current.user
+          )
+          unless result.success?
+            render_error("validation_failed", result.first_error || I18n.t("api.repositories.no_failed_jobs"), status: :unprocessable_content)
             return
-          end
-
-          retried = eligible.count do |job|
-            RetryWorkflowEnqueuer.call(
-              job: job,
-              agent_provider: agent_provider,
-              provider_validation: :none,
-              automatic: true
-            ).success?
           end
 
           render json: repository_detail_payload(
             repository.reload,
             page: detail_page,
-            message: I18n.t("api.repositories.retry_enqueued", count: retried, provider: agent_provider.titleize)
+            message: I18n.t("api.repositories.retry_enqueued", count: result.affected_job_ids.size, provider: agent_provider.titleize),
+            extra: {
+              retry_summary: {
+                actions: result.action_summary,
+                skipped: result.skip_summary
+              }
+            }
           )
         end
 
@@ -433,7 +436,7 @@ module Api
           }
         end
 
-        def repository_detail_payload(repository, page:, message: nil)
+        def repository_detail_payload(repository, page:, message: nil, extra: {})
           PerformanceLogging.phase("repository_detail_payload", repository_id: repository.id, page: page) do
             jobs_scope = repository.jobs
               .with_latest_workflow_snapshot
@@ -490,7 +493,7 @@ module Api
               payload[:paths][:repository_insights_path] = "/repositories/#{repository.id}/insights"
             end
 
-            payload
+            payload.merge(extra)
           end
         end
 

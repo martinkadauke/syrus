@@ -18,6 +18,23 @@ Topological dependency graph showing jobs (or epics) as nodes and their `Depends
 
 Not available on the Workflows dashboard.
 
+## Bulk retry
+
+The Jobs dashboard bulk `Retry` action uses `SmartRetryEnqueuer`, not a blind
+implementation retry. For each selected Job it chooses the narrowest safe
+action: resume a failed agentic step when a resumable session exists, retry the
+failed step while the workflow workspace is available, retry or rebuild landing
+workflows for landing failures, and only fall back to a full
+`Workflows::Retry` implementation retry when narrower recovery is unavailable.
+
+Bulk retry skips closed Jobs, approved Jobs, no-change-needed Jobs, Jobs with
+active Runs, and automatic retries blocked by the provider circuit breaker. The
+API response includes `retry_summary.actions` and `retry_summary.skipped`
+buckets so operators can see how many Jobs took each path.
+
+The explicit Job detail `Retry implementation` action remains available for
+operators who intentionally want a full implementation retry.
+
 **Empty states:**
 - If the active filter matches no jobs/epics, the view shows "No [subject] match this view."
 - If nodes are present but none have dependency edges between them (all at Layer 0), the view shows "No dependency relationships in the current view."

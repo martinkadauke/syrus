@@ -169,22 +169,29 @@ module Api
             return
           end
 
-          retried_ids = []
-          circuit_errors = []
-          jobs.find_each do |job|
-            result = RetryWorkflowEnqueuer.call(job: job, agent_provider: agent_provider, automatic: true)
-            retried_ids << job.id if result.success?
-            circuit_errors << result.error if result.circuit&.open?
-          end
+          result = SmartRetryEnqueuer.call_many(
+            jobs: jobs.to_a,
+            agent_provider: agent_provider,
+            automatic: true,
+            by_user: Current.user
+          )
 
-          if retried_ids.empty?
-            render_error("validation_failed", circuit_errors.first || "No selected jobs were eligible for retry.", status: :unprocessable_content)
+          if result.affected_job_ids.empty?
+            render_error("validation_failed", result.first_error || "No selected jobs were eligible for retry.", status: :unprocessable_content)
           else
             agent_suffix = agent_provider.present? ? " with #{agent_provider.titleize}" : ""
+            skipped_suffix = result.skipped.any? ? " Skipped #{helpers.pluralize(result.skipped.size, 'job')}." : ""
             render_bulk_success(
-              "Retry enqueued for #{helpers.pluralize(retried_ids.size, 'job')}#{agent_suffix}.",
-              affected_job_ids: retried_ids,
-              action: "retry"
+              "Retry enqueued for #{helpers.pluralize(result.affected_job_ids.size, 'job')}#{agent_suffix}.#{skipped_suffix}",
+              affected_job_ids: result.affected_job_ids,
+              skipped_job_ids: result.skipped.map { |skipped| skipped.job.id },
+              action: "retry",
+              extra: {
+                retry_summary: {
+                  actions: result.action_summary,
+                  skipped: result.skip_summary
+                }
+              }
             )
           end
         end

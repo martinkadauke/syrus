@@ -930,14 +930,15 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
 
     expect {
       post "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs"
-    }.to change { Workflow.where(trigger_kind: "retry").count }.by(2)
+    }.not_to change { Workflow.where(trigger_kind: "retry").count }
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["message"]).to eq("Retry enqueued for 2 failed jobs with Codex.")
     expect(parse_body.dig("repository", "slug")).to eq("acme/widgets")
+    expect(parse_body.dig("retry_summary", "actions")).to eq("failed step retried" => 2)
     expect(parse_body.dig("retry_failed_jobs", "count")).to eq(0)
     expect(failed_a.reload.agent_provider).to eq("codex")
-    expect(failed_b.reload.workflows.where(trigger_kind: "retry").last.agent_provider).to eq("codex")
+    expect(failed_b.reload.latest_workflow.first_step.runs.last.agent_provider).to eq("codex")
   end
 
   it "lists and releases needs-triage jobs for developers" do
