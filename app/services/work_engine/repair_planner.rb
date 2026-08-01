@@ -319,16 +319,28 @@ module WorkEngine
           return retry_step_after_worker_died if workspace_available?
           return retry_workflow_after_worker_died if retry_whole_workflow_safe?
 
-          operator_plan(
-            "operator_review_worker_died",
-            "The worker appears dead, but no resumable session, same-workspace retry, or safe workflow retry is available."
-          )
+          fail_worker_died_without_retry
         end
 
         private
 
+        def fail_worker_died_without_retry
+          automatic_plan(
+            "mark_worker_died",
+            primary_run,
+            "The worker is stale and the Run is safely fail-able, but no automatic retry path is currently available. " \
+              "Failing the Run releases it from running and leaves follow-up to normal terminal-state reconciliation or operator review.",
+            execution_steps: [ "Run#fail!(agent_outcome: worker_died)" ],
+            preconditions: {
+              run_state: "running",
+              no_retry_path_available: true,
+              retry_budget_available: retry_budget_available?
+            }
+          )
+        end
+
         def resume_worker_died
-          return retry_budget_exhausted_plan unless retry_budget_available?
+          return fail_worker_died_without_retry unless retry_budget_available?
 
           automatic_plan(
             "mark_worker_died_and_resume_failed_step",
@@ -340,7 +352,7 @@ module WorkEngine
         end
 
         def retry_step_after_worker_died
-          return retry_budget_exhausted_plan unless retry_budget_available?
+          return fail_worker_died_without_retry unless retry_budget_available?
 
           automatic_plan(
             "mark_worker_died_and_retry_failed_step",
@@ -353,7 +365,7 @@ module WorkEngine
         end
 
         def retry_workflow_after_worker_died
-          return retry_budget_exhausted_plan unless retry_budget_available?
+          return fail_worker_died_without_retry unless retry_budget_available?
 
           automatic_plan(
             "mark_worker_died_and_retry_workflow",
