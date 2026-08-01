@@ -458,6 +458,10 @@ const SIMPLE_MODE_HIDDEN_PATHS = [
   "/jobs/new",
   "/jobs/:id",
   "/jobs/:id/source",
+  "/cron_templates",
+  "/cron_templates/new",
+  "/cron_templates/:id",
+  "/cron_templates/:id/edit",
   "/scheduled_tasks",
   "/scheduled_tasks/:id",
   "/scheduled_tasks/:id/edit",
@@ -512,12 +516,18 @@ function SettingsSectionRoute({ children }: { children: ReactNode }) {
   const location = useLocation()
   const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
   const normalizedPath = normalizedAppPath(location.pathname)
+  const bootstrap = useQuery({
+    queryKey: ["bootstrap"],
+    queryFn: fetchBootstrap,
+    staleTime: Number.POSITIVE_INFINITY
+  })
+  const simpleMode = bootstrap.data?.app?.mode === "simple"
 
   return (
     <div className="flex min-h-full flex-col bg-gray-50 dark:bg-gray-900 lg:flex-row">
       <aside className="shrink-0 border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950 lg:w-56 lg:border-b-0 lg:border-r">
         <nav aria-label={tCommon("shell.settings_nav_aria")} className="flex gap-2 overflow-x-auto px-4 py-3 text-sm lg:flex-col lg:gap-1 lg:overflow-visible lg:p-4">
-          {settingsNavigationItems(t).map((item) => (
+          {settingsNavigationItems(t, simpleMode).map((item) => (
             <Link className={settingsSideNavLinkClass(item.active(normalizedPath))} key={item.key} to={withRoutePrefix(item.path, prefix)}>
               {item.label}
             </Link>
@@ -531,8 +541,10 @@ function SettingsSectionRoute({ children }: { children: ReactNode }) {
   )
 }
 
-function settingsNavigationItems(t: (key: string) => string): Array<{ key: string; label: string; path: string; active: (path: string) => boolean }> {
-  return [
+type SettingsNavigationItem = { key: string; label: string; path: string; active: (path: string) => boolean }
+
+function settingsNavigationItems(t: (key: string) => string, simpleMode = false): SettingsNavigationItem[] {
+  const items: SettingsNavigationItem[] = [
     { key: "profile", label: t("nav.profile"), path: "/profile", active: (path) => path === "/settings" || path === "/profile" },
     { key: "credentials", label: t("nav.credentials"), path: "/credentials", active: (path) => path === "/credentials" || path === "/credentials/edit" },
     { key: "agent_settings", label: t("nav.agent_settings"), path: "/settings/agent", active: (path) => path === "/settings/agent" },
@@ -544,6 +556,8 @@ function settingsNavigationItems(t: (key: string) => string): Array<{ key: strin
     { key: "templates", label: t("nav.templates"), path: "/cron_templates", active: (path) => path.startsWith("/cron_templates") },
     { key: "tags", label: t("nav.tags"), path: "/tags", active: (path) => path === "/tags" }
   ]
+
+  return simpleMode ? items.filter((item) => item.key !== "templates") : items
 }
 
 function normalizedAppPath(pathname: string) {
