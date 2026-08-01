@@ -1311,6 +1311,7 @@ module Api
           {
             message: message,
             chat: chat_json(chat_session),
+            pending_proposal_count: chat_session.proposals.where(state: "proposed").count,
             chat_available: Current.user.chat_available?,
             turn_in_flight: chat_session.turn_in_flight?,
             agent_busy: chat_session.agent_busy?,
