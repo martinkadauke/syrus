@@ -8,7 +8,9 @@ class ProviderUsageLimit
     /\b(?:monthly|weekly|daily|hourly)\s+(?:usage\s+)?limit(?:s)?\b/i,
     /\b(?:quota|credits?|billing|balance)\s+(?:is\s+)?(?:exhausted|depleted|expired|insufficient|exceeded|used up|empty)\b/i,
     /\b(?:exhausted|depleted|used up|exceeded)\s+(?:your\s+)?(?:quota|credits?|balance|usage)\b/i,
+    /\bout of (?:extra )?usage\b/i,
     /\b(?:model|token|message|request)\s+(?:usage\s+)?limit(?:s)?\s+(?:exhausted|reached|exceeded)\b/i,
+    /\b(?:model|token|message|request)?\s*(?:usage\s+)?limit(?:s)?\s+for\s+(?:model\s+)?[A-Za-z0-9._:-]+\s+(?:has\s+been\s+)?(?:exhausted|reached|exceeded)\b/i,
     /\b(?:limit|quota)\s+(?:for|on)\s+(?:model\s+)?[A-Za-z0-9._:-]+\s+(?:exhausted|reached|exceeded)\b/i,
     /\b(?:upgrade|add credits|check billing|billing plan)\b.*\b(?:usage|quota|credits?|limit)\b/i
   ].freeze

@@ -85,7 +85,7 @@ class RunFailureClassifier
 
   def rate_limited?
     recent_logs.any? { |log| log.kind == "rate_limited" } ||
-      text_match?(/rate[ -]?limit|too many requests|quota exceeded|429/i)
+      text_match?(/rate[_ -]?limit|too many requests|quota exceeded|429/i)
   end
 
   def provider_usage_limit?

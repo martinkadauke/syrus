@@ -105,6 +105,14 @@ RSpec.describe RunFailureClassifier do
     expect(classification.classification).to eq("rate_limited")
   end
 
+  it "classifies agent-reported rate_limit text with underscores" do
+    run.update!(state: "failed", agent_provider: "claude")
+    JobLog.append!(run: run, chunk: "FAIL: Steps::Base::StepFailed: agent reported rate_limit", kind: nil)
+
+    expect(classification.classification).to eq("rate_limited")
+    expect(classification.retryable).to eq(true)
+  end
+
   it "classifies provider usage-limit exhaustion separately from retryable rate limits" do
     run.update!(
       state: "failed",
@@ -120,6 +128,44 @@ RSpec.describe RunFailureClassifier do
     result = classification
     expect(result.classification).to eq("provider_usage_limit")
     expect(result.retryable).to eq(false)
+  end
+
+  it "classifies Claude extra-usage exhaustion as a provider usage limit" do
+    run.update!(state: "failed", agent_provider: "claude")
+    run.step.update!(kind: "implement")
+    JobLog.append!(
+      run: run,
+      chunk: "Claude API error: You're out of extra usage · resets 7am (America/New_York)",
+      kind: "system"
+    )
+
+    result = classification
+    expect(result.classification).to eq("provider_usage_limit")
+    expect(result.retryable).to eq(false)
+  end
+
+  it "classifies Claude monthly model quota exhaustion as a provider usage limit" do
+    run.update!(state: "failed", agent_provider: "claude")
+    run.step.update!(kind: "implement")
+    JobLog.append!(
+      run: run,
+      chunk: "Claude API error: Your monthly usage limit for model claude-sonnet-4 has been exhausted.",
+      kind: "system"
+    )
+
+    expect(classification.classification).to eq("provider_usage_limit")
+  end
+
+  it "classifies Codex weekly model quota exhaustion as a provider usage limit" do
+    run.update!(state: "failed", agent_provider: "codex")
+    run.step.update!(kind: "implement")
+    JobLog.append!(
+      run: run,
+      chunk: "[codex error] model gpt-5.5: Your weekly usage limit has been exhausted for this model. Check billing to continue.",
+      kind: "system"
+    )
+
+    expect(classification.classification).to eq("provider_usage_limit")
   end
 
   it "does not classify non-agentic grader output mentioning usage-limit UI as provider exhaustion" do

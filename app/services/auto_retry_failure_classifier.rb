@@ -58,7 +58,7 @@ class AutoRetryFailureClassifier
     /worker died/i,
     /connection reset/i,
     /temporar(?:y|ily)/i,
-    /rate limit/i,
+    /rate[_ -]?limit/i,
     /too many requests/i,
     /5\d\d/
   ].freeze
