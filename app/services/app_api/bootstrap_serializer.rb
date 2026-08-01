@@ -13,6 +13,7 @@ module AppApi
         team_user_count: user ? User.count : 0,
         app: app_payload,
         setup_status: setup_status_payload,
+        provider_availability: provider_availability_payload,
         public: public_payload,
         navigation: navigation_payload,
         setup: setup_payload,
@@ -70,6 +71,12 @@ module AppApi
       return nil unless user
 
       AppApi::SetupStatus.new(user).as_json
+    end
+
+    def provider_availability_payload
+      return {} unless user
+
+      ::App::ProviderAvailability.all_for_user(user)
     end
 
     def public_payload

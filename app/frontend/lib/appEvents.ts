@@ -170,7 +170,7 @@ export function queryKeysFor(event: AppEvent): QueryKey[] {
           ? [["chats"], ["chats", String(event.id)], ["whiteboard_snapshots", String(event.id)]]
           : [["chats"], ["chats", String(event.id)]]
     case "provider_availability":
-      return [["dashboard"], ["jobs"], ["chats"]]
+      return [["bootstrap"], ["dashboard"], ["jobs"], ["chats"]]
     case "admin_overview":
       return [["admin", "overview"], ["admin", "stuck"]]
     default:

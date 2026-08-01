@@ -8,6 +8,66 @@ RSpec.describe App::DashboardPayload do
     described_class.call(user: user, params: ActionController::Parameters.new(params))
   end
 
+  describe "provider availability" do
+    it "exposes user-level provider availability with Codex usage windows" do
+      user.update!(
+        codex_usage_status: "ok",
+        codex_usage_observed_at: Time.zone.parse("2026-07-31T14:00:00Z"),
+        codex_usage_snapshot: {
+          "remaining_percent" => 24.0,
+          "primary" => { "label" => "5h", "remaining_percent" => 61.5, "used_percent" => 38.5, "reset_at" => "2026-07-31T18:00:00Z" },
+          "secondary" => { "label" => "weekly", "remaining_percent" => 24.0, "used_percent" => 76.0, "reset_at" => "2026-08-07T12:00:00Z" }
+        }
+      )
+
+      result = call(subject: "job", section: "chrome")
+
+      expect(result.dig(:provider_availability, "codex")).to include(state: "available", open: false)
+      expect(result.dig(:provider_availability, "codex", :usage, :windows, "five_hour")).to include(
+        label: "5h",
+        remaining_percent: 61.5
+      )
+      expect(result.dig(:provider_availability, "codex", :usage, :windows, "weekly")).to include(
+        label: "weekly",
+        remaining_percent: 24.0
+      )
+    end
+
+    it "mirrors user-level provider availability onto job rows" do
+      job = Factories.job_record(user: user, repository: repo, agent_provider: "claude")
+      workflow = Workflow.create!(job: job, trigger_kind: "initial", state: "failed")
+      step = Step.create!(workflow: workflow, kind: "implement", position: 0, state: "failed")
+      failed_run = Run.create!(
+        job: job,
+        user: user,
+        step: step,
+        trigger_kind: "initial",
+        state: "failed",
+        agent_provider: "claude",
+        agent_outcome: "rate_limited",
+        finished_at: Time.zone.parse("2026-07-31T14:00:00Z")
+      )
+      RunFailureClassification.create!(
+        run: failed_run,
+        classification: "rate_limited",
+        retryable: true,
+        confidence: 0.9,
+        reason: "rate limit",
+        classified_at: Time.current
+      )
+
+      result = call(subject: "job", section: "rows")
+      item = result[:items].find { |row| row[:id] == job.id }
+
+      expect(item[:provider_availability]).to include(
+        provider: "claude",
+        state: "rate_limited",
+        open: true,
+        usage_exhausted: false
+      )
+    end
+  end
+
   describe "default inbox view" do
     # Builtins are seeded by the service on each call, but we need them available
     # for assertions before the second call, so ensure them explicitly.

@@ -330,6 +330,7 @@ export type DashboardPayload = {
     toggle_path: string
     entries?: DashboardLandingQueueEntry[]
   }
+  provider_availability?: Record<string, ProviderAvailability>
   broken_repositories?: DashboardHealthBlockedRepository[]
   health_blocked_repositories?: DashboardHealthBlockedRepository[]
   ownership: {
@@ -499,6 +500,7 @@ export function mergeDashboardPayload(chrome: DashboardChromePayload, rows: Dash
       ...chrome.landing_queue,
       ...rows.landing_queue
     },
+    provider_availability: chrome.provider_availability,
     broken_repositories: chrome.broken_repositories,
     health_blocked_repositories: chrome.health_blocked_repositories,
     smart_folders: chrome.smart_folders,

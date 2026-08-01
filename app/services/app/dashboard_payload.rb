@@ -128,6 +128,7 @@ module App
         ownership: ownership_json,
         filter: current_filter.to_h,
         landing_queue: landing_queue_chrome_json,
+        provider_availability: provider_availability_by_provider,
         broken_repositories: health_blocked_repositories_json,
         health_blocked_repositories: health_blocked_repositories_json,
         smart_folders: smart_folders_json,
@@ -159,6 +160,14 @@ module App
     private
 
     attr_reader :user, :params
+
+    def provider_availability_by_provider
+      @provider_availability_by_provider ||= ::App::ProviderAvailability.all_for_user(user)
+    end
+
+    def provider_availability_for(provider)
+      provider_availability_by_provider[provider]
+    end
 
     def current_result
       @current_result ||= case subject

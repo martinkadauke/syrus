@@ -1,4 +1,5 @@
 import { getJson } from "./client"
+import type { ProviderAvailability } from "./providerAvailability"
 import type { SetupStatusPayload } from "./setup"
 
 export type BootstrapPayload = {
@@ -23,6 +24,7 @@ export type BootstrapPayload = {
     seen_tours?: string[]
   } | null
   team_user_count: number
+  provider_availability?: Record<string, ProviderAvailability>
   app: {
     revision: string
     revision_url: string | null

@@ -59,10 +59,27 @@ module App
       usage_signal = usage_limit_signal
       return usage_limit_status(usage_signal) if usage_signal
 
-      circuit = ProviderCircuitBreaker.call(provider, now: now, include_logs: false)
-      return nil unless circuit.open?
-      return nil if circuit.usage_limit?
+      latest_signal = latest_provider_run_signal
+      return rate_limited_status(latest_signal) if latest_signal
 
+      circuit = ProviderCircuitBreaker.call(provider, now: now, include_logs: false)
+      return open_status(circuit) if circuit.open? && !circuit.usage_limit?
+
+      available_status
+    end
+
+    def self.all_for_user(user, now: Time.current)
+      User::AGENT_PROVIDERS.index_with { |provider| for_user(user, provider, now: now) }
+    end
+
+    private
+
+    attr_reader :user, :provider, :now
+
+    UsageLimitSignal = Data.define(:run, :model, :reason)
+    RateLimitSignal = Data.define(:run, :reason)
+
+    def open_status(circuit)
       {
         provider: provider,
         label: provider_label,
@@ -72,15 +89,44 @@ module App
         usage_exhausted: false,
         retry_after: circuit.retry_after&.iso8601,
         reason: circuit.reason.presence || "Provider appears temporarily unavailable.",
-        message: transient_message(circuit)
+        message: transient_message(circuit),
+        usage: usage_snapshot
       }
     end
 
-    private
+    def available_status
+      usage = usage_snapshot
+      return nil unless usage
 
-    attr_reader :user, :provider, :now
+      {
+        provider: provider,
+        label: provider_label,
+        model: nil,
+        state: "available",
+        open: false,
+        usage_exhausted: false,
+        retry_after: nil,
+        reason: nil,
+        message: "#{provider_label} is available.",
+        usage: usage
+      }
+    end
 
-    UsageLimitSignal = Data.define(:run, :model, :reason)
+    def rate_limited_status(signal)
+      retry_after = (signal.run.finished_at || signal.run.updated_at || now) + ProviderCircuitBreaker::OPEN_FOR
+      {
+        provider: provider,
+        label: provider_label,
+        model: nil,
+        state: "rate_limited",
+        open: true,
+        usage_exhausted: false,
+        retry_after: retry_after.iso8601,
+        reason: signal.reason,
+        message: "#{provider_label} is rate-limited. Syrus will treat #{provider_label} as unavailable until a later #{provider_label} run completes without a rate-limit failure.",
+        usage: usage_snapshot
+      }
+    end
 
     def usage_limit_status(signal)
       retry_after = (signal.run.finished_at || signal.run.updated_at || now) + ProviderCircuitBreaker::USAGE_LIMIT_OPEN_FOR
@@ -93,7 +139,8 @@ module App
         usage_exhausted: true,
         retry_after: retry_after.iso8601,
         reason: signal.reason,
-        message: usage_limit_message(signal, retry_after)
+        message: usage_limit_message(signal, retry_after),
+        usage: usage_snapshot
       }
     end
 
@@ -121,6 +168,25 @@ module App
       end.first
     end
 
+    def latest_provider_run_signal
+      run = latest_terminal_provider_run
+      return unless run&.failed?
+
+      text = diagnostic_text(run)
+      return unless rate_limited?(run, text)
+
+      RateLimitSignal.new(run: run, reason: "Latest #{provider_label} run hit a rate limit.")
+    end
+
+    def latest_terminal_provider_run
+      Run.left_outer_joins(:run_diagnostic, :run_failure_classification)
+         .includes(:run_diagnostic, :run_failure_classification)
+         .where(user_id: user.id, agent_provider: provider, state: %w[succeeded failed])
+         .where.not(finished_at: nil)
+         .order(finished_at: :desc, updated_at: :desc, id: :desc)
+         .first
+    end
+
     def usage_limit_failed_runs
       Run.left_outer_joins(:run_diagnostic, :run_failure_classification)
          .includes(:run_diagnostic, :run_failure_classification, :step)
@@ -140,6 +206,13 @@ module App
       )
     end
 
+    def rate_limited?(run, text)
+      return true if run.agent_outcome.to_s.in?(%w[rate_limited rate_limit])
+      return true if run.run_failure_classification&.classification == "rate_limited"
+
+      text.match?(/rate[ -]?limit|too many requests|quota exceeded|429/i)
+    end
+
     def diagnostic_text(run)
       [
         run.agent_outcome,
@@ -147,6 +220,38 @@ module App
         run.run_diagnostic&.error_class,
         run.run_diagnostic&.error_message
       ].compact.join(" ")
+    end
+
+    def usage_snapshot
+      return unless provider == "codex"
+
+      snapshot = user.codex_usage_snapshot || {}
+      windows = codex_usage_windows(snapshot)
+      return if windows.blank? && snapshot["remaining_percent"].blank? && user.codex_usage_status.blank?
+
+      {
+        status: user.codex_usage_status,
+        observed_at: user.codex_usage_observed_at&.iso8601,
+        remaining_percent: snapshot["remaining_percent"],
+        windows: windows
+      }.compact
+    end
+
+    def codex_usage_windows(snapshot)
+      [ snapshot["primary"], snapshot["secondary"] ].compact.each_with_object({}) do |window, memo|
+        label = window["label"].to_s
+        key = case label
+        when "5h" then "five_hour"
+        when "weekly" then "weekly"
+        else next
+        end
+        memo[key] = {
+          label: label,
+          remaining_percent: window["remaining_percent"],
+          used_percent: window["used_percent"],
+          reset_at: window["reset_at"]
+        }.compact
+      end
     end
 
     def provider_label

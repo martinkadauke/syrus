@@ -102,6 +102,10 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
       "first_job_started" => false,
       "first_successful_job_completed" => false
     )
+    expect(body["provider_availability"]).to include(
+      "claude" => nil,
+      "codex" => nil
+    )
     expect(body["public"]).to include(
       "first_signup" => false,
       "signups_open" => false,
@@ -125,6 +129,30 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
       "terminal" => false,
       "unified_work_engine_reconciler" => false,
       "video_walkthroughs" => false
+    )
+  end
+
+  it "returns provider availability as user-level bootstrap state" do
+    user = Factories.user(
+      codex_usage_status: "ok",
+      codex_usage_observed_at: Time.zone.parse("2026-07-31T14:00:00Z"),
+      codex_usage_snapshot: {
+        "primary" => { "label" => "5h", "remaining_percent" => 70.0, "used_percent" => 30.0, "reset_at" => "2026-07-31T18:00:00Z" },
+        "secondary" => { "label" => "weekly", "remaining_percent" => 40.0, "used_percent" => 60.0, "reset_at" => "2026-08-07T12:00:00Z" }
+      }
+    )
+    sign_in_as(user)
+
+    get api_v1_app_bootstrap_path
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.dig("provider_availability", "codex", "usage", "windows", "five_hour")).to include(
+      "label" => "5h",
+      "remaining_percent" => 70.0
+    )
+    expect(parse_body.dig("provider_availability", "codex", "usage", "windows", "weekly")).to include(
+      "label" => "weekly",
+      "remaining_percent" => 40.0
     )
   end
 

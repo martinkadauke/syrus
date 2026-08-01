@@ -77,6 +77,63 @@ RSpec.describe App::ProviderAvailability do
     expect(status[:message]).to include("temporarily unavailable")
   end
 
+  it "treats the user's latest provider rate-limit failure as provider-wide until a later success clears it" do
+    rate_limited = failed_run(
+      provider: "claude",
+      outcome: "rate_limited",
+      message: "Claude is rate-limited, retry later",
+      classification: "rate_limited"
+    )
+
+    status = described_class.for_user(user, "claude", now: now)
+
+    expect(status).to include(
+      provider: "claude",
+      state: "rate_limited",
+      open: true,
+      usage_exhausted: false
+    )
+    expect(status[:message]).to include("until a later Claude Code run completes without a rate-limit failure")
+
+    later_job = Factories.job(repository: Factories.repository(user: user), user: user, agent_provider: "claude")
+    Run.create!(
+      job: later_job,
+      user: user,
+      step: later_job.latest_workflow.first_step,
+      trigger_kind: "initial",
+      state: "succeeded",
+      agent_provider: "claude",
+      finished_at: rate_limited.finished_at + 1.minute
+    )
+
+    expect(described_class.for_user(user, "claude", now: now, cached: false)).to be_nil
+  end
+
+  it "includes Codex 5-hour and weekly usage percentages when a usage snapshot exists" do
+    user.update!(
+      codex_usage_status: "ok",
+      codex_usage_observed_at: now,
+      codex_usage_snapshot: {
+        "remaining_percent" => 16.2,
+        "primary" => { "label" => "5h", "remaining_percent" => 58.4, "used_percent" => 41.6, "reset_at" => "2026-07-31T15:00:00Z" },
+        "secondary" => { "label" => "weekly", "remaining_percent" => 16.2, "used_percent" => 83.8, "reset_at" => "2026-08-07T12:00:00Z" }
+      }
+    )
+
+    status = described_class.for_user(user, "codex", now: now)
+
+    expect(status).to include(provider: "codex", state: "available", open: false, usage_exhausted: false)
+    expect(status.dig(:usage, :remaining_percent)).to eq(16.2)
+    expect(status.dig(:usage, :windows, "five_hour")).to include(
+      label: "5h",
+      remaining_percent: 58.4
+    )
+    expect(status.dig(:usage, :windows, "weekly")).to include(
+      label: "weekly",
+      remaining_percent: 16.2
+    )
+  end
+
   it "ignores usage-limit words and stale usage classifications from non-agentic grader runs" do
     failed_run(
       provider: "codex",
