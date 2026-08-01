@@ -457,6 +457,41 @@ RSpec.describe Steps::Base do
     end
   end
 
+  describe "#commit_agent_changes" do
+    let(:workspace_dir) { Pathname.new(Dir.mktmpdir("syrus-commit-author")) }
+    let(:fake_ws) { instance_double(WorkflowWorkspace, path: workspace_dir) }
+
+    before do
+      AppSetting.current.update!(github_app_id: 12_345, github_app_slug: "tkadauke-syrus")
+      installation = Factories.installation(user: job.user, account_login: job.repository.owner)
+      job.repository.update!(installation: installation)
+      allow(handler).to receive(:workspace).and_return(fake_ws)
+
+      system("git", "-C", workspace_dir.to_s, "init", "--initial-branch=main", out: File::NULL, err: File::NULL)
+      system("git", "-C", workspace_dir.to_s, "config", "user.name", "Thomas Kadauke", out: File::NULL, err: File::NULL)
+      system("git", "-C", workspace_dir.to_s, "config", "user.email", "thomas.kadauke@example.com", out: File::NULL, err: File::NULL)
+      workspace_dir.join("feature.rb").write("changed\n")
+    end
+
+    after do
+      FileUtils.rm_rf(workspace_dir)
+    end
+
+    it "reasserts the Syrus bot author after an agent changes local git config" do
+      handler.commit_agent_changes("Agent changes")
+
+      author_name = `git -C #{workspace_dir} log -1 --format=%an`.strip
+      author_email = `git -C #{workspace_dir} log -1 --format=%ae`.strip
+      committer_name = `git -C #{workspace_dir} log -1 --format=%cn`.strip
+      committer_email = `git -C #{workspace_dir} log -1 --format=%ce`.strip
+
+      expect(author_name).to eq("tkadauke-syrus[bot]")
+      expect(author_email).to eq("tkadauke-syrus[bot]@users.noreply.github.com")
+      expect(committer_name).to eq("tkadauke-syrus[bot]")
+      expect(committer_email).to eq("tkadauke-syrus[bot]@users.noreply.github.com")
+    end
+  end
+
   describe "#assert_branch_history_intact!", :ci_only do
     # Build a workspace that mirrors the stacked-PR clone shape: a
     # working tree with origin/<default_branch> as the only ref to

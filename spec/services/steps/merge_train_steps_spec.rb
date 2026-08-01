@@ -51,6 +51,7 @@ RSpec.describe "Steps::MergeTrain*" do
     allow(handler).to receive(:assert_branch_history_intact!)
     allow(handler).to receive(:diff_against_sha).and_return(step_diff)
     allow(git).to receive(:run)
+    allow(git).to receive(:configure_author)
     allow(git).to receive(:run).with("status", "--porcelain", chdir: "/tmp/ws").and_return(status)
     git
   end

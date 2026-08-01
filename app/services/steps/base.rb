@@ -343,6 +343,7 @@ module Steps
       return if status.strip.empty?
 
       git.run("add", "-A", chdir: chdir)
+      git.configure_author(BotIdentity.for(job), chdir: chdir)
       git.run("commit", "-m", commit_message, chdir: chdir)
     end
 
