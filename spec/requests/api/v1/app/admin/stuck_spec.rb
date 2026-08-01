@@ -40,8 +40,8 @@ RSpec.describe "API: /api/v1/app/admin/stuck", type: :request do
     expect(response).to have_http_status(:ok)
     expect(parse_body["items"].first).to include(
       "kind" => "running_run_without_live_worker_evidence",
-      "severity" => "warn",
-      "attention_state" => "operator_action_required",
+      "severity" => "alarm",
+      "attention_state" => "auto_repairable",
       "run_id" => run.id,
       "workflow_id" => run.step.workflow.id,
       "workflow_slug" => "WF-#{run.step.workflow.id}",
@@ -54,7 +54,7 @@ RSpec.describe "API: /api/v1/app/admin/stuck", type: :request do
       "force_fail_path" => "/api/v1/app/jobs/#{job.id}/force_fail",
       "has_transcript" => false
     )
-    expect(parse_body["items"].first["repair_plan"]).to include("action" => "capture_run_diagnostics")
+    expect(parse_body["items"].first["repair_plan"]).to include("action" => "mark_worker_died")
   end
 
   it "surfaces a stale queued retry Run even when the Workflow has previous Runs" do

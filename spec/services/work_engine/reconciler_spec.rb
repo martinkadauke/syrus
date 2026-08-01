@@ -187,6 +187,86 @@ RSpec.describe WorkEngine::Reconciler do
     expect(run.reload.state).to eq("running")
   end
 
+  it "auto-repairs a detached running Run after the short worker-evidence grace" do
+    ensure_solid_queue_test_tables!
+    heartbeat_at = 4.minutes.ago
+    run.update_columns(
+      state: "running",
+      started_at: 10.minutes.ago,
+      last_heartbeat_at: heartbeat_at
+    )
+    step.update_columns(state: "running", started_at: run.started_at)
+    workflow.update_columns(state: "running", started_at: run.started_at)
+    allow(File).to receive(:directory?).and_call_original
+    allow(File).to receive(:directory?).with(WorkflowWorkspace.path_for(workflow)).and_return(true)
+
+    result = reconcile(run_id: run.id)
+    issue = kind(result, :running_run_without_live_worker_evidence)
+
+    expect(issue).to have_attributes(
+      severity: "critical",
+      safe_to_auto_repair: true,
+      recommended_repair_action: "fail_run_as_worker_died",
+      check_after: nil
+    )
+    expect(issue.evidence).to include(
+      "detached_worker_evidence" => true,
+      "detached_worker_evidence_grace_seconds" => 180
+    )
+    expect(plan(result, :mark_worker_died_and_retry_failed_step)).to have_attributes(
+      auto_executable: true,
+      target_id: run.id
+    )
+  end
+
+  it "reports an accurate check_after for detached running Runs inside the short worker-evidence grace" do
+    ensure_solid_queue_test_tables!
+    heartbeat_at = 2.minutes.ago
+    run.update_columns(
+      state: "running",
+      started_at: 10.minutes.ago,
+      last_heartbeat_at: heartbeat_at
+    )
+    step.update_columns(state: "running", started_at: run.started_at)
+    workflow.update_columns(state: "running", started_at: run.started_at)
+
+    result = reconcile(run_id: run.id)
+    issue = kind(result, :running_run_without_live_worker_evidence)
+
+    expect(issue).to have_attributes(
+      severity: "warning",
+      safe_to_auto_repair: false,
+      recommended_repair_action: "capture_diagnostics"
+    )
+    expect(issue.check_after).to be_within(1.second).of(heartbeat_at + described_class::DETACHED_WORKER_EVIDENCE_GRACE)
+    expect(issue.evidence).to include("detached_worker_evidence" => true)
+    expect(plan(result, :capture_run_diagnostics)).to have_attributes(auto_executable: false, target_id: run.id)
+  end
+
+  it "keeps active SolidQueue running Runs on the stale-heartbeat deadline" do
+    ensure_solid_queue_test_tables!
+    heartbeat_at = 4.minutes.ago
+    solid_queue_run_job(run, claimed: true, created_at: 30.seconds.ago)
+    run.update_columns(
+      state: "running",
+      started_at: 10.minutes.ago,
+      last_heartbeat_at: heartbeat_at
+    )
+    step.update_columns(state: "running", started_at: run.started_at)
+    workflow.update_columns(state: "running", started_at: run.started_at)
+
+    result = reconcile(run_id: run.id)
+    issue = kind(result, :running_run_without_live_worker_evidence)
+
+    expect(issue).to have_attributes(
+      severity: "warning",
+      safe_to_auto_repair: false,
+      recommended_repair_action: "capture_diagnostics"
+    )
+    expect(issue.check_after).to be_within(1.second).of(heartbeat_at + Run::STALE_HEARTBEAT_THRESHOLD)
+    expect(issue.evidence).to include("detached_worker_evidence" => false)
+  end
+
   it "plans session resume after a stale running agent Run loses its worker" do
     agent_step = workflow.steps.find_by!(kind: "implement")
     agent_run = agent_step.runs.create!(
@@ -236,12 +316,12 @@ RSpec.describe WorkEngine::Reconciler do
   end
 
   it "auto-fails a stale running prepare Run whose SolidQueue job failed with ProcessPrunedError" do
-    step.update_columns(kind: "prepare", state: "running", started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago)
+    step.update_columns(kind: "prepare", state: "running", started_at: 10.minutes.ago)
     workflow.update_columns(state: "running", started_at: step.started_at)
     run.update_columns(
       state: "running",
       started_at: step.started_at,
-      last_heartbeat_at: step.started_at
+      last_heartbeat_at: 4.minutes.ago
     )
     solid_queue_run_job(run, failed: true, error: { exception_class: "SolidQueue::Processes::ProcessPrunedError" }.to_json)
     allow(File).to receive(:directory?).and_call_original
@@ -300,7 +380,7 @@ RSpec.describe WorkEngine::Reconciler do
     expect(agent_run.reload).to have_attributes(state: "failed", agent_outcome: "worker_died")
   end
 
-  it "does not fail a fresh-heartbeat Run or a Run with a live spawned process" do
+  it "does not fail a detached Run inside grace or a Run with a live spawned process" do
     fresh = step.runs.create!(
       job: job,
       trigger_kind: workflow.trigger_kind,
@@ -332,8 +412,11 @@ RSpec.describe WorkEngine::Reconciler do
 
     result = reconcile_and_execute(workflow_id: workflow.id)
 
-    affected_run_ids = kind(result, :running_run_without_live_worker_evidence)&.affected_ids&.dig(:run_ids) || []
-    expect(affected_run_ids).not_to include(fresh.id, live.id)
+    affected_run_ids = result.issues
+      .select { |issue| issue.kind == "running_run_without_live_worker_evidence" }
+      .flat_map { |issue| issue.affected_ids.fetch(:run_ids, []) }
+    expect(affected_run_ids).to include(fresh.id)
+    expect(affected_run_ids).not_to include(live.id)
     expect(fresh.reload.state).to eq("running")
     expect(live.reload.state).to eq("running")
   end

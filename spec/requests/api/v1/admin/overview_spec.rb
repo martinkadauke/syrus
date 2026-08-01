@@ -191,7 +191,7 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
       expect(response).to be_successful
       items = parse_body["items"]
       expect(items.first["kind"]).to eq("running_run_without_live_worker_evidence")
-      expect(items.first["severity"]).to eq("warn")
+      expect(items.first["severity"]).to eq("alarm")
     end
   end
 end

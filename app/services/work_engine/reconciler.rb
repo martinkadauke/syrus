@@ -1,6 +1,7 @@
 module WorkEngine
   class Reconciler
     ORPHAN_RUN_GRACE_PERIOD = ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD
+    DETACHED_WORKER_EVIDENCE_GRACE = 3.minutes
     QUEUE_STARVATION_AFTER = 10.minutes
     RESOURCE_CONGESTION_CHECK_AFTER = 5.minutes
     RATE_LIMIT_CHECK_AFTER = 10.minutes
@@ -287,18 +288,28 @@ module WorkEngine
         sq = solid_queue_for_run(run)
         live_process = running_spawned_process_for(run)
         heartbeat_stale = run_stale?(run)
-        next if fresh_activity?(run.last_heartbeat_at) || live_process
+        last_activity_at = run.last_heartbeat_at || run.started_at
+        detached = detached_running_run?(sq, live_process)
+        detached_ready = detached && older_than?(last_activity_at, DETACHED_WORKER_EVIDENCE_GRACE)
+        next if !detached && (fresh_activity?(run.last_heartbeat_at) || live_process)
 
         issue(
           kind: :running_run_without_live_worker_evidence,
-          severity: heartbeat_stale ? :critical : :warning,
+          severity: heartbeat_stale || detached_ready ? :critical : :warning,
           affected_ids: ids_for(run).merge(solid_queue_job_ids: [ sq&.dig(:id) ], spawned_process_ids: [ live_process&.id ]),
-          safe_to_auto_repair: heartbeat_stale && run.may_fail?,
-          recommended_repair_action: heartbeat_stale ? "fail_run_as_worker_died" : "capture_diagnostics",
-          check_after: heartbeat_stale ? nil : now + RESOURCE_CONGESTION_CHECK_AFTER,
+          safe_to_auto_repair: (heartbeat_stale || detached_ready) && run.may_fail?,
+          recommended_repair_action: heartbeat_stale || detached_ready ? "fail_run_as_worker_died" : "capture_diagnostics",
+          check_after: check_after_for_running_run(
+            heartbeat_stale: heartbeat_stale,
+            detached_ready: detached_ready,
+            detached: detached,
+            last_activity_at: last_activity_at
+          ),
           evidence: run_evidence(run).merge(
             solid_queue: sq,
-            last_heartbeat_age_seconds: seconds_since(run.last_heartbeat_at || run.started_at),
+            detached_worker_evidence: detached,
+            detached_worker_evidence_grace_seconds: DETACHED_WORKER_EVIDENCE_GRACE.to_i,
+            last_heartbeat_age_seconds: seconds_since(last_activity_at),
             live_spawned_process: live_process&.id
           ),
           explanation: "Run ##{run.id} is running without enough evidence of a live worker continuing it."
@@ -749,6 +760,25 @@ module WorkEngine
     def run_stale?(run)
       t = Run::STALE_HEARTBEAT_THRESHOLD.ago
       run.last_heartbeat_at.present? ? run.last_heartbeat_at < t : run.started_at.present? && run.started_at < t
+    end
+
+    def detached_running_run?(solid_queue_job, live_process)
+      return false if live_process
+      return true if solid_queue_job.nil?
+
+      solid_queue_job[:failed] && process_pruned_error?(solid_queue_job[:error])
+    end
+
+    def process_pruned_error?(error)
+      error.to_s.include?("ProcessPrunedError")
+    end
+
+    def check_after_for_running_run(heartbeat_stale:, detached_ready:, detached:, last_activity_at:)
+      return nil if heartbeat_stale || detached_ready
+      return last_activity_at + DETACHED_WORKER_EVIDENCE_GRACE if detached && last_activity_at
+      return last_activity_at + Run::STALE_HEARTBEAT_THRESHOLD if last_activity_at
+
+      now + RESOURCE_CONGESTION_CHECK_AFTER
     end
 
     def fresh_activity?(timestamp)

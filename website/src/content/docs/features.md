@@ -80,7 +80,9 @@ timeline when a Run is available. Safe repairs include re-enqueueing orphaned
 queued Runs, starting queued Workflows whose first Run was never created,
 marking dead running Runs as `worker_died`, scheduling retry or resume recovery,
 finishing terminal orphan Workflows, and repairing unambiguous Job/Workflow
-state drift.
+state drift. Detached running Runs with no active queue job and no live spawned
+process can use a short worker-evidence grace before the worker-died repair
+path; ambiguous running Runs still use the normal stale-heartbeat threshold.
 
 The same classifications power stuck visibility. Admin overview health, the
 dedicated stuck list, and chat explanations distinguish stale queue claims,

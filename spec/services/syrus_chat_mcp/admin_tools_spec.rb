@@ -166,14 +166,14 @@ RSpec.describe "SyrusChatMcp admin tools" do
       title: "Silent run",
       state: job.reload.state,
       kind: "running_run_without_live_worker_evidence",
-      attention_state: "operator_action_required",
+      attention_state: "auto_repairable",
       last_heartbeat_at: run.reload.last_heartbeat_at.iso8601,
       workflow_state: "running",
       run_state: "running",
       workflow_id: workflow.id,
       run_id: run.id
     )
-    expect(payload.fetch(:items).first.fetch(:repair_plan)).to include(action: "capture_run_diagnostics")
+    expect(payload.fetch(:items).first.fetch(:repair_plan)).to include(action: "mark_worker_died")
   end
 
   it "returns queue detail for a valid tab and an error for invalid tabs" do

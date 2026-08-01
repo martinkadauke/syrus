@@ -114,7 +114,16 @@ Planner examples:
 - A stale running Run first plans to mark the Run as `worker_died`, then
   prefers `ResumeWorkflowEnqueuer` when an agent session exists, otherwise
   `RetryFailedStepEnqueuer` when the workflow workspace exists, otherwise a
-  fresh retry workflow only when the usual workflow retry gate is safe.
+  fresh retry workflow only when the usual workflow retry gate is safe. The
+  normal stale-heartbeat deadline remains `Run::STALE_HEARTBEAT_THRESHOLD`
+  for ambiguous cases with active worker evidence.
+- A detached running Run can become repairable sooner: if the Run is older than
+  the normal orphan grace, has no active SolidQueue RunJob (or only a
+  `ProcessPrunedError` failed execution), has no live `SpawnedProcess`, and has
+  not heartbeated for `DETACHED_WORKER_EVIDENCE_GRACE`, the same worker-died
+  repair planner is allowed without waiting for the 30-minute stale-heartbeat
+  backstop. Before that grace elapses, the issue remains wait-only and reports
+  `check_after` as `last_heartbeat_at + DETACHED_WORKER_EVIDENCE_GRACE`.
 - Rate-limit issues and rate-limited Run failures return
   `schedule_retry_after_rate_limit` with `retry_after` from the provider circuit
   or GitHub reset time/backoff. They do not create immediate retry loops.
