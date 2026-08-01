@@ -115,21 +115,40 @@ The coding sidebar includes a file tree, a diff browser, and a compact commit
 selector. Operators can inspect the live working tree at HEAD or choose a recent
 commit on the checkout branch to view file contents and that commit's diff.
 
-The `complete_implement_step` chat tool signals that a coding session on an
-existing Job is complete and ready for graders, summarize, and PR open. The
-`submit_coding_changes` chat tool creates a new direct Job from committed branch
-changes and immediately dispatches the same CodingHandoff workflow — this is the
-primary path when planning and implementation happen in the same chat session:
-talk in chat, commit changes to a branch, push, call the tool, and Syrus takes
-over from graders onward.
+Before each Coding Mode turn, Syrus attempts to create or restore the writable
+checkout. When that checkout is first created or restored, repository
+preparation runs asynchronously on the chat worker so the agent can begin
+inspecting the code while setup is queued or running. The agent-visible context
+includes the checkout path, current branch/ref, default branch, and the latest
+known prep status or failure.
+
+New chat-authored work starts on the repository default branch unless the agent
+intentionally checks out another ref. The `submit_coding_changes` chat tool
+creates a new direct Job from the active committed HEAD; after operator
+confirmation Syrus captures that HEAD to an immutable
+`syrus/chat-<chat_id>-handoff-<pending_action_id>` branch and dispatches the
+CodingHandoff workflow. After a successful capture and dispatch, Syrus resets
+the chat checkout back to the repository default branch tip and queues
+preparation again, so the next unrelated Coding Mode request starts from a
+fresh baseline instead of accidentally carrying over handoff commits. The
+`complete_implement_step` chat tool signals that a coding session on an
+existing Job branch is complete and ready for graders, summarize, and PR open.
+The `reset_workspace` chat tool is available for abandoned experiments: without
+confirmation it only reports the checkout path, current branch/ref, dirty state,
+commits ahead of the default branch, and prep status. When called with explicit
+discard confirmation, it resets the checkout to the repository default branch
+tip, clears uncommitted work and local-only commits, and queues preparation
+again. After that reset, `submit_coding_changes` has no committed changes to
+capture until new work is done.
 
 During a handoff, the Job remains linked to the originating chat so it stays
 visible in the chat Jobs tab and grader failures can route back to the same
 conversation. If a retry is pushed to a replacement branch, pass that branch to
 `complete_implement_step`; Syrus updates the Job before rerunning graders.
 
-Both tools create a pending action that the operator must confirm before Syrus
-dispatches any automation.
+The handoff tools create a pending action that the operator must confirm before
+Syrus dispatches any automation. `reset_workspace` runs immediately, but only
+performs destructive cleanup when the call explicitly confirms discard.
 
 ## Epics
 

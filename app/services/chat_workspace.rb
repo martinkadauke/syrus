@@ -6,12 +6,21 @@ require "open3"
 # Unlike WorkflowWorkspace, this workspace is long-lived and is not reset
 # between turns. Repositories are cloned lazily under the session root.
 class ChatWorkspace
+  class ResetRefused < StandardError
+    attr_reader :status
+
+    def initialize(message, status:)
+      @status = status
+      super(message)
+    end
+  end
+
   CLONE_DEPTH = 50
   EXCLUDE_ENTRY = ".syrus/".freeze
-  CODING_CHECKOUT_BRANCH_PREFIX = "syrus-chat-".freeze
   # Remote tag ref that safely backs up a reclaimed coding checkout's
-  # uncommitted work (see reclaim/restore below). Deterministic per chat, so
-  # its existence on the remote — not a DB column — is the source of truth.
+  # committed and uncommitted work when the checkout is based on the default
+  # branch (see reclaim/restore below). Deterministic per chat, so its
+  # existence on the remote — not a DB column — is the source of truth.
   CODING_WIP_TAG_PREFIX = "syrus-wip/chat-".freeze
   # A Coding-Mode checkout (writable full clone + installed deps, ~1-2 GB) is
   # reclaimed after this much inactivity; resume re-materializes it
@@ -58,10 +67,12 @@ class ChatWorkspace
     new(chat_session).attach_repository!(repository)
   end
 
-  # Sets up the writable coding checkout for Coding Mode. Idempotent: if the
-  # checkout is already initialized (coding_checkout_branch is set on the
-  # session), this is a no-op. On first call, replaces any existing shallow
-  # read-only clone with a full clone on a dedicated coding branch.
+  # Sets up the writable coding checkout for Coding Mode. Idempotent: if a
+  # restore/source ref is already recorded in coding_checkout_branch, this is a
+  # no-op while the checkout remains on disk. New standalone chat-authored work
+  # stays on the repository default branch; immutable handoff branches are
+  # created later by CodingHandoffCapture. Existing Job work can still record a
+  # Job branch via ensure_job_branch_checkout!.
   def self.ensure_coding_checkout!(chat_session, repository)
     new(chat_session).ensure_coding_checkout!(repository)
   end
@@ -78,10 +89,40 @@ class ChatWorkspace
     false
   end
 
-  # Discards the coding checkout: switches back to the default branch,
-  # deletes the coding branch locally, and tries to delete the remote branch
-  # if it was pushed. Clears coding_checkout_branch and
-  # coding_checkout_uncommitted on the session.
+  def self.coding_checkout_snapshot(chat_session, repository)
+    path = repo_path_for(chat_session, repository)
+    git_dir = path.join(".git")
+    {
+      path: path,
+      exists: git_dir.directory?,
+      configured_branch: chat_session.coding_checkout_branch,
+      current_branch: git_value(path, "branch", "--show-current"),
+      head_sha: git_value(path, "rev-parse", "--short=12", "HEAD"),
+      default_branch: repository.default_branch,
+      prepare_status: chat_session.coding_checkout_prepare_status,
+      prepare_started_at: chat_session.coding_checkout_prepare_started_at,
+      prepare_finished_at: chat_session.coding_checkout_prepare_finished_at,
+      prepare_failure: chat_session.coding_checkout_prepare_failure
+    }
+  end
+
+  def self.coding_reset_status(chat_session, repository)
+    new(chat_session).coding_reset_status(repository)
+  end
+
+  def self.git_value(path, *args)
+    return nil unless path.join(".git").directory?
+
+    output, status = Open3.capture2e("git", *args, chdir: path.to_s)
+    status.success? ? output.strip.presence : nil
+  rescue StandardError
+    nil
+  end
+
+  # Discards the coding checkout. For standalone Coding Mode this is usually a
+  # default-branch checkout, so there is no chat branch to delete; for existing
+  # Job branches we only delete non-default refs. Clears coding_checkout_branch
+  # and coding_checkout_uncommitted on the session.
   def self.cancel_coding_checkout!(chat_session, repository)
     new(chat_session).cancel_coding_checkout!(repository)
   end
@@ -247,6 +288,18 @@ class ChatWorkspace
     new(chat_session).reclaim_coding_checkout!(repository)
   end
 
+  # After accepted submit_coding_changes captures HEAD to an immutable remote
+  # handoff branch, reset the chat checkout for the next unrelated Coding Mode
+  # task. This deliberately discards the local copy of the just-handoff commits:
+  # the handoff branch is now the reproducible artifact.
+  def self.reset_after_coding_handoff!(chat_session, repository)
+    new(chat_session).reset_after_coding_handoff!(repository)
+  end
+
+  def self.reset_coding_workspace!(chat_session, repository, confirm_discard: false)
+    new(chat_session).reset_coding_workspace!(repository, confirm_discard: confirm_discard)
+  end
+
   # On-disk size of a path in bytes. Uses `du -sk` (KB) for portability across
   # GNU (Linux worker) and BSD (macOS dev) — `du -sb` is GNU-only.
   def self.du_bytes(path)
@@ -314,10 +367,11 @@ class ChatWorkspace
     path
   end
 
-  # Sets up a writable full-clone coding checkout on a dedicated branch.
-  # Idempotent: if coding_checkout_branch is already set, returns immediately.
-  # On first call, removes any existing shallow read-only clone and replaces
-  # it with a full (unshallow) clone on a new coding branch.
+  # Sets up a writable full-clone coding checkout on the repository default
+  # branch. The default branch is just the local working ref; accepted
+  # submit_coding_changes captures HEAD to an immutable `syrus/chat-...-handoff`
+  # branch instead of requiring a persistent `syrus-chat-<id>` branch. The
+  # coding_checkout_branch column remains as the restore/source ref for reclaim.
   def ensure_coding_checkout!(repository)
     path = self.class.repo_path_for(@chat_session, repository)
     existing_branch = @chat_session.coding_checkout_branch
@@ -338,26 +392,26 @@ class ChatWorkspace
     end
 
     ensure_root!
-    branch = "#{self.class::CODING_CHECKOUT_BRANCH_PREFIX}#{@chat_session.id}"
+    branch = repository.default_branch
 
     # Remove any existing shallow checkout so the full clone gets a clean slate.
     FileUtils.rm_rf(path.to_s) if path.join(".git").directory?
 
     full_clone!(repository, path)
-    create_coding_branch!(path, branch)
     @chat_session.update_columns(coding_checkout_branch: branch)
     @chat_session.chat_attachments.find_or_create_by!(attachable: repository)
-    ChatWorkspacePrepareJob.perform_later(@chat_session.id, repository.id)
+    enqueue_prepare!(repository)
     write_relay_credentials!
     path
   end
 
   # Frees a Coding-Mode checkout's disk (the ~1-2 GB clone + installed deps)
-  # while losing nothing: any unpushed commits are pushed to the coding branch,
-  # and any uncommitted work is snapshotted into a WIP commit pushed to a tag
-  # ref (keeping the branch itself clean). Only after the backup pushes succeed
-  # is the on-disk checkout removed — a failed push preserves the checkout so
-  # code is never lost. `coding_checkout_branch` stays set so a later turn
+  # while losing nothing. Default-branch chat work is backed up to the per-chat
+  # WIP tag so Syrus never pushes local chat commits to the repository default
+  # branch. Existing Job or user-created non-default branches are pushed to
+  # their matching remote branch, with dirty work additionally snapshotted in
+  # the WIP tag. Only after backup succeeds is the on-disk checkout removed.
+  # `coding_checkout_branch` stays set to the source/restore ref so a later turn
   # re-materializes the checkout via ensure_coding_checkout!. Returns bytes freed.
   def reclaim_coding_checkout!(repository)
     branch = @chat_session.coding_checkout_branch
@@ -367,10 +421,87 @@ class ChatWorkspace
     return 0 unless path.join(".git").directory?
 
     bytes = self.class.du_bytes(path)
-    backup_coding_checkout!(repository, path, branch)
+    branch = backup_coding_checkout!(repository, path, branch)
+    @chat_session.update_columns(coding_checkout_branch: branch) if branch != @chat_session.coding_checkout_branch
     FileUtils.rm_rf(path.to_s)
     clear_relay_credentials!
     bytes
+  end
+
+  # Resets the on-disk coding checkout to a clean default-branch tip and
+  # re-queues prep so the next Coding Mode turn starts from a fresh baseline.
+  def reset_after_coding_handoff!(repository)
+    ensure_root!
+    path = self.class.repo_path_for(@chat_session, repository)
+    default_branch = repository.default_branch
+
+    if path.join(".git").directory?
+      reset_existing_checkout_to_default!(repository, path, default_branch)
+    else
+      FileUtils.rm_rf(path.to_s) if path.exist?
+      full_clone!(repository, path)
+    end
+
+    @chat_session.update_columns(
+      coding_checkout_branch: default_branch,
+      coding_checkout_uncommitted: false
+    )
+    @chat_session.chat_attachments.find_or_create_by!(attachable: repository)
+    delete_wip_tag!(repository, path)
+    enqueue_prepare!(repository)
+    write_relay_credentials!
+    path
+  end
+
+  def coding_reset_status(repository)
+    path = self.class.repo_path_for(@chat_session, repository)
+    default_branch = repository.default_branch
+    exists = path.join(".git").directory?
+    current_branch = exists ? self.class.git_value(path, "branch", "--show-current") : nil
+    head_sha = exists ? self.class.git_value(path, "rev-parse", "--short=12", "HEAD") : nil
+    base_ref = "refs/remotes/origin/#{default_branch}"
+    base_sha = exists ? self.class.git_value(path, "rev-parse", "--short=12", base_ref) : nil
+    ahead_count = exists ? git_count(path, "rev-list", "--count", "#{base_ref}..HEAD") : 0
+    dirty = exists && self.class.uncommitted_changes?(path)
+    destructive = dirty || ahead_count.to_i.positive?
+
+    {
+      path: path.to_s,
+      exists: exists,
+      configured_branch: @chat_session.coding_checkout_branch,
+      current_branch: current_branch,
+      head_sha: head_sha,
+      default_branch: default_branch,
+      default_branch_ref: base_ref,
+      default_branch_sha: base_sha,
+      dirty: dirty,
+      committed_ahead_count: ahead_count.to_i,
+      destructive_reset_required: destructive,
+      prepare_status: @chat_session.coding_checkout_prepare_status,
+      prepare_started_at: @chat_session.coding_checkout_prepare_started_at,
+      prepare_finished_at: @chat_session.coding_checkout_prepare_finished_at,
+      prepare_failure: @chat_session.coding_checkout_prepare_failure
+    }
+  end
+
+  def reset_coding_workspace!(repository, confirm_discard: false)
+    before = coding_reset_status(repository)
+    if before[:destructive_reset_required] && !ActiveModel::Type::Boolean.new.cast(confirm_discard)
+      raise ResetRefused.new(
+        "reset_workspace would discard local work; call it again with confirm_discard: true to reset.",
+        status: before
+      )
+    end
+
+    path = reset_after_coding_handoff!(repository)
+    after = coding_reset_status(repository)
+
+    {
+      reset: true,
+      path: path.to_s,
+      before: before,
+      after: after
+    }
   end
 
   # Sets up a writable coding checkout on an existing Job branch.
@@ -387,13 +518,13 @@ class ChatWorkspace
     full_clone_at_branch!(repository, path, branch_name)
     @chat_session.update_columns(coding_checkout_branch: branch_name)
     @chat_session.chat_attachments.find_or_create_by!(attachable: repository)
-    ChatWorkspacePrepareJob.perform_later(@chat_session.id, repository.id)
+    enqueue_prepare!(repository)
     path
   end
 
-  # Resets the coding checkout: switches to the default branch, deletes the
-  # coding branch locally, tries to delete the remote branch, and clears the
-  # coding checkout state on the session.
+  # Resets the coding checkout: switches to the default branch, deletes any
+  # non-default recorded branch locally/remotely, and clears the coding checkout
+  # state on the session.
   def cancel_coding_checkout!(repository)
     branch = @chat_session.coding_checkout_branch
     return unless branch.present?
@@ -402,19 +533,21 @@ class ChatWorkspace
     default_branch = repository.default_branch
 
     if path.join(".git").directory?
-      # Switch to default branch before deleting the coding branch
       @git.run("checkout", default_branch, chdir: path.to_s, env: @env) rescue nil
-      # Delete the local coding branch
-      @git.run("branch", "-D", branch, chdir: path.to_s, env: @env) rescue nil
-      # Try to delete the remote branch (best-effort; may not have been pushed)
-      begin
-        @git.run(
-          "push", authenticated_url(repository), "--delete", branch,
-          chdir: path.to_s, env: @env
-        )
-      rescue StandardError
-        # Remote branch may not exist; silently continue
+
+      unless branch == default_branch
+        @git.run("branch", "-D", branch, chdir: path.to_s, env: @env) rescue nil
+        # Try to delete the remote branch (best-effort; may not have been pushed)
+        begin
+          @git.run(
+            "push", authenticated_url(repository), "--delete", branch,
+            chdir: path.to_s, env: @env
+          )
+        rescue StandardError
+          # Remote branch may not exist; silently continue
+        end
       end
+
       # Drop any WIP backup tag left by a prior reclaim (best-effort).
       begin
         @git.run(
@@ -566,30 +699,29 @@ class ChatWorkspace
     GitInfoExclude.ensure_entry!(path, EXCLUDE_ENTRY)
   end
 
-  def create_coding_branch!(path, branch)
-    @git.run("checkout", "-b", branch, chdir: path.to_s, env: @env)
-  end
-
   def wip_tag
     "#{self.class::CODING_WIP_TAG_PREFIX}#{@chat_session.id}"
   end
 
-  # Pushes everything needed to reproduce the checkout to the remote:
-  #   1. the coding branch (any commits not yet pushed), and
-  #   2. if the working tree is dirty, a WIP commit capturing tracked +
-  #      untracked (non-ignored) changes, pushed to a tag ref so the branch
-  #      history stays clean.
+  # Pushes everything needed to reproduce the checkout to the remote.
+  # Returns the source ref to store in coding_checkout_branch for restoration.
   # Raises if a push fails, so the caller keeps the on-disk checkout.
   def backup_coding_checkout!(repository, path, branch)
     url = authenticated_url(repository)
+    current = self.class.git_value(path, "branch", "--show-current").presence || branch
 
-    # 1. Preserve any unpushed real commits on the branch.
-    @git.run("push", url, "#{branch}:refs/heads/#{branch}", chdir: path.to_s, env: @env)
+    if current == repository.default_branch
+      backup_default_branch_checkout!(url, path, repository.default_branch)
+      return current
+    end
 
-    # 2. Snapshot uncommitted work (git status --porcelain includes untracked;
+    # Preserve any unpushed real commits on the active non-default branch.
+    @git.run("push", url, "#{current}:refs/heads/#{current}", chdir: path.to_s, env: @env)
+
+    # Snapshot uncommitted work (git status --porcelain includes untracked;
     #    .gitignored files like node_modules are excluded, so deps aren't backed
     #    up — they're re-installed on restore).
-    return unless self.class.uncommitted_changes?(path)
+    return current unless self.class.uncommitted_changes?(path)
 
     @git.run("add", "-A", chdir: path.to_s, env: @env)
     @git.run(
@@ -599,6 +731,29 @@ class ChatWorkspace
     )
     wip_sha, = Open3.capture2e(@env, "git", "rev-parse", "HEAD", chdir: path.to_s)
     @git.run("push", url, "#{wip_sha.strip}:refs/tags/#{wip_tag}", chdir: path.to_s, env: @env)
+    current
+  end
+
+  # For default-branch chat work, never push `HEAD:refs/heads/<default>`.
+  # Committed chat changes and an optional final WIP commit are instead stored
+  # under the per-chat backup tag and restored into the local checkout later.
+  def backup_default_branch_checkout!(url, path, default_branch)
+    clean = !self.class.uncommitted_changes?(path)
+    return if clean && rev_parse_path(path, "HEAD") == rev_parse_path(path, "refs/remotes/origin/#{default_branch}")
+
+    backup_sha = if !clean
+      @git.run("add", "-A", chdir: path.to_s, env: @env)
+      @git.run(
+        "-c", "user.email=syrus@localhost", "-c", "user.name=Syrus",
+        "commit", "-m", "syrus wip backup", "--no-verify",
+        chdir: path.to_s, env: @env
+      )
+      rev_parse_path(path, "HEAD")
+    else
+      rev_parse_path(path, "HEAD")
+    end
+
+    @git.run("push", url, "#{backup_sha}:refs/tags/#{wip_tag}", chdir: path.to_s, env: @env)
   end
 
   # Re-materializes a reclaimed coding checkout from the remote, transparently
@@ -609,8 +764,20 @@ class ChatWorkspace
     full_clone_at_branch!(repository, path, branch)
 
     if remote_wip_tag_exists?(repository)
-      url = authenticated_url(repository)
-      @git.run("fetch", url, "+refs/tags/#{wip_tag}:refs/tags/#{wip_tag}", chdir: path.to_s, env: @env)
+      restore_wip_tag!(repository, path, default_branch: branch == repository.default_branch)
+    end
+
+    GitInfoExclude.ensure_entry!(path, EXCLUDE_ENTRY)
+    enqueue_prepare!(repository)
+  end
+
+  def restore_wip_tag!(repository, path, default_branch:)
+    url = authenticated_url(repository)
+    @git.run("fetch", url, "+refs/tags/#{wip_tag}:refs/tags/#{wip_tag}", chdir: path.to_s, env: @env)
+
+    if default_branch
+      restore_default_branch_wip_tag!(path)
+    else
       # The WIP commit's parent is the branch tip we just cloned, so applying it
       # is a clean patch. `-n` leaves it staged; `reset` unstages so it reads as
       # ordinary uncommitted work (new files become untracked again).
@@ -619,15 +786,71 @@ class ChatWorkspace
       # `cherry-pick -n` leaves CHERRY_PICK_HEAD set; clear the sequencer state
       # so the agent's next `git commit` behaves normally (no reused WIP message).
       @git.run("cherry-pick", "--quit", chdir: path.to_s, env: @env) rescue nil
-      # The backup has served its purpose; drop the tag (best-effort).
-      begin
-        @git.run("push", url, "--delete", "refs/tags/#{wip_tag}", chdir: path.to_s, env: @env)
-      rescue StandardError
-      end
-      @git.run("tag", "-d", wip_tag, chdir: path.to_s, env: @env) rescue nil
     end
 
+    begin
+      @git.run("push", url, "--delete", "refs/tags/#{wip_tag}", chdir: path.to_s, env: @env)
+    rescue StandardError
+    end
+    @git.run("tag", "-d", wip_tag, chdir: path.to_s, env: @env) rescue nil
+  end
+
+  def restore_default_branch_wip_tag!(path)
+    @git.run("reset", "--hard", wip_tag, chdir: path.to_s, env: @env)
+    return unless git_subject(path, "HEAD") == "syrus wip backup"
+
+    @git.run("reset", "HEAD~1", chdir: path.to_s, env: @env)
+  end
+
+  def reset_existing_checkout_to_default!(repository, path, default_branch)
+    default_ref = "refs/remotes/origin/#{default_branch}"
+    @git.run(
+      "fetch",
+      authenticated_url(repository),
+      "+refs/heads/#{default_branch}:#{default_ref}",
+      "--prune",
+      chdir: path.to_s,
+      env: @env
+    )
+    @git.run("reset", "--hard", chdir: path.to_s, env: @env)
+    @git.run("clean", "-ffdx", chdir: path.to_s, env: @env)
+    @git.run("checkout", "-B", default_branch, default_ref, chdir: path.to_s, env: @env)
+    @git.run("reset", "--hard", default_ref, chdir: path.to_s, env: @env)
+    @git.run("clean", "-ffdx", chdir: path.to_s, env: @env)
     GitInfoExclude.ensure_entry!(path, EXCLUDE_ENTRY)
+  end
+
+  def delete_wip_tag!(repository, path)
+    begin
+      @git.run(
+        "push", authenticated_url(repository), "--delete", "refs/tags/#{wip_tag}",
+        chdir: path.to_s, env: @env
+      )
+    rescue StandardError
+      # Tag may not exist; the reset should remain idempotent.
+    end
+    @git.run("tag", "-d", wip_tag, chdir: path.to_s, env: @env) rescue nil
+  end
+
+  def rev_parse_path(path, ref)
+    @git.run("rev-parse", ref, chdir: path.to_s, env: @env).strip
+  end
+
+  def git_subject(path, ref)
+    @git.run("log", "-1", "--format=%s", ref, chdir: path.to_s, env: @env).strip
+  rescue StandardError
+    nil
+  end
+
+  def enqueue_prepare!(repository)
+    now = Time.current
+    @chat_session.update_columns(
+      coding_checkout_prepare_status: "queued",
+      coding_checkout_prepare_started_at: nil,
+      coding_checkout_prepare_finished_at: nil,
+      coding_checkout_prepare_failure: nil,
+      updated_at: now
+    )
     ChatWorkspacePrepareJob.perform_later(@chat_session.id, repository.id)
   end
 
@@ -638,6 +861,12 @@ class ChatWorkspace
     status.success? && out.strip.present?
   rescue StandardError
     false
+  end
+
+  def git_count(path, *args)
+    Integer(self.class.git_value(path, *args) || 0)
+  rescue ArgumentError
+    0
   end
 
   def fast_forward!(repository, path)

@@ -97,14 +97,14 @@ RSpec.describe ChatWorkspace, :ci_only do
   end
 
   describe ".ensure_coding_checkout!" do
-    it "full-clones the repository and creates a coding branch on first call" do
+    it "full-clones the repository on the default branch on first call" do
       described_class.ensure_coding_checkout!(chat_session, repository)
 
       path = described_class.repo_path_for(chat_session, repository)
       expect(path.join(".git")).to exist
       branch = `git -C #{path} rev-parse --abbrev-ref HEAD`.strip
-      expect(branch).to eq("syrus-chat-#{chat_session.id}")
-      expect(chat_session.reload.coding_checkout_branch).to eq("syrus-chat-#{chat_session.id}")
+      expect(branch).to eq("main")
+      expect(chat_session.reload.coding_checkout_branch).to eq("main")
     end
 
     it "is idempotent when coding_checkout_branch is already set" do
@@ -128,7 +128,7 @@ RSpec.describe ChatWorkspace, :ci_only do
       described_class.ensure_coding_checkout!(chat_session, repository)
 
       expect(shallow_path.join(".git")).to exist
-      expect(`git -C #{shallow_path} rev-parse --abbrev-ref HEAD`.strip).to eq("syrus-chat-#{chat_session.id}")
+      expect(`git -C #{shallow_path} rev-parse --abbrev-ref HEAD`.strip).to eq("main")
     end
 
     it "records a repository attachment on the session" do
@@ -141,6 +141,16 @@ RSpec.describe ChatWorkspace, :ci_only do
       expect {
         described_class.ensure_coding_checkout!(chat_session, repository)
       }.to have_enqueued_job(ChatWorkspacePrepareJob).with(chat_session.id, repository.id).on_queue("chat")
+    end
+
+    it "records prep as queued when setup enqueues asynchronous preparation" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      chat_session.reload
+      expect(chat_session.coding_checkout_prepare_status).to eq("queued")
+      expect(chat_session.coding_checkout_prepare_started_at).to be_nil
+      expect(chat_session.coding_checkout_prepare_finished_at).to be_nil
+      expect(chat_session.coding_checkout_prepare_failure).to be_nil
     end
 
     it "does not enqueue ChatWorkspacePrepareJob when coding checkout is already set" do
@@ -235,7 +245,7 @@ RSpec.describe ChatWorkspace, :ci_only do
     it "replaces an existing checkout when called with a different branch" do
       # First set up a regular coding checkout
       described_class.ensure_coding_checkout!(chat_session, repository)
-      expect(chat_session.reload.coding_checkout_branch).to eq("syrus-chat-#{chat_session.id}")
+      expect(chat_session.reload.coding_checkout_branch).to eq("main")
 
       described_class.ensure_job_branch_checkout!(chat_session, repository, job_branch)
 
@@ -303,10 +313,10 @@ RSpec.describe ChatWorkspace, :ci_only do
   end
 
   describe ".cancel_coding_checkout!" do
-    it "deletes the coding branch and clears coding checkout state on the session" do
+    it "clears default-branch coding checkout state on the session" do
       described_class.ensure_coding_checkout!(chat_session, repository)
       path = described_class.repo_path_for(chat_session, repository)
-      expect(`git -C #{path} rev-parse --abbrev-ref HEAD`.strip).to eq("syrus-chat-#{chat_session.id}")
+      expect(`git -C #{path} rev-parse --abbrev-ref HEAD`.strip).to eq("main")
 
       described_class.cancel_coding_checkout!(chat_session, repository)
 
@@ -356,7 +366,7 @@ RSpec.describe ChatWorkspace, :ci_only do
       expect(result).not_to be_nil
       expect(result[:files]).to be_an(Array)
       expect(result[:files]).to include("README.md")
-      expect(result[:checkout_branch]).to eq("syrus-chat-#{chat_session.id}")
+      expect(result[:checkout_branch]).to eq("main")
     end
 
     it "excludes .git directory entries" do
@@ -387,7 +397,7 @@ RSpec.describe ChatWorkspace, :ci_only do
       expect(result).not_to be_nil
       expect(result[:files]).to include("README.md")
       expect(result[:files]).not_to include("NEW.md")
-      expect(result[:checkout_branch]).to eq("syrus-chat-#{chat_session.id}")
+      expect(result[:checkout_branch]).to eq("main")
     end
   end
 
@@ -657,9 +667,15 @@ RSpec.describe ChatWorkspace, :ci_only do
       sh("git ls-remote #{bare_remote_dir} #{ref}").strip.present?
     end
 
-    it "reclaims disk, pushes the branch, and leaves the session resumable" do
+    def remote_ref_sha(ref)
+      sh("git ls-remote #{bare_remote_dir} #{ref}").split(/\s+/).first
+    end
+
+    it "reclaims disk, backs up default-branch commits to a tag, and leaves the session resumable" do
       described_class.ensure_coding_checkout!(chat_session, repository)
-      # A committed-but-unpushed change on the coding branch.
+      # A committed local change on the default branch is never pushed back to
+      # refs/heads/main; the per-chat backup tag carries it across reclaim.
+      main_before = remote_ref_sha("refs/heads/main")
       File.write(coding_path.join("feature.rb"), "puts 1\n")
       sh("git -C #{coding_path} add feature.rb")
       sh("git -C #{coding_path} commit -q -m 'add feature'")
@@ -669,8 +685,8 @@ RSpec.describe ChatWorkspace, :ci_only do
 
       expect(freed).to be > 0
       expect(coding_path.join(".git")).not_to exist
-      # Branch preserved on the remote, session still points at it.
-      expect(remote_has_ref?("refs/heads/#{branch}")).to be(true)
+      expect(remote_ref_sha("refs/heads/main")).to eq(main_before)
+      expect(remote_has_ref?(wip_tag_ref)).to be(true)
       expect(chat_session.reload.coding_checkout_branch).to eq(branch)
     end
 
@@ -705,9 +721,10 @@ RSpec.describe ChatWorkspace, :ci_only do
 
       expect(coding_path.join(".git")).to exist
       expect(`git -C #{coding_path} rev-parse --abbrev-ref HEAD`.strip)
-        .to eq("syrus-chat-#{chat_session.id}")
-      # Committed work is back from the pushed branch.
+        .to eq("main")
+      # Committed work is back from the backup tag.
       expect(coding_path.join("feature.rb")).to exist
+      expect(remote_has_ref?(wip_tag_ref)).to be(false)
     end
 
     it "restores uncommitted work exactly on re-materialize, then drops the tag" do
@@ -800,6 +817,105 @@ RSpec.describe ChatWorkspace, :ci_only do
 
       expect(coding_path.join(".git")).to exist
       expect(chat_session.reload.coding_checkout_branch).to be_present
+    end
+
+    it "resets a captured handoff checkout to a clean prepared default-branch baseline" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      File.write(coding_path.join("feature.rb"), "puts 1\n")
+      sh("git -C #{coding_path} add feature.rb")
+      sh("git -C #{coding_path} commit -q -m 'handoff feature'")
+      FileUtils.mkdir_p(coding_path.join("node_modules"))
+      File.write(coding_path.join("node_modules", "stale.txt"), "old dependency\n")
+      File.write(coding_path.join("scratch.txt"), "old scratch\n")
+      chat_session.update_columns(
+        coding_checkout_uncommitted: true,
+        coding_checkout_prepare_status: "failed",
+        coding_checkout_prepare_failure: "old failure"
+      )
+      add_remote_commit("fresh baseline")
+      remote_main = remote_ref_sha("refs/heads/main")
+
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      expect {
+        described_class.reset_after_coding_handoff!(chat_session, repository)
+      }.to have_enqueued_job(ChatWorkspacePrepareJob).with(chat_session.id, repository.id).on_queue("chat")
+
+      expect(`git -C #{coding_path} rev-parse --abbrev-ref HEAD`.strip).to eq("main")
+      expect(`git -C #{coding_path} rev-parse HEAD`.strip).to eq(remote_main)
+      expect(coding_path.join("README.md").read).to include("fresh baseline")
+      expect(coding_path.join("feature.rb")).not_to exist
+      expect(coding_path.join("scratch.txt")).not_to exist
+      expect(coding_path.join("node_modules", "stale.txt")).not_to exist
+
+      chat_session.reload
+      expect(chat_session.coding_checkout_branch).to eq("main")
+      expect(chat_session.coding_checkout_uncommitted).to eq(false)
+      expect(chat_session.coding_checkout_prepare_status).to eq("queued")
+      expect(chat_session.coding_checkout_prepare_failure).to be_nil
+    end
+
+    it "reports dirty and committed-ahead status for a coding checkout" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      File.write(coding_path.join("feature.rb"), "puts 1\n")
+      sh("git -C #{coding_path} add feature.rb")
+      sh("git -C #{coding_path} commit -q -m 'local feature'")
+      File.write(coding_path.join("scratch.txt"), "uncommitted\n")
+
+      status = described_class.coding_reset_status(chat_session, repository)
+
+      expect(status).to include(
+        path: coding_path.to_s,
+        exists: true,
+        configured_branch: "main",
+        current_branch: "main",
+        default_branch: "main",
+        dirty: true,
+        committed_ahead_count: 1,
+        destructive_reset_required: true
+      )
+      expect(status[:head_sha]).to be_present
+      expect(status[:default_branch_sha]).to be_present
+    end
+
+    it "refuses to reset dirty or committed-ahead work without confirmation" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      File.write(coding_path.join("feature.rb"), "puts 1\n")
+      sh("git -C #{coding_path} add feature.rb")
+      sh("git -C #{coding_path} commit -q -m 'local feature'")
+
+      expect {
+        described_class.reset_coding_workspace!(chat_session, repository)
+      }.to raise_error(ChatWorkspace::ResetRefused, /confirm_discard/)
+
+      expect(coding_path.join("feature.rb")).to exist
+      expect(`git -C #{coding_path} rev-list --count origin/main..HEAD`.strip).to eq("1")
+    end
+
+    it "resets confirmed abandoned work to a clean default-branch checkout and queues prep" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      File.write(coding_path.join("feature.rb"), "puts 1\n")
+      sh("git -C #{coding_path} add feature.rb")
+      sh("git -C #{coding_path} commit -q -m 'local feature'")
+      File.write(coding_path.join("scratch.txt"), "uncommitted\n")
+      chat_session.update_columns(coding_checkout_uncommitted: true)
+      add_remote_commit("fresh after abandoned work")
+      remote_main = remote_ref_sha("refs/heads/main")
+
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      result = nil
+      expect {
+        result = described_class.reset_coding_workspace!(chat_session, repository, confirm_discard: true)
+      }.to have_enqueued_job(ChatWorkspacePrepareJob).with(chat_session.id, repository.id).on_queue("chat")
+
+      expect(result[:before]).to include(destructive_reset_required: true, committed_ahead_count: 1)
+      expect(result[:after]).to include(dirty: false, committed_ahead_count: 0, destructive_reset_required: false)
+      expect(`git -C #{coding_path} rev-parse HEAD`.strip).to eq(remote_main)
+      expect(`git -C #{coding_path} status --porcelain`.strip).to eq("")
+      expect(coding_path.join("feature.rb")).not_to exist
+      expect(coding_path.join("scratch.txt")).not_to exist
+      expect(chat_session.reload.coding_checkout_branch).to eq("main")
+      expect(chat_session.coding_checkout_uncommitted).to eq(false)
+      expect(chat_session.coding_checkout_prepare_status).to eq("queued")
     end
   end
 

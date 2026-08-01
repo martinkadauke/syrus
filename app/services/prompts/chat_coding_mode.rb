@@ -3,8 +3,9 @@ module Prompts
   # Replaces the "planning only, do not write code" constraint from ChatSystem
   # with guidance for direct implementation in the chat workspace checkout.
   class ChatCodingMode
-    def initialize(chat_session: nil)
+    def initialize(chat_session: nil, setup_error: nil)
       @chat_session = chat_session
+      @setup_error = setup_error
     end
 
     def to_s
@@ -15,8 +16,13 @@ module Prompts
         changes directly in the repository checkout rather than planning and
         proposing Jobs for an automated agent to handle later.
 
+        Syrus attempts to create or restore the writable coding checkout before
+        every model invocation. Repository preparation is kicked off
+        asynchronously when a checkout is created or restored; it may still be
+        queued or running while you begin inspection.
+
         **Your role:** You ARE the implement step for this session. Write code,
-        run tests, commit, and push. Syrus automation (graders, PR creation, and
+        run tests, and commit. Syrus automation (graders, PR creation, and
         the review queue) resumes when the operator explicitly signals completion.
 
         **Do NOT:**
@@ -28,7 +34,8 @@ module Prompts
 
         **Implementation workflow:**
 
-        1. Use Read, Glob, Grep to understand the codebase.
+        1. Start by inspecting the checkout path above with Read, Glob, Grep,
+           or Bash. Do not run a separate workspace initialization flow.
         2. Use Write/Edit to make changes within the checkout path above.
            Do NOT write outside the coding checkout — other repository copies
            attached to this session (under `repositories/`) are read-only.
@@ -37,17 +44,18 @@ module Prompts
            ```
            git add -A && git commit -m "concise description"
            ```
-        5. When the operator signals that this session is complete, push the branch:
-           ```
-           git push origin <branch>
-           ```
-           Then call `complete_implement_step(job_id: <id>)` to hand off to
-           Syrus for graders, PR creation, and the review queue.
+        5. When the operator signals that this session is complete, hand off:
+           - For an attached existing Job, push that Job branch and call
+             `complete_implement_step(job_id: <id>)`.
+           - For new chat-authored work, call `submit_coding_changes` from the
+             active branch. New Coding Mode checkouts start on the repository
+             default branch; the confirmed handoff captures HEAD to an immutable
+             `syrus/chat-<chat_id>-handoff-<pending_action_id>` branch, so do
+             not create or push a persistent `syrus-chat-<id>` branch.
 
-        **Grader feedback:** After `complete_implement_step`, grader results may
-        arrive as a follow-up message in this chat. Address failures directly in
-        the same checkout — commit fixes, push, then call `complete_implement_step`
-        again to re-trigger automation.
+        **Grader feedback:** After handoff, grader results may arrive as a
+        follow-up message in this chat. Address failures directly in the same
+        checkout, commit fixes, and hand off again to re-trigger automation.
 
         **What stays the same:**
         - Memory tools remain available for note-taking and context.
@@ -59,7 +67,7 @@ module Prompts
 
     private
 
-    attr_reader :chat_session
+    attr_reader :chat_session, :setup_error
 
     def checkout_context
       sections = []
@@ -67,10 +75,42 @@ module Prompts
       workspace = chat_session&.workspace_root
       sections << "**Workspace root:** `#{workspace}`" if workspace
 
+      snapshot = coding_checkout_snapshot
+      sections << coding_checkout_section(snapshot) if snapshot
+      sections << "**Checkout setup warning:** #{setup_error}" if setup_error.present?
+
       jobs = chat_session&.attached_jobs&.includes(:repository)&.order(:created_at, :id)&.to_a
       sections << attached_jobs_section(jobs, workspace) if jobs&.any?
 
       sections.compact.join("\n\n")
+    end
+
+    def coding_checkout_snapshot
+      repository = chat_session&.repository
+      return unless chat_session && repository
+
+      ChatWorkspace.coding_checkout_snapshot(chat_session, repository)
+    end
+
+    def coding_checkout_section(snapshot)
+      lines = [ "**Coding checkout:**" ]
+      lines << "- Repository: `#{chat_session.repository.slug}`"
+      lines << "- Checkout path: `#{snapshot[:path]}`"
+      lines << "- Checkout exists: #{snapshot[:exists] ? 'yes' : 'no'}"
+      lines << "- Current branch: `#{snapshot[:current_branch] || snapshot[:configured_branch] || '(unknown)'}`"
+      lines << "- Current ref: `#{snapshot[:head_sha] || '(unknown)'}`"
+      lines << "- Default branch: `#{snapshot[:default_branch]}`"
+      lines << "- Prep status: #{prepare_status_label(snapshot)}"
+      lines.join("\n")
+    end
+
+    def prepare_status_label(snapshot)
+      status = snapshot[:prepare_status].presence || "unknown"
+      parts = [ status ]
+      parts << "started #{snapshot[:prepare_started_at].iso8601}" if snapshot[:prepare_started_at]
+      parts << "finished #{snapshot[:prepare_finished_at].iso8601}" if snapshot[:prepare_finished_at]
+      parts << "last failure: #{snapshot[:prepare_failure]}" if snapshot[:prepare_failure].present?
+      parts.join("; ")
     end
 
     def attached_jobs_section(jobs, workspace)
