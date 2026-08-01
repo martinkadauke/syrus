@@ -17,6 +17,7 @@ import { AdminGithubAppConfirm, AdminGithubAppRegister } from "./AdminGithubApp"
 import { AdminInvitations } from "./AdminInvitations"
 import { AdminInstallations } from "./AdminInstallations"
 import { AdminOverview } from "./AdminOverview"
+import { AdminPerformance } from "./AdminPerformance"
 import { AdminQueueRoute } from "./AdminQueue"
 import { AdminProcessDetail, AdminProcessesIndex } from "./AdminProcesses"
 import { AdminSettings } from "./AdminSettings"
@@ -79,6 +80,7 @@ const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/admin/queue", element: <AdminQueueRoute /> },
   { path: "/admin/queue/:tab", element: <AdminQueueRoute /> },
   { path: "/admin/stuck", element: <AdminStuck /> },
+  { path: "/admin/performance", element: <AdminPerformance /> },
   { path: "/admin/processes", element: <AdminProcessesIndex /> },
   { path: "/admin/processes/:id", element: <AdminProcessDetail /> },
   { path: "/admin/runs/:runId/transcript", element: <AdminTranscript /> },
@@ -569,4 +571,3 @@ function landingSecondaryButtonClass() {
 function settingsSideNavLinkClass(active: boolean) {
   return `whitespace-nowrap rounded px-3 py-2 font-medium ${active ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200" : "text-gray-700 hover:bg-gray-100 hover:text-blue-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-blue-300"}`
 }
-
