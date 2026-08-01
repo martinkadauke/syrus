@@ -86,6 +86,29 @@ RSpec.describe ProviderCircuitBreaker do
     expect(decision.retry_after).to be_within(1.second).of(now + 23.hours + 59.minutes)
   end
 
+  it "uses known usage reset times and closes once that reset has passed" do
+    run = failed_agent_run(
+      provider: "claude",
+      outcome: "provider_usage_limit",
+      message: "You're out of extra usage · resets 7am (America/New_York)"
+    )
+    run.update!(finished_at: Time.zone.parse("2026-08-01 08:30:00 UTC"))
+    run.create_run_failure_classification!(
+      classification: "provider_usage_limit",
+      confidence: 0.95,
+      retryable: false,
+      reason: "usage exhausted",
+      classified_at: run.finished_at
+    )
+
+    open_decision = described_class.call("claude", now: Time.zone.parse("2026-08-01 10:00:00 UTC"))
+    closed_decision = described_class.call("claude", now: Time.zone.parse("2026-08-01 11:06:00 UTC"))
+
+    expect(open_decision).to be_open
+    expect(open_decision.retry_after).to eq(Time.find_zone("America/New_York").parse("2026-08-01 07:05:00"))
+    expect(closed_decision).not_to be_open
+  end
+
   it "does not open usage exhaustion from non-agentic grader output or stale classifications" do
     job = Factories.job(repository: Factories.repository(user: user))
     workflow = Workflow.create!(job: job, trigger_kind: "auto_merge", agent_provider: "codex")

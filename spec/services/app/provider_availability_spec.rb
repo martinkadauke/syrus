@@ -65,6 +65,21 @@ RSpec.describe App::ProviderAvailability do
     expect(described_class.for_user(user, "codex", now: now)).to be_nil
   end
 
+  it "uses known provider reset times and clears exhausted state after the reset" do
+    failed_run(
+      provider: "claude",
+      outcome: "provider_usage_limit",
+      message: "You're out of extra usage · resets 7am (America/New_York)"
+    ).update!(finished_at: Time.zone.parse("2026-08-01 08:30:00 UTC"))
+
+    before_reset = described_class.for_user(user, "claude", now: Time.zone.parse("2026-08-01 10:00:00 UTC"), cached: false)
+    after_reset = described_class.for_user(user, "claude", now: Time.zone.parse("2026-08-01 11:06:00 UTC"), cached: false)
+
+    expect(before_reset).to include(state: "exhausted")
+    expect(Time.zone.parse(before_reset[:retry_after])).to eq(Time.zone.parse("2026-08-01T11:05:00Z"))
+    expect(after_reset).to be_nil
+  end
+
   it "keeps transient circuit state separate from red usage exhaustion" do
     5.times do |index|
       run = failed_run(

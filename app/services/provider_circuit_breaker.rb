@@ -126,11 +126,12 @@ class ProviderCircuitBreaker
 
   def open_usage_limit(signal)
     latest_finished_at = signal.run.finished_at || signal.run.updated_at || now
+    retry_after = ProviderQuotaReset.retry_after_for_run(signal.run, now: now) || latest_finished_at + USAGE_LIMIT_OPEN_FOR
     Decision.new(
       provider: provider,
       open: true,
       reason: signal.model.present? ? "provider usage limit exhausted for model #{signal.model}" : "provider usage limit exhausted; model unknown, failing closed for provider",
-      retry_after: latest_finished_at + USAGE_LIMIT_OPEN_FOR,
+      retry_after: retry_after,
       failure_count: 1,
       job_count: 1,
       signature: signal.signature,
@@ -157,6 +158,8 @@ class ProviderCircuitBreaker
     usage_limit_failed_runs.filter_map do |run|
       text = diagnostic_text(run)
       next unless usage_limit?(run, text)
+      retry_after = ProviderQuotaReset.retry_after_for_run(run, now: now)
+      next if retry_after && retry_after <= now
 
       UsageLimitSignal.new(
         run: run,

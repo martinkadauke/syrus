@@ -162,7 +162,7 @@ module WorkEngine
           Rails.logger.warn("[WorkEngine::RepairExecutor] audit failed for #{plan.action}: #{e.class}: #{e.message}")
         end
 
-        def schedule_auto_retry!(retry_kind:, source_run: nil, workflow: nil, job: nil)
+        def schedule_auto_retry!(retry_kind:, source_run: nil, workflow: nil, job: nil, respect_provider_circuit: true)
           source_run ||= target_run
           workflow ||= source_run&.workflow || target_workflow
           job ||= source_run&.job || workflow&.job || target_job
@@ -174,7 +174,7 @@ module WorkEngine
             source_run&.agent_outcome.presence ||
             "unknown"
           circuit = ProviderCircuitBreaker.call(agent_provider, now: now)
-          if circuit.open?
+          if respect_provider_circuit && circuit.open?
             retry_at = circuit.retry_after ? " until #{circuit.retry_after.iso8601}" : ""
             return skipped("provider circuit is open for #{agent_provider}#{retry_at}: #{circuit.reason}")
           end
@@ -335,6 +335,29 @@ module WorkEngine
       class RetryWorkflow < Base
         def perform
           schedule_auto_retry!(retry_kind: "retry_workflow")
+        end
+      end
+
+      class ScheduleRetryAfterRateLimit < Base
+        def perform
+          schedule_auto_retry!(
+            retry_kind: delayed_retry_kind,
+            respect_provider_circuit: false
+          )
+        end
+
+        private
+
+        def delayed_retry_kind
+          run = target_run
+          workflow = run&.workflow || target_workflow
+          if run&.claude_session.present? && workflow&.retry_available? && run.step&.agentic?
+            "resume_failed_step"
+          elsif workflow&.retry_available?
+            "failed_step"
+          else
+            "retry_workflow"
+          end
         end
       end
 

@@ -252,12 +252,19 @@ module WorkEngine
           return issue.retry_after if issue.retry_after
 
           run = primary_run
+          quota_reset = ProviderQuotaReset.retry_after_for_run(run, now: now)
+          return quota_reset if provider_quota_classification? && quota_reset
+
           reset_at = run&.user&.gh_rate_limit_reset_at
           if classification&.classification == "rate_limited" && reset_at&.future?
             reset_at
           else
             now + DEFAULT_RETRY_BACKOFF
           end
+        end
+
+        def provider_quota_classification?
+          classification&.classification == ProviderUsageLimit::CLASSIFICATION
         end
       end
 
@@ -391,11 +398,19 @@ module WorkEngine
 
       class RetryableRunFailure < Base
         def plan
-          if classification&.classification == "rate_limited"
-            return waiting_plan(
+          if delayed_provider_retry?
+            return retry_budget_exhausted_plan unless retry_budget_available?
+
+            return automatic_plan(
               "schedule_retry_after_rate_limit",
+              primary_run,
               "The failed Run is rate-limited, so retry must wait for the reset/backoff window.",
-              target: primary_run,
+              execution_steps: [ "AutoRetryAttempt.create!", "AutoRetryJob.perform_later" ],
+              preconditions: {
+                run_state: "failed",
+                classification: classification&.classification,
+                retry_budget_available: retry_budget_available?
+              },
               retry_after: retry_after_for_retryable_failure
             )
           end
@@ -411,6 +426,10 @@ module WorkEngine
         end
 
         private
+
+        def delayed_provider_retry?
+          classification&.classification.in?([ "rate_limited", ProviderUsageLimit::CLASSIFICATION ])
+        end
 
         def resume_failed_step
           return retry_budget_exhausted_plan unless retry_budget_available?

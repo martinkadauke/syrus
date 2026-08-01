@@ -142,7 +142,8 @@ module App
     end
 
     def usage_limit_status(signal)
-      retry_after = (signal.run.finished_at || signal.run.updated_at || now) + ProviderCircuitBreaker::USAGE_LIMIT_OPEN_FOR
+      retry_after = ProviderQuotaReset.retry_after_for_run(signal.run, now: now) ||
+        (signal.run.finished_at || signal.run.updated_at || now) + ProviderCircuitBreaker::USAGE_LIMIT_OPEN_FOR
       {
         provider: provider,
         label: provider_label,
@@ -172,6 +173,8 @@ module App
       usage_limit_failed_runs.filter_map do |run|
         text = diagnostic_text(run)
         next unless usage_limit?(run, text)
+        retry_after = ProviderQuotaReset.retry_after_for_run(run, now: now)
+        next if retry_after && retry_after <= now
 
         UsageLimitSignal.new(
           run: run,

@@ -124,9 +124,16 @@ Planner examples:
   repair planner is allowed without waiting for the 30-minute stale-heartbeat
   backstop. Before that grace elapses, the issue remains wait-only and reports
   `check_after` as `last_heartbeat_at + DETACHED_WORKER_EVIDENCE_GRACE`.
-- Rate-limit issues and rate-limited Run failures return
-  `schedule_retry_after_rate_limit` with `retry_after` from the provider circuit
-  or GitHub reset time/backoff. They do not create immediate retry loops.
+- Global rate-limit issues return wait-only `schedule_retry_after_rate_limit`
+  plans with `retry_after` from the provider circuit or GitHub reset
+  time/backoff. Concrete failed Runs classified as `rate_limited` or
+  `provider_usage_limit` return automatic `schedule_retry_after_rate_limit`
+  plans that create a delayed `AutoRetryAttempt`. Provider usage limits prefer
+  Codex structured usage reset windows, then provider reset text parsed from
+  the failure time, then the conservative provider-circuit backoff. When the
+  delayed `AutoRetryJob` fires, it re-checks provider availability and
+  reschedules the same attempt if the circuit still reports a future
+  `retry_after`; it does not consume the attempt as skipped.
 - Deterministic idempotent step failures, as declared by `Step::Kind`, may plan
   an in-place failed-step retry when the workspace and retry budget allow it.
 - Git publication, landing, and semantic failures return operator-review plans

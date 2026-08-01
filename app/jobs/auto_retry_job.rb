@@ -7,6 +7,8 @@ class AutoRetryJob < ApplicationJob
     attempt = AutoRetryAttempt.includes(:job, :workflow, run: :claude_session).find(auto_retry_attempt_id)
     return if attempt.performed_at.present? || attempt.skipped_reason.present?
 
+    return if reschedule_if_provider_blocked(attempt)
+
     result = perform_retry(attempt)
 
     if result.success?
@@ -25,6 +27,19 @@ class AutoRetryJob < ApplicationJob
   }.freeze
 
   private
+
+  def reschedule_if_provider_blocked(attempt)
+    circuit = ProviderCircuitBreaker.call(attempt.agent_provider)
+    return false unless circuit.open?
+
+    retry_after = circuit.retry_after
+    retry_after = Time.current + ProviderCircuitBreaker::OPEN_FOR unless retry_after && retry_after > Time.current
+
+    attempt.update!(scheduled_at: retry_after)
+    AutoRetryJob.set(wait_until: retry_after, priority: attempt.job.solid_queue_priority).perform_later(attempt.id)
+    log(attempt, "auto-retry delayed until #{retry_after.iso8601}: #{circuit.reason}")
+    true
+  end
 
   def perform_retry(attempt)
     send(RETRY_DISPATCH.fetch(attempt.retry_kind, :retry_workflow), attempt)

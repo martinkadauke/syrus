@@ -675,11 +675,43 @@ RSpec.describe WorkEngine::Reconciler do
 
     result = reconcile(run_id: run.id)
     issue = kind(result, :retryable_run_failure)
-    repair_plan = plan(result, :schedule_retry_after_rate_limit)
+    repair_plan = result.repair_plans.find { |candidate| candidate.action == "schedule_retry_after_rate_limit" && candidate.target_id == run.id }
 
     expect(issue.retry_after.to_i).to eq(reset_at.to_i)
-    expect(repair_plan.auto_executable).to eq(false)
+    expect(repair_plan.auto_executable).to eq(true)
     expect(repair_plan.retry_after.to_i).to eq(reset_at.to_i)
+  end
+
+  it "plans provider usage-limit failures for the provider reset time" do
+    run.update_columns(
+      state: "failed",
+      agent_provider: "claude",
+      agent_outcome: "provider_usage_limit",
+      finished_at: Time.zone.parse("2026-08-01 08:30:00 UTC")
+    )
+    step.update_columns(state: "failed", finished_at: run.finished_at)
+    workflow.update_columns(state: "failed", finished_at: run.finished_at)
+    RunDiagnostic.create!(
+      run: run,
+      error_class: "Steps::Base::StepFailed",
+      error_message: "You're out of extra usage · resets 7am (America/New_York)"
+    )
+    RunFailureClassification.create!(
+      run: run,
+      classification: "provider_usage_limit",
+      retryable: false,
+      confidence: 0.95,
+      reason: "provider usage exhausted",
+      classified_at: run.finished_at
+    )
+
+    result = reconcile(run_id: run.id, now: Time.zone.parse("2026-08-01 10:00:00 UTC"))
+    issue = kind(result, :retryable_run_failure)
+    repair_plan = result.repair_plans.find { |candidate| candidate.action == "schedule_retry_after_rate_limit" && candidate.target_id == run.id }
+
+    expect(issue.retry_after).to eq(Time.find_zone("America/New_York").parse("2026-08-01 07:05:00"))
+    expect(repair_plan).to have_attributes(auto_executable: true, target_id: run.id)
+    expect(kind(result, :nonretryable_semantic_git_failure)).to be_nil
   end
 
   it "plans deterministic idempotent failed steps for in-place retry" do
@@ -728,6 +760,40 @@ RSpec.describe WorkEngine::Reconciler do
     attempt = AutoRetryAttempt.last
     expect(attempt).to have_attributes(workflow: workflow, run: run, failure_classification: "timeout")
     expect(result.repair_executions.map(&:message)).to include(match(/scheduled failed_step auto-retry/))
+  end
+
+  it "executes provider quota plans by creating a delayed auto-retry attempt" do
+    reset_at = Time.find_zone("America/New_York").parse("2026-08-01 07:05:00")
+    run.update_columns(
+      state: "failed",
+      agent_provider: "claude",
+      agent_outcome: "provider_usage_limit",
+      finished_at: Time.zone.parse("2026-08-01 08:30:00 UTC")
+    )
+    step.update_columns(state: "failed", finished_at: run.finished_at)
+    workflow.update_columns(state: "failed", finished_at: run.finished_at)
+    RunDiagnostic.create!(
+      run: run,
+      error_class: "Steps::Base::StepFailed",
+      error_message: "You're out of extra usage · resets 7am (America/New_York)"
+    )
+    RunFailureClassification.create!(
+      run: run,
+      classification: "provider_usage_limit",
+      retryable: false,
+      confidence: 0.95,
+      reason: "provider usage exhausted",
+      classified_at: run.finished_at
+    )
+
+    expect {
+      reconcile_and_execute(run_id: run.id, now: Time.zone.parse("2026-08-01 10:00:00 UTC"))
+    }.to change { AutoRetryAttempt.where(failure_classification: "provider_usage_limit").count }.by(1)
+      .and have_enqueued_job(AutoRetryJob)
+
+    attempt = AutoRetryAttempt.last
+    expect(attempt).to have_attributes(workflow: workflow, run: run, retry_kind: "failed_step")
+    expect(attempt.scheduled_at.to_i).to eq(reset_at.to_i)
   end
 
   it "does not execute safe retry plans while the provider circuit is open" do

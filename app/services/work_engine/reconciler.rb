@@ -12,7 +12,6 @@ module WorkEngine
       git_non_fast_forward
       no_changes_produced
       semantic_failure
-      provider_usage_limit
     ].freeze
 
     Issue = Data.define(
@@ -584,7 +583,7 @@ module WorkEngine
       runs.select(&:failed?).filter_map do |run|
         classification = run.run_failure_classification
         next if classification.nil?
-        next unless classification.retryable
+        next unless classification.retryable || provider_quota_classification?(classification)
 
         issue(
           kind: :retryable_run_failure,
@@ -600,7 +599,9 @@ module WorkEngine
             reason: classification.reason,
             step_repair_semantics: step_repair_semantics(run.step)
           ),
-          explanation: "Run ##{run.id} failed with a retryable classification."
+          explanation: provider_quota_classification?(classification) ?
+            "Run ##{run.id} failed because the provider usage quota is exhausted." :
+            "Run ##{run.id} failed with a retryable classification."
         )
       end
     end
@@ -609,6 +610,8 @@ module WorkEngine
       runs.select(&:failed?).filter_map do |run|
         classification = run.run_failure_classification
         next if classification.nil?
+        next if provider_quota_classification?(classification)
+
         nonretryable = classification.retryable == false || NONRETRYABLE_CLASSIFICATIONS.include?(classification.classification)
         next unless nonretryable
 
@@ -945,9 +948,15 @@ module WorkEngine
     end
 
     def retry_after_for(run, classification)
+      quota_reset = ProviderQuotaReset.retry_after_for_run(run, now: now)
+      return quota_reset if provider_quota_classification?(classification) && quota_reset
       return run.user.gh_rate_limit_reset_at if classification.classification == "rate_limited" && run.user.gh_rate_limit_reset_at&.future?
 
       nil
+    end
+
+    def provider_quota_classification?(classification)
+      classification&.classification == ProviderUsageLimit::CLASSIFICATION
     end
 
     def step_repair_semantics(step)

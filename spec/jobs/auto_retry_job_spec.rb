@@ -134,22 +134,26 @@ RSpec.describe AutoRetryJob do
     expect(attempt.performed_at).to be_nil
   end
 
-  it "records a skipped reason and starts no workflow when the provider circuit is open" do
+  it "reschedules the same attempt when the provider circuit is still open" do
     attempt = failed_attempt!(retry_kind: "retry_workflow")
+    retry_after = 10.minutes.from_now
     open_circuit = ProviderCircuitBreaker::Decision.new(
       provider: "claude",
       open: true,
       reason: "provider transient failures",
-      retry_after: 10.minutes.from_now,
+      retry_after: retry_after,
       failure_count: 5,
       job_count: 3,
       signature: nil
     )
     allow(ProviderCircuitBreaker).to receive(:call).and_return(open_circuit)
 
-    described_class.perform_now(attempt.id)
+    expect {
+      described_class.perform_now(attempt.id)
+    }.to have_enqueued_job(described_class).with(attempt.id)
 
-    expect(attempt.reload.skipped_reason).to include("appears degraded")
+    expect(attempt.reload.scheduled_at.to_i).to eq(retry_after.to_i)
+    expect(attempt.skipped_reason).to be_nil
     expect(attempt.performed_at).to be_nil
     expect(job.workflows.count).to eq(1)
   end

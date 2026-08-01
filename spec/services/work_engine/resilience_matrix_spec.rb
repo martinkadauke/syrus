@@ -288,7 +288,7 @@ RSpec.describe "Work engine resilience regression matrix" do
     "GitHub rate limit" => {
       issue_kind: :retryable_run_failure,
       action: :schedule_retry_after_rate_limit,
-      auto_executable: false,
+      auto_executable: true,
       setup: lambda {
         job, workflow, step, run = matrix_graph
         job.user.update!(gh_rate_limit_reset_at: 12.minutes.from_now)
