@@ -105,7 +105,6 @@ module ChatSerialization
         :agent_questions,
         :repository_attachments,
         { chat_attachments: :attachable },
-        { bookmarks: :chat_message },
         { pending_actions: [ :message, :user, :repository ] },
         { video_walkthroughs: { file_attachment: :blob } }
       ]
