@@ -30,6 +30,11 @@ that provider show an additive red triangle warning in dashboards, lists, and
 the Job header until usage is restored or the Job is retried/switched with
 another configured provider. Transient provider outages remain separate from
 quota exhaustion and keep the existing non-red circuit treatment.
+Repository throughput metrics are available per repository through the app
+repository overview and API at
+`GET /api/v1/app/repositories/:id/throughput_metrics`, reporting PR creation,
+output, landing, and review funnel windows with explicit confidence labels for
+sparse samples.
 
 Job kinds:
 
@@ -605,6 +610,34 @@ token totals, and the most expensive Runs for the current operator.
 The view respects the same ownership model as the rest of the app:
 non-admin users see only their own Run and chat costs, while admins see
 global totals across the instance.
+
+## Repository Throughput Metrics
+
+Repository throughput metrics use a versioned contract derived from
+existing Syrus records before adding rollup persistence. Each repository
+window reports counts, per-hour rates, sample counts, and confidence labels
+for PR creation, committed output, landing throughput, landing waste, and
+the review funnel. Landing throughput treats a single auto-merge as one
+landing unit with one Job and an Epic merge train as one landing unit with
+its full member count, so operators can compare landing units/hour with Jobs
+landed/hour.
+
+The canonical windows are 1h, 4h, 24h, and 7d, plus a one-hour
+last-active fallback when recent activity is sparse. Low-sample windows are
+labelled instead of treated as stable averages, so operators can distinguish
+"nothing happened recently" from "the repository is slow."
+
+Landing windows also separate successful, failed, cancelled, and deferred
+attempts; report grader-phase time, mergeability/rebase wait, base-moved
+regrades, cached validation reuse, failed train cooldown waste, and a current
+optimistic capacity estimate from recent successful landing-unit wall time.
+
+Review funnel windows count Jobs that received PR feedback before approval,
+Jobs approved without feedback, feedback rounds per Job, and approval sources
+where Syrus can distinguish operator, bulk, auto-rule, and GitHub-review
+approval. They also report sample-sized latency distributions for PR open to
+first feedback, feedback to addressed, PR open to approval, approval to
+landing start, and approval to landed.
 
 ## Repository Automation
 
