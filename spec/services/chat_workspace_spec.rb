@@ -397,7 +397,7 @@ RSpec.describe ChatWorkspace, :ci_only do
       expect(result).not_to be_nil
       expect(result[:files]).to include("README.md")
       expect(result[:files]).not_to include("NEW.md")
-      expect(result[:checkout_branch]).to eq("syrus-chat-#{chat_session.id}")
+      expect(result[:checkout_branch]).to eq("main")
     end
   end
 
