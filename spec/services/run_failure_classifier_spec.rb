@@ -122,6 +122,26 @@ RSpec.describe RunFailureClassifier do
     expect(result.retryable).to eq(false)
   end
 
+  it "does not classify non-agentic grader output mentioning usage-limit UI as provider exhaustion" do
+    workflow = Workflow.create!(job: job, trigger_kind: "auto_merge", agent_provider: "codex")
+    grader_step = Step.create!(workflow: workflow, kind: "grader", position: 0)
+    grader_run = Run.create!(
+      job: job,
+      user: job.user,
+      step: grader_step,
+      trigger_kind: "auto_merge",
+      state: "failed",
+      agent_provider: "codex",
+      finished_at: Time.current
+    )
+    RunDiagnostic.create!(run: grader_run, error_class: "Steps::Base::StepFailed", error_message: "grader react-tests failed (exit 2)")
+    JobLog.append!(run: grader_run, chunk: "shows a red usage-limit warning in the job detail header", kind: "grade_log")
+
+    result = described_class.persist!(grader_run)
+
+    expect(result.classification).not_to eq("provider_usage_limit")
+  end
+
   it "classifies process timeouts from SpawnedProcess outcome" do
     run.update!(state: "failed")
     process("silent_timed_out")

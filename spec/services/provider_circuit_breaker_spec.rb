@@ -86,6 +86,34 @@ RSpec.describe ProviderCircuitBreaker do
     expect(decision.retry_after).to be_within(1.second).of(now + 23.hours + 59.minutes)
   end
 
+  it "does not open usage exhaustion from non-agentic grader output or stale classifications" do
+    job = Factories.job(repository: Factories.repository(user: user))
+    workflow = Workflow.create!(job: job, trigger_kind: "auto_merge", agent_provider: "codex")
+    step = Step.create!(workflow: workflow, kind: "grader", position: 0)
+    run = Run.create!(
+      job: job,
+      user: user,
+      step: step,
+      trigger_kind: "auto_merge",
+      state: "failed",
+      agent_provider: "codex",
+      finished_at: now - 1.minute
+    )
+    RunDiagnostic.create!(run: run, error_class: "Steps::Base::StepFailed", error_message: "grader react-tests failed (exit 2)")
+    JobLog.append!(run: run, chunk: "shows a red usage-limit warning in the job detail header", kind: "grade_log")
+    run.create_run_failure_classification!(
+      classification: "provider_usage_limit",
+      confidence: 0.95,
+      retryable: false,
+      reason: "usage exhausted",
+      classified_at: now
+    )
+
+    decision = described_class.call("codex", now: now)
+
+    expect(decision).not_to be_usage_limit
+  end
+
   it "keeps ordinary 429 rate limits on the existing repeated-failure path" do
     failed_agent_run(outcome: "rate_limited", message: "HTTP 429 too many requests, retry later")
 

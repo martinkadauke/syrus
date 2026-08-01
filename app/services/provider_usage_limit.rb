@@ -24,6 +24,13 @@ class ProviderUsageLimit
     LIMIT_PATTERNS.any? { |pattern| text.to_s.match?(pattern) }
   end
 
+  def self.run_can_exhaust_provider?(run)
+    return true if run.agent_outcome.to_s == OUTCOME
+    return true if run.step.nil?
+
+    run.step&.agentic? == true
+  end
+
   def self.extract_model(text, fallback: nil)
     explicit = fallback.to_s.strip.presence
     return explicit if explicit

@@ -174,9 +174,13 @@ class ProviderCircuitBreaker
   end
 
   def usage_limit?(run, text)
-    run.agent_outcome.to_s == ProviderUsageLimit::OUTCOME ||
+    return true if run.agent_outcome.to_s == ProviderUsageLimit::OUTCOME
+    return false unless ProviderUsageLimit.run_can_exhaust_provider?(run)
+
+    (
       run.run_failure_classification&.classification == ProviderUsageLimit::CLASSIFICATION ||
       ProviderUsageLimit.detect?(text)
+    )
   end
 
   def retryable?(run)

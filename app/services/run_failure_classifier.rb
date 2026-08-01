@@ -89,8 +89,10 @@ class RunFailureClassifier
   end
 
   def provider_usage_limit?
-    ProviderUsageLimit.detect?(searchable_text) ||
-      run.agent_outcome.to_s == ProviderUsageLimit::OUTCOME
+    return true if run.agent_outcome.to_s == ProviderUsageLimit::OUTCOME
+    return false unless ProviderUsageLimit.run_can_exhaust_provider?(run)
+
+    ProviderUsageLimit.detect?(searchable_text)
   end
 
   def timeout?
