@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export COVERAGE="${COVERAGE:-false}"
+
+bin/rspec-fast "$@"
+RUN_CI_ONLY_SPECS=true bin/rspec --tag ci_only "$@"

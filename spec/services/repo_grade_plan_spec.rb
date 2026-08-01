@@ -13,6 +13,8 @@ RSpec.describe RepoGradePlan do
           steps:
             - name: tests
               run: bin/rspec
+              fast: bin/rspec-fast
+              ci: RUN_CI_ONLY_SPECS=true bin/rspec
             - name: audit
               run: bin/bundler-audit
               required: false
@@ -23,6 +25,8 @@ RSpec.describe RepoGradePlan do
 
       expect(result.graders.map(&:name)).to eq(%w[tests audit])
       expect(result.graders.map(&:command)).to eq([ "bin/rspec", "bin/bundler-audit" ])
+      expect(result.graders.map(&:fast_command)).to eq([ "bin/rspec-fast", nil ])
+      expect(result.graders.map(&:ci_command)).to eq([ "RUN_CI_ONLY_SPECS=true bin/rspec", nil ])
       expect(result.graders.map(&:required)).to eq([ true, false ])
       expect(result.graders.map(&:timeout_minutes)).to eq([ 15, 5 ])
     end

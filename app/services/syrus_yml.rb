@@ -28,7 +28,7 @@ class SyrusYml
   Config = Data.define(:prepare, :grade, :hooks, :adversarial_review, :coverage, :formatters, :generated, :reconciliation_mode, :deployment_stages)
   DeploymentStage = Data.define(:name, :label, :tag, :tag_pattern)
   GradeConfig = Data.define(:max_iterations, :steps)
-  GradeStep = Data.define(:name, :run, :fast, :description, :required, :timeout_minutes, :when_files_changed, :junit_output)
+  GradeStep = Data.define(:name, :run, :fast, :ci, :description, :required, :timeout_minutes, :when_files_changed, :junit_output)
   # Deterministic, in-place, semantics-preserving cosmetic passes (safe
   # autocorrect only). `files` are the globs this formatter owns — both its
   # target set and its self-gate (empty slice of the diff → no-op).
@@ -216,6 +216,7 @@ class SyrusYml
     run = raw["run"].to_s.strip
     raise ParseError, "#{label}.run: is required" if run.empty?
     fast = raw["fast"].to_s.strip.presence
+    ci = raw["ci"].to_s.strip.presence
 
     when_files_changed = raw["when_files_changed"]
     if !when_files_changed.nil?
@@ -227,6 +228,7 @@ class SyrusYml
       name: name,
       run: run,
       fast: fast,
+      ci: ci,
       description: raw["description"].to_s.strip.presence,
       required: raw.key?("required") ? ActiveModel::Type::Boolean.new.cast(raw["required"]) : true,
       timeout_minutes: parse_timeout_minutes(raw.fetch("timeout_minutes", DEFAULT_GRADE_TIMEOUT_MINUTES), name),

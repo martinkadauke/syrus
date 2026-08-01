@@ -111,7 +111,9 @@ RSpec.describe Steps::GraderFanout do
     expect(details["command"]).to eq("bin/rspec")
     expect(details["standard_command"]).to eq("bin/rspec")
     expect(details["fast_command"]).to eq("COVERAGE=false bin/rspec")
+    expect(details["command_variant"]).to eq("normal")
     expect(details["fast_variant"]).to be false
+    expect(details["ci_variant"]).to be false
   end
 
   it "uses the fast grader command for landing validations" do
@@ -129,7 +131,49 @@ RSpec.describe Steps::GraderFanout do
     expect(details["command"]).to eq("COVERAGE=false bin/rspec")
     expect(details["standard_command"]).to eq("bin/rspec")
     expect(details["fast_command"]).to eq("COVERAGE=false bin/rspec")
+    expect(details["command_variant"]).to eq("fast")
     expect(details["fast_variant"]).to be true
+    expect(details["ci_variant"]).to be false
+  end
+
+  it "uses the CI grader command for CI failure validations" do
+    workflow.update!(trigger_kind: "ci_failure")
+    write_config(<<~YAML)
+      grade:
+        - name: rspec
+          run: bin/rspec
+          fast: bin/rspec-fast
+          ci: RUN_CI_ONLY_SPECS=true bin/rspec
+    YAML
+
+    handler.call
+
+    details = workflow.steps.find_by!(kind: "grader").details
+    expect(details["command"]).to eq("RUN_CI_ONLY_SPECS=true bin/rspec")
+    expect(details["standard_command"]).to eq("bin/rspec")
+    expect(details["fast_command"]).to eq("bin/rspec-fast")
+    expect(details["ci_command"]).to eq("RUN_CI_ONLY_SPECS=true bin/rspec")
+    expect(details["command_variant"]).to eq("ci")
+    expect(details["fast_variant"]).to be false
+    expect(details["ci_variant"]).to be true
+  end
+
+  it "falls back to the normal command in CI failure contexts when no CI command is configured" do
+    workflow.update!(trigger_kind: "ci_failure")
+    write_config(<<~YAML)
+      grade:
+        - name: rspec
+          run: bin/rspec
+          fast: bin/rspec-fast
+    YAML
+
+    handler.call
+
+    details = workflow.steps.find_by!(kind: "grader").details
+    expect(details["command"]).to eq("bin/rspec")
+    expect(details["command_variant"]).to eq("ci")
+    expect(details["fast_variant"]).to be false
+    expect(details["ci_variant"]).to be false
   end
 
   it "falls back to the normal command in fast contexts when no fast command is configured" do
@@ -144,6 +188,7 @@ RSpec.describe Steps::GraderFanout do
 
     details = workflow.steps.find_by!(kind: "grader").details
     expect(details["command"]).to eq("bin/rspec")
+    expect(details["command_variant"]).to eq("fast")
     expect(details["fast_variant"]).to be false
   end
 

@@ -17,7 +17,6 @@ module Steps
   class GraderFanout < Base
     FAST_GRADER_TRIGGER_KINDS = %w[
       auto_merge
-      ci_failure
       main_branch_repair
       main_grader
       merge_train
@@ -45,7 +44,7 @@ module Steps
         log("[grader_fanout] no graders configured — collect Step will pass through")
         return
       end
-      log("[grader_fanout] using fast grader variants where configured") if fast_grader_context?
+      log("[grader_fanout] using #{grader_command_variant} grader variants where configured") unless normal_grader_context?
 
       # Skip graders whose when_files_changed globs don't match this PR's diff.
       files = changed_files
@@ -165,7 +164,10 @@ module Steps
               "command" => grader.command,
               "standard_command" => grader.metadata["standard_command"],
               "fast_command" => grader.metadata["fast_command"],
+              "ci_command" => grader.metadata["ci_command"],
+              "command_variant" => grader.metadata["command_variant"],
               "fast_variant" => grader.metadata["fast_variant"],
+              "ci_variant" => grader.metadata["ci_variant"],
               "description" => grader.description,
               "required" => grader.required,
               "timeout_minutes" => grader.timeout_minutes,
@@ -183,19 +185,33 @@ module Steps
     end
 
     def effective_plan(plan)
-      fast = fast_grader_context?
+      variant = grader_command_variant
       plan.with(
         graders: plan.graders.map do |grader|
-          command = grader.command_for(fast: fast)
+          command = grader.command_for(variant: variant)
           metadata = {
             "standard_command" => grader.command,
             "fast_command" => grader.fast_command,
-            "fast_variant" => fast && grader.fast_command.present?
+            "ci_command" => grader.ci_command,
+            "command_variant" => variant.to_s,
+            "fast_variant" => variant == :fast && grader.fast_command.present?,
+            "ci_variant" => variant == :ci && grader.ci_command.present?
           }.compact
 
           grader.with(command: command, metadata: metadata)
         end
       )
+    end
+
+    def normal_grader_context?
+      grader_command_variant == :normal
+    end
+
+    def grader_command_variant
+      return :ci if workflow.trigger_kind == "ci_failure"
+      return :fast if fast_grader_context?
+
+      :normal
     end
 
     def fast_grader_context?

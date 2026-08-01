@@ -15,9 +15,16 @@ class RepoGradePlan
   CONFIG_FILE = ".syrus.yml".freeze
   NAME_PATTERN = SyrusYml::GRADE_NAME_PATTERN
 
-  Grader = Data.define(:name, :command, :fast_command, :description, :required, :timeout_minutes, :when_files_changed, :junit_output, :metadata) do
-    def command_for(fast:)
-      fast && fast_command.present? ? fast_command : command
+  Grader = Data.define(:name, :command, :fast_command, :ci_command, :description, :required, :timeout_minutes, :when_files_changed, :junit_output, :metadata) do
+    def command_for(variant:)
+      case variant.to_sym
+      when :ci
+        ci_command.presence || command
+      when :fast
+        fast_command.presence || command
+      else
+        command
+      end
     end
   end
   Result = Data.define(:graders, :source, :note, :max_iterations)
@@ -56,6 +63,7 @@ class RepoGradePlan
       name: step.name,
       command: step.run,
       fast_command: step.fast,
+      ci_command: step.ci,
       description: step.description,
       required: step.required,
       timeout_minutes: step.timeout_minutes,

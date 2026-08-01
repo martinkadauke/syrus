@@ -37,6 +37,7 @@ grade:
     - name: rspec
       run: bin/rspec
       fast: COVERAGE=false bin/rspec
+      ci: RUN_CI_ONLY_SPECS=true COVERAGE=false bin/rspec
       description: Run the Ruby test suite
       required: true
       timeout_minutes: 15
@@ -66,6 +67,7 @@ grade:
 | `name` | yes | — | Alphanumeric + hyphens; must be unique |
 | `run` | yes | — | Shell command |
 | `fast` | no | — | Alternate shell command for pass/fail-only validation contexts |
+| `ci` | no | — | Alternate shell command for `ci_failure` workflows |
 | `description` | no | — | Human-readable label |
 | `required` | no | `true` | Non-required failures warn but don't block |
 | `timeout_minutes` | no | 15 | Clamped to 30 max |
@@ -73,7 +75,7 @@ grade:
 
 ### fast
 
-`fast` is an optional alternate command for the same grader. Syrus uses it when the grader result is only a pass/fail safety check and no fresh coverage report is consumed: `main_grader`, `main_branch_repair`, `ci_failure`, `auto_merge`, `merge_train`, and implementation/feedback/coding grade-loop iterations after the first. If `fast` is absent, Syrus falls back to `run`.
+`fast` is an optional alternate command for the same grader. Syrus uses it when the grader result is only a pass/fail safety check and no fresh coverage report is consumed: `main_grader`, `main_branch_repair`, `auto_merge`, `merge_train`, and implementation/feedback/coding grade-loop iterations after the first. If `fast` is absent, Syrus falls back to `run`.
 
 For example, a Ruby suite can keep coverage on for the first implementation validation while disabling coverage instrumentation for landing and repair rechecks:
 
@@ -82,6 +84,18 @@ grade:
   - name: rspec
     run: bin/rspec
     fast: COVERAGE=false bin/rspec
+```
+
+### ci
+
+`ci` is an optional alternate command for `ci_failure` workflows. Use it when the CI-only checks are too expensive for normal Syrus grading, but must run when Syrus is specifically repairing a failed CI check. If `ci` is absent, Syrus falls back to `run`; it never falls back from `ci` to `fast`.
+
+```yaml
+grade:
+  - name: rspec
+    run: bin/rspec
+    fast: COVERAGE=false bin/rspec-fast
+    ci: RUN_CI_ONLY_SPECS=true COVERAGE=false bin/rspec
 ```
 
 ### when_files_changed
