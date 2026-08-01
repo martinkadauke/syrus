@@ -66,3 +66,9 @@ worker-death auto-retries.
 When the `unified_work_engine_reconciler` feature flag is enabled, the same
 admin action defers to the unified work-engine reconciler instead of enqueueing
 the legacy mutation path.
+
+The reconciler also cancels queued automatic retry Workflows when the failed
+source Workflow has already been superseded by a newer successful Workflow. In
+that case cancellation takes precedence over re-enqueueing any stale queued Run
+inside the retry Workflow, so old auto-retry debris does not re-open completed
+work.

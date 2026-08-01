@@ -34,6 +34,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       queued_dead_resume_queue
       queued_with_healthy_queue_job_beside_dead_resume_job
       inline_successor_owned_by_live_root_job
+      stale_auto_retry_workflow_with_queued_run
       stale_running_run_without_worker_evidence
       fresh_running_run
       missing_local_workspace
@@ -263,6 +264,49 @@ RSpec.describe "Work engine reconciler chaos simulation" do
         "queued inline successor owned by a live root RunJob",
         target: { workflow_id: workflow.id },
         forbidden_issues: %i[queued_run_without_queue_claim queued_run_stale_queue_claim],
+        forbidden_actions: %i[reenqueue_run]
+      )
+    end
+
+    def stale_auto_retry_workflow_with_queued_run
+      job, source, step, run = graph
+      fail_run!(source, step, run)
+      job.update!(state: "implemented")
+      successful = Workflows::Retry.instantiate(job: job, agent_provider: job.agent_provider)
+      successful.update_columns(
+        state: "succeeded",
+        created_at: 4.minutes.ago,
+        started_at: 4.minutes.ago,
+        finished_at: 3.minutes.ago
+      )
+      attempt = AutoRetryAttempt.create!(
+        job: job,
+        workflow: source,
+        run: run,
+        agent_provider: job.agent_provider,
+        failure_classification: "worker_died",
+        retry_kind: "retry_workflow",
+        attempt_number: 1,
+        scheduled_at: 2.minutes.ago,
+        performed_at: 2.minutes.ago
+      )
+      stale = Workflows::Retry.instantiate(
+        job: job,
+        artifacts: { "auto_retry_attempt_id" => attempt.id },
+        agent_provider: job.agent_provider
+      )
+      stale.update_columns(created_at: 2.minutes.ago, updated_at: 2.minutes.ago)
+      StepDispatcher.start_workflow(stale)
+      stale_run = stale.first_step.runs.first
+      stale_run.update_columns(created_at: old_active_age.ago, updated_at: old_active_age.ago)
+      trace << "workflow=#{stale.id}:stale_auto_retry run=#{stale_run.id}:old_queued"
+
+      expectation(
+        "stale auto-retry workflow with queued run",
+        target: { workflow_id: stale.id },
+        expected_issue: :stale_auto_retry_workflow,
+        expected_action: :cancel_stale_auto_retry_workflow,
+        forbidden_issues: %i[queued_run_without_queue_claim],
         forbidden_actions: %i[reenqueue_run]
       )
     end

@@ -216,6 +216,8 @@ module WorkEngine
 
         sqs = solid_queue_jobs_for_run(run)
         workflow = run.workflow
+        next if stale_auto_retry_attempt_for(workflow)
+
         if sqs.empty?
           issue(
             kind: :queued_run_without_queue_claim,
@@ -356,13 +358,9 @@ module WorkEngine
 
     def classify_stale_auto_retry_workflows
       workflows.filter_map do |workflow|
-        next unless workflow.trigger_kind == "retry" && workflow.queued?
-        attempt_id = workflow.artifact("auto_retry_attempt_id")
-        next if attempt_id.blank?
-
-        attempt = AutoRetryAttempt.includes(:workflow).find_by(id: attempt_id)
+        attempt = stale_auto_retry_attempt_for(workflow)
         source = attempt&.workflow
-        next unless source && newer_successful_workflow?(workflow.job, source)
+        next unless source
 
         issue(
           kind: :stale_auto_retry_workflow,
@@ -379,6 +377,21 @@ module WorkEngine
           explanation: "Workflow ##{workflow.id} is an auto-retry for Workflow ##{source.id}, but that source failure was already superseded by a successful Workflow."
         )
       end
+    end
+
+    def stale_auto_retry_attempt_for(workflow)
+      return nil unless workflow&.trigger_kind == "retry" && workflow.queued?
+
+      @stale_auto_retry_attempts ||= {}
+      return @stale_auto_retry_attempts[workflow.id] if @stale_auto_retry_attempts.key?(workflow.id)
+
+      attempt_id = workflow.artifact("auto_retry_attempt_id")
+      attempt = AutoRetryAttempt.includes(:workflow).find_by(id: attempt_id) if attempt_id.present?
+      source = attempt&.workflow
+      @stale_auto_retry_attempts[workflow.id] =
+        if source && newer_successful_workflow?(workflow.job, source)
+          attempt
+        end
     end
 
     def classify_job_workflow_drift

@@ -243,11 +243,14 @@ RSpec.describe WorkEngine::Reconciler do
     stale.update_columns(created_at: 9.minutes.ago)
     StepDispatcher.start_workflow(stale)
     stale.reload
+    stale.first_step.runs.first.update_columns(created_at: 9.minutes.ago, updated_at: 9.minutes.ago)
 
     result = reconcile_and_execute(job_id: job.id)
     issue = kind(result, :stale_auto_retry_workflow)
 
     expect(issue).to be_present
+    expect(kind(result, :queued_run_without_queue_claim)).to be_nil
+    expect(plan(result, :reenqueue_run)).to be_nil
     expect(plan(result, :cancel_stale_auto_retry_workflow)).to have_attributes(
       auto_executable: true,
       target_type: "Workflow",
