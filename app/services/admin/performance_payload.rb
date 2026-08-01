@@ -7,9 +7,12 @@ module Admin
     end
 
     def as_json(*)
-      events = PerformanceLogging::Store.recent(limit: limit)
+      raw_events = PerformanceLogging::Store.recent(limit: limit)
+      events = filter_events(raw_events)
       {
         enabled: Feature.enabled?(PerformanceLogging::FEATURE_SLUG),
+        current_revision: current_revision,
+        revision_scope: revision_scope,
         thresholds: PerformanceLogging.thresholds,
         storage: storage_payload,
         summaries: summaries_payload(events),
@@ -33,6 +36,20 @@ module Admin
         max_events: PerformanceLogging::Store::MAX_EVENTS,
         expires_in_seconds: PerformanceLogging::Store::EXPIRES_IN.to_i
       }
+    end
+
+    def filter_events(events)
+      return events if revision_scope == "all"
+
+      events.select { |event| event["app_revision"] == current_revision }
+    end
+
+    def revision_scope
+      params[:revision_scope].to_s == "all" ? "all" : "current"
+    end
+
+    def current_revision
+      SyrusVersion.current
     end
 
     def cache_store_name

@@ -1,18 +1,19 @@
 import { useQuery } from "@tanstack/react-query"
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { fetchAdminPerformance, type AdminPerformancePayload, type PerformanceEvent, type SlowPhaseSummary, type SlowRequestSummary, type SqlFingerprintSummary } from "../api/adminPerformance"
 import { useT } from "../hooks/useT"
 import { usePageTitle } from "../hooks/usePageTitle"
 import { errorMessage } from "../lib/errorMessage"
 
-const queryKey = ["admin", "performance"] as const
+type RevisionScope = "current" | "all"
 
 export function AdminPerformance() {
   const { t } = useT("admin")
+  const [revisionScope, setRevisionScope] = useState<RevisionScope>("current")
   usePageTitle(t("page_title_performance"))
   const performance = useQuery({
-    queryKey,
-    queryFn: () => fetchAdminPerformance()
+    queryKey: ["admin", "performance", revisionScope],
+    queryFn: () => fetchAdminPerformance(200, revisionScope)
   })
 
   return (
@@ -22,14 +23,20 @@ export function AdminPerformance() {
           <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{t("section_label")}</p>
           <h1 className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{t("performance.heading")}</h1>
         </div>
-        <button
-          className="inline-flex shrink-0 items-center justify-center rounded border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:text-gray-500"
-          disabled={performance.isFetching}
-          onClick={() => void performance.refetch()}
-          type="button"
-        >
-          {performance.isFetching ? t("performance.refreshing") : t("performance.refresh")}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="inline-flex rounded border border-gray-300 bg-white p-0.5 text-sm dark:border-gray-600 dark:bg-gray-900" role="group" aria-label={t("performance.revision_filter")}>
+            <button className={scopeButtonClass(revisionScope === "current")} onClick={() => setRevisionScope("current")} type="button">{t("performance.current_revision")}</button>
+            <button className={scopeButtonClass(revisionScope === "all")} onClick={() => setRevisionScope("all")} type="button">{t("performance.all_revisions")}</button>
+          </div>
+          <button
+            className="inline-flex items-center justify-center rounded border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:text-gray-500"
+            disabled={performance.isFetching}
+            onClick={() => void performance.refetch()}
+            type="button"
+          >
+            {performance.isFetching ? t("performance.refreshing") : t("performance.refresh")}
+          </button>
+        </div>
       </header>
 
       {performance.isPending ? <PanelMessage>{t("performance.loading")}</PanelMessage> : null}
@@ -45,9 +52,10 @@ function PerformanceView({ payload }: { payload: AdminPerformancePayload }) {
 
   return (
     <div className="space-y-6">
-      <section aria-label={t("performance.aria_summary")} className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section aria-label={t("performance.aria_summary")} className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <Metric title={t("performance.enabled")} value={payload.enabled ? t("performance.yes") : t("performance.no")} tone={payload.enabled ? "ok" : "warn"} />
         <Metric title={t("performance.events")} value={eventCount} context={t("performance.events_context", { max: payload.storage.max_events })} />
+        <Metric title={t("performance.revision")} value={payload.revision_scope === "all" ? t("performance.all_revisions_short") : shortRevision(payload.current_revision)} context={payload.revision_scope === "all" ? t("performance.all_revisions_context") : t("performance.current_revision_context")} />
         <Metric title={t("performance.storage")} value={payload.storage.kind} context={t("performance.retention", { hours: Math.round(payload.storage.expires_in_seconds / 3600) })} />
         <Metric title={t("performance.thresholds")} value={formatMs(payload.thresholds.slow_request_ms)} context={t("performance.threshold_context", { phase: formatMs(payload.thresholds.slow_phase_ms), sql: formatMs(payload.thresholds.slow_sql_ms) })} />
       </section>
@@ -172,6 +180,7 @@ function EventsTable({ rows }: { rows: PerformanceEvent[] }) {
         <thead className="bg-gray-50 text-left text-xs font-medium uppercase text-gray-500 dark:bg-gray-800 dark:text-gray-400">
           <tr>
             <th className="px-4 py-2">{t("performance.col_time")}</th>
+            <th className="px-4 py-2">{t("performance.col_revision")}</th>
             <th className="px-4 py-2">{t("performance.col_event")}</th>
             <th className="px-4 py-2 text-right">{t("performance.col_duration")}</th>
             <th className="px-4 py-2">{t("performance.col_context")}</th>
@@ -181,6 +190,7 @@ function EventsTable({ rows }: { rows: PerformanceEvent[] }) {
           {rows.map((row, index) => (
             <tr key={`${row.occurred_at}-${row.event}-${index}`}>
               <td className="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300">{formatDate(row.occurred_at)}</td>
+              <td className="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-600 dark:text-gray-300">{shortRevision(row.app_revision)}</td>
               <td className="px-4 py-2 font-mono text-xs text-gray-900 dark:text-gray-100">{shortEvent(row.event)}</td>
               <NumberCell value={formatMs(row.duration_ms)} />
               <td className="max-w-4xl px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
@@ -193,6 +203,12 @@ function EventsTable({ rows }: { rows: PerformanceEvent[] }) {
       </table>
     </TableSection>
   )
+}
+
+function scopeButtonClass(active: boolean) {
+  return active
+    ? "rounded bg-gray-900 px-3 py-1.5 font-medium text-white dark:bg-gray-100 dark:text-gray-900"
+    : "rounded px-3 py-1.5 font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100"
 }
 
 function TableSection({ children, empty, rowCount, title }: { children: ReactNode; empty: string; rowCount: number; title: string }) {
@@ -246,4 +262,9 @@ function compactJson(value: Record<string, unknown> | null | undefined) {
 
 function shortEvent(value: string) {
   return value.replace("syrus.performance.", "")
+}
+
+function shortRevision(value: string | null | undefined) {
+  if (!value) return "-"
+  return value.length > 12 ? value.slice(0, 12) : value
 }

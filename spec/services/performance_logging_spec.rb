@@ -6,6 +6,7 @@ RSpec.describe PerformanceLogging do
   before do
     allow(Rails).to receive(:cache).and_return(cache_store)
     allow(Rails.logger).to receive(:info)
+    allow(SyrusVersion).to receive(:current).and_return("sha-current")
     Feature.where(slug: "performance_logging").delete_all
     Current.reset
   end
@@ -39,6 +40,7 @@ RSpec.describe PerformanceLogging do
     event = described_class::Store.recent.first
     expect(event).to include(
       "event" => "syrus.performance.slow_sql",
+      "app_revision" => "sha-current",
       "request_id" => "req-123",
       "path" => "/jobs",
       "user_id" => 7,

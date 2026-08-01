@@ -52,6 +52,7 @@ export type SqlFingerprintSummary = {
 export type PerformanceEvent = {
   event: string
   occurred_at?: string | null
+  app_revision?: string | null
   duration_ms?: number | null
   method?: string | null
   path?: string | null
@@ -70,6 +71,8 @@ export type PerformanceEvent = {
 
 export type AdminPerformancePayload = {
   enabled: boolean
+  current_revision: string
+  revision_scope: "current" | "all"
   thresholds: PerformanceThresholds
   storage: PerformanceStorage
   summaries: {
@@ -80,6 +83,7 @@ export type AdminPerformancePayload = {
   events: PerformanceEvent[]
 }
 
-export function fetchAdminPerformance(limit = 200) {
-  return getJson<AdminPerformancePayload>(`/api/v1/app/admin/performance?limit=${limit}`)
+export function fetchAdminPerformance(limit = 200, revisionScope: "current" | "all" = "current") {
+  const params = new URLSearchParams({ limit: String(limit), revision_scope: revisionScope })
+  return getJson<AdminPerformancePayload>(`/api/v1/app/admin/performance?${params.toString()}`)
 }

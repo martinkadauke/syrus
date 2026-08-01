@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
@@ -13,7 +13,7 @@ describe("AdminPerformance", () => {
     renderRoute(<AdminPerformance />)
 
     expect(await screen.findByRole("heading", { name: "Performance" })).toBeInTheDocument()
-    expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/admin/performance?limit=200", expect.objectContaining({
+    expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/admin/performance?limit=200&revision_scope=current", expect.objectContaining({
       credentials: "same-origin"
     }))
 
@@ -21,6 +21,7 @@ describe("AdminPerformance", () => {
     const summary = await screen.findByRole("region", { name: "Performance summary" })
     expect(within(summary).getByText("yes")).toBeInTheDocument()
     expect(within(summary).getByText("2")).toBeInTheDocument()
+    expect(within(summary).getByText("abcdef123456")).toBeInTheDocument()
     expect(within(summary).getByText("rails.cache")).toBeInTheDocument()
     expect(within(summary).getByText("1.00s")).toBeInTheDocument()
 
@@ -29,6 +30,11 @@ describe("AdminPerformance", () => {
     expect(screen.getByText("SELECT `jobs`.* FROM `jobs` WHERE `jobs`.`state` = ?")).toBeInTheDocument()
     expect(screen.getByText("request")).toBeInTheDocument()
     expect(screen.getByText("246 SQL · 629ms")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "All SHAs" }))
+    await waitFor(() => expect(fetchSpy).toHaveBeenLastCalledWith("/api/v1/app/admin/performance?limit=200&revision_scope=all", expect.objectContaining({
+      credentials: "same-origin"
+    })))
   })
 })
 
@@ -45,6 +51,8 @@ function renderRoute(children: ReactNode) {
 function performancePayload() {
   return {
     enabled: true,
+    current_revision: "abcdef1234567890",
+    revision_scope: "current",
     thresholds: {
       slow_request_ms: 1000,
       slow_sql_ms: 500,
@@ -101,6 +109,7 @@ function performancePayload() {
       {
         event: "syrus.performance.request",
         occurred_at: "2026-08-01T14:32:45Z",
+        app_revision: "abcdef1234567890",
         duration_ms: 1180,
         method: "GET",
         path: "/api/v1/app/chats/126",
@@ -110,6 +119,7 @@ function performancePayload() {
       {
         event: "syrus.performance.phase",
         occurred_at: "2026-08-01T14:32:46Z",
+        app_revision: "abcdef1234567890",
         duration_ms: 620,
         phase: "chat_payload.recent_chats"
       }

@@ -199,6 +199,7 @@ module PerformanceLogging
     {
       "event" => name,
       "occurred_at" => Time.current.iso8601(6),
+      "app_revision" => SyrusVersion.current,
       "pid" => Process.pid
     }
   end

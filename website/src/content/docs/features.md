@@ -460,9 +460,12 @@ request events include request/user context, SQL counters, and top SQL
 fingerprints for that request; phase events cover expensive dashboard, chat,
 repository, job detail, bootstrap, spending, and admin payload builders. The
 admin performance endpoint returns recent raw events plus grouped summaries for
-slow routes, phases, and SQL fingerprints. The in-app diagnostics buffer is
-cache-backed, capped at 200 events, and expires after 6 hours; structured log
-retention follows the deployment's log sink policy.
+slow routes, phases, and SQL fingerprints. Events are stamped with the running
+app revision, and the admin view defaults to the current revision so stale
+pre-deploy timings do not hide whether a new deploy helped; admins can switch
+to all revisions when investigating rolling-deploy overlap. The in-app
+diagnostics buffer is cache-backed, capped at 200 events, and expires after 6
+hours; structured log retention follows the deployment's log sink policy.
 
 ## Direct Jobs
 
