@@ -18,20 +18,22 @@ module App
 
     UNSET = Object.new.freeze
 
-    def self.for(job, latest_workflow: UNSET, latest_run: UNSET, latest_run_diagnostic: UNSET)
+    def self.for(job, latest_workflow: UNSET, latest_run: UNSET, latest_run_diagnostic: UNSET, any_active_run: UNSET)
       new(
         job,
         latest_workflow: latest_workflow,
         latest_run: latest_run,
-        latest_run_diagnostic: latest_run_diagnostic
+        latest_run_diagnostic: latest_run_diagnostic,
+        any_active_run: any_active_run
       ).as_json
     end
 
-    def initialize(job, latest_workflow: UNSET, latest_run: UNSET, latest_run_diagnostic: UNSET)
+    def initialize(job, latest_workflow: UNSET, latest_run: UNSET, latest_run_diagnostic: UNSET, any_active_run: UNSET)
       @job = job
       @latest_workflow_override = latest_workflow
       @latest_run_override = latest_run
       @latest_run_diagnostic_override = latest_run_diagnostic
+      @any_active_run_override = any_active_run
     end
 
     def as_json
@@ -111,11 +113,17 @@ module App
       return false if auto_retry_exhausted?
       return false if non_retryable_failure_text?
 
-      job.open? && !job.any_active_run?
+      job.open? && !any_active_run?
     end
 
     def next_auto_retry_at
       time_value(first_present(NEXT_RETRY_KEYS))
+    end
+
+    def any_active_run?
+      return job.any_active_run? if @any_active_run_override.equal?(UNSET)
+
+      @any_active_run_override
     end
 
     def retry_attempt_count

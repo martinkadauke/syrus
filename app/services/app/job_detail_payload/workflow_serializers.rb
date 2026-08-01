@@ -12,6 +12,8 @@ module App
 
       def workflows_json
         paginated_workflows.map do |workflow|
+          steps = ordered_steps_for(workflow)
+          latest_step = steps.last
           {
             id: workflow.id,
             slug: workflow.slug,
@@ -32,7 +34,7 @@ module App
             app_force_push_branch_path: "/api/v1/app/jobs/#{@job.id}/workflows/#{workflow.id}/force_push_branch",
             app_discard_branch_output_path: "/api/v1/app/jobs/#{@job.id}/workflows/#{workflow.id}/discard_branch_output",
             failure_classification: workflow_failure_classification_json(workflow),
-            steps: workflow.steps.order(:position).map { |step| step_json(step, workflow: workflow) }
+            steps: steps.map { |step| step_json(step, workflow: workflow, latest_step: latest_step) }
           }
         end
       end
@@ -87,7 +89,15 @@ module App
         "#{job_path(@job)}?#{ { tab: "workflows", workflows_page: page }.to_query }"
       end
 
-      def step_json(step, workflow:)
+      def ordered_steps_for(workflow)
+        workflow.steps.to_a.sort_by { |step| [ step.position || 0, step.id || 0 ] }
+      end
+
+      def ordered_runs_for(step)
+        step.runs.to_a.sort_by { |run| [ run.created_at || Time.zone.at(0), run.id || 0 ] }
+      end
+
+      def step_json(step, workflow:, latest_step:)
         {
           id: step.id,
           kind: step.kind,
@@ -102,8 +112,8 @@ module App
           created_at: iso8601(step.created_at),
           updated_at: iso8601(step.updated_at),
           details: step.details.presence,
-          latest: step == workflow.steps.last,
-          runs: step.runs.order(:created_at).map { |run| run_json(run, workflow: workflow) }
+          latest: step == latest_step,
+          runs: ordered_runs_for(step).map { |run| run_json(run, workflow: workflow) }
         }
       end
 
@@ -235,7 +245,7 @@ module App
 
       def visible_run_ids
         @visible_run_ids ||= paginated_workflows.flat_map do |workflow|
-          workflow.steps.flat_map { |step| step.runs.map(&:id) }
+          ordered_steps_for(workflow).flat_map { |step| ordered_runs_for(step).map(&:id) }
         end.compact
       end
 

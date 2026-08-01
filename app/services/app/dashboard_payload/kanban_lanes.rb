@@ -38,8 +38,6 @@ module App
               :owner_user,
               :claimed_by_user,
               :tags,
-              :workflows,
-              :runs,
               { dependencies: [ :depends_on_epic, { depends_on_job: :repository } ] },
               { chat_proposals: [ :chat_session, :messages ] },
               { epic: { chat_proposals: [ :chat_session, :messages ] } }
@@ -48,6 +46,7 @@ module App
             .limit(kanban_limit)
             .to_a
         end
+        PerformanceLogging.phase("dashboard_kanban_jobs.preload_runtime_state", count: records.size) { preload_job_runtime_state(records) }
 
         records.each do |job|
           lane = job_kanban_lane_for(job, visible_lanes)

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_01_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_01_182500) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -405,6 +405,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_150000) do
     t.datetime "updated_at", null: false
     t.integer "workflow_id", null: false
     t.index ["job_id"], name: "index_coverage_snapshots_on_job_id"
+    t.index ["repository_id", "branch", "created_at"], name: "idx_coverage_snapshots_repo_branch_created"
     t.index ["repository_id", "branch"], name: "index_coverage_snapshots_on_repository_id_and_branch"
     t.index ["repository_id", "created_at"], name: "index_coverage_snapshots_on_repository_id_and_created_at"
     t.index ["repository_id"], name: "index_coverage_snapshots_on_repository_id"
@@ -1172,6 +1173,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_150000) do
     t.text "worktree_git_status"
     t.text "worktree_recent_commits"
     t.index ["created_at"], name: "index_run_health_snapshots_on_created_at"
+    t.index ["run_id", "created_at", "id"], name: "idx_run_health_snapshots_run_created"
     t.index ["run_id"], name: "index_run_health_snapshots_on_run_id"
   end
 
@@ -1215,6 +1217,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_150000) do
     t.index ["job_id"], name: "index_runs_on_job_id"
     t.index ["parent_session_id"], name: "index_runs_on_parent_session_id"
     t.index ["state", "last_heartbeat_at"], name: "index_runs_on_state_and_last_heartbeat_at"
+    t.index ["step_id", "created_at", "id"], name: "idx_runs_step_created"
     t.index ["step_id"], name: "index_runs_on_step_id"
     t.index ["user_id", "agent_provider", "finished_at", "updated_at", "id"], name: "idx_runs_provider_latest_finished"
     t.index ["user_id", "created_at", "cost_usd"], name: "idx_runs_spending_user_window"
@@ -1297,6 +1300,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_150000) do
     t.index ["hostname"], name: "index_spawned_processes_on_hostname"
     t.index ["kill_requested_by_user_id"], name: "index_spawned_processes_on_kill_requested_by_user_id"
     t.index ["kind"], name: "index_spawned_processes_on_kind"
+    t.index ["run_id", "finished_at", "started_at", "id"], name: "idx_spawned_processes_run_active_started"
     t.index ["run_id"], name: "index_spawned_processes_on_run_id"
     t.index ["workflow_id"], name: "index_spawned_processes_on_workflow_id"
   end

@@ -378,7 +378,8 @@ module Api
           days = [ params.fetch(:days, 30).to_i, 1 ].max
 
           averages = CoverageSnapshot.daily_averages(repository: repository, days: days)
-          latest_snapshot = CoverageSnapshot.on_branch(repository.default_branch)
+          latest_snapshot = CoverageSnapshot.where(repository: repository)
+                                            .on_branch(repository.default_branch)
                                             .order(created_at: :desc)
                                             .first
 
@@ -732,7 +733,7 @@ module Api
         end
 
         def retry_failed_jobs_json(repository)
-          retryable = repository.jobs.open_threads.select { |job| !job.any_active_run? && job.current_run&.failed? }
+          retryable = retryable_failed_jobs(repository)
           circuit = ProviderCircuitBreaker.call(repository.effective_agent_provider)
           {
             count: retryable.size,
@@ -1035,6 +1036,7 @@ module Api
           @repository_detail_runs_count_by_job_id = Run.where(job_id: job_ids).group(:job_id).count
           @repository_detail_latest_runs_by_job_id = latest_runs_by_job_id(job_ids)
           @repository_detail_latest_workflows_by_job_id = latest_workflows_by_job_id(job_ids)
+          @repository_detail_active_job_ids = job_ids.empty? ? {} : Run.active.where(job_id: job_ids).distinct.pluck(:job_id).index_with(true)
           @repository_detail_run_diagnostics_by_run_id = RunDiagnostic
             .where(run_id: @repository_detail_latest_runs_by_job_id.values.map(&:id))
             .index_by(&:run_id)
@@ -1126,7 +1128,8 @@ module Api
             job,
             latest_workflow: @repository_detail_latest_workflows_by_job_id[job.id],
             latest_run: latest_run,
-            latest_run_diagnostic: latest_run && @repository_detail_run_diagnostics_by_run_id[latest_run.id]
+            latest_run_diagnostic: latest_run && @repository_detail_run_diagnostics_by_run_id[latest_run.id],
+            any_active_run: @repository_detail_active_job_ids.key?(job.id)
           )
         end
 

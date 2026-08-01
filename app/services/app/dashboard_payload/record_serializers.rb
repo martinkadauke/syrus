@@ -41,7 +41,7 @@ module App
           blocked_reason: blocked_reason_for(job),
           start_blocked_reason: job_start_blocked_reason(job),
           start_blocked_at: job_start_blocked_at(job),
-          retry_state: ::App::RetryState.for(job),
+          retry_state: retry_state_for(job),
           created_at: job.created_at&.iso8601,
           updated_at: job.updated_at&.iso8601,
           started_at: job.started_at&.iso8601,
@@ -57,7 +57,7 @@ module App
           last_seen_comment_at: job.last_seen_comment_at&.iso8601,
           pr_mergeable_checked_at: job.pr_mergeable_checked_at&.iso8601,
           commits_behind_base: job.commits_behind_base,
-          workflows_count: job.workflows.size,
+          workflows_count: workflows_count_for(job),
           repository: repository_json(job.repository),
           epic: job_epic_json(job.epic),
           owner_badge: owner_badge_for(owner_user),
@@ -79,6 +79,25 @@ module App
         end
 
         payload
+      end
+
+      def workflows_count_for(job)
+        return job.workflows.size unless defined?(@job_runtime_workflow_counts_by_job_id)
+
+        @job_runtime_workflow_counts_by_job_id.fetch(job.id, 0)
+      end
+
+      def retry_state_for(job)
+        return ::App::RetryState.for(job) unless defined?(@job_runtime_latest_runs_by_job_id)
+
+        latest_run = @job_runtime_latest_runs_by_job_id[job.id]
+        ::App::RetryState.for(
+          job,
+          latest_workflow: @job_runtime_latest_workflows_by_job_id[job.id],
+          latest_run: latest_run,
+          latest_run_diagnostic: latest_run && @job_runtime_run_diagnostics_by_run_id[latest_run.id],
+          any_active_run: @job_runtime_active_job_ids.key?(job.id)
+        )
       end
 
       def deployment_stages_configured?(repository)

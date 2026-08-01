@@ -371,8 +371,6 @@ module App
           :owner_user,
           :claimed_by_user,
           :tags,
-          :workflows,
-          :runs,
           :deployment_stage_statuses,
           { dependencies: [ :depends_on_epic, { depends_on_job: :repository } ] },
           { chat_proposals: [ :chat_session, :messages ] },
@@ -380,6 +378,7 @@ module App
         )
         jobs = PerformanceLogging.phase("dashboard_jobs.query", page: page, view: view) { sorted_jobs(scope).to_a }
         @current_jobs = jobs
+        PerformanceLogging.phase("dashboard_jobs.preload_runtime_state", count: jobs.size, view: view) { preload_job_runtime_state(jobs) }
         items = PerformanceLogging.phase("dashboard_jobs.serialize", count: jobs.size, view: view) { jobs.map { |job| job_json(job) } }
 
         { total: total, items: items }
@@ -539,6 +538,36 @@ module App
 
     def paginate(scope)
       scope.offset((page - 1) * PER_PAGE).limit(PER_PAGE)
+    end
+
+    def preload_job_runtime_state(jobs)
+      job_ids = jobs.map(&:id)
+      @job_runtime_workflow_counts_by_job_id = job_ids.empty? ? {} : Workflow.where(job_id: job_ids).group(:job_id).count
+      @job_runtime_latest_runs_by_job_id = latest_runs_by_job_id(job_ids)
+      @job_runtime_latest_workflows_by_job_id = latest_workflows_by_job_id(job_ids)
+      run_ids = @job_runtime_latest_runs_by_job_id.values.map(&:id)
+      @job_runtime_run_diagnostics_by_run_id = run_ids.empty? ? {} : RunDiagnostic.where(run_id: run_ids).index_by(&:run_id)
+      @job_runtime_active_job_ids = job_ids.empty? ? {} : Run.active.where(job_id: job_ids).distinct.pluck(:job_id).index_with(true)
+    end
+
+    def latest_runs_by_job_id(job_ids)
+      return {} if job_ids.empty?
+
+      ranked = Run.where(job_id: job_ids)
+        .select("runs.*, ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY created_at DESC, id DESC) AS syrus_row_number")
+      Run.from("(#{ranked.to_sql}) runs")
+        .where("syrus_row_number = 1")
+        .index_by(&:job_id)
+    end
+
+    def latest_workflows_by_job_id(job_ids)
+      return {} if job_ids.empty?
+
+      ranked = Workflow.where(job_id: job_ids)
+        .select("workflows.*, ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY (finished_at IS NULL) DESC, finished_at DESC, id DESC) AS syrus_row_number")
+      Workflow.from("(#{ranked.to_sql}) workflows")
+        .where("syrus_row_number = 1")
+        .index_by(&:job_id)
     end
 
     def total_pages(total)
