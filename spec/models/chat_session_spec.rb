@@ -380,6 +380,7 @@ RSpec.describe ChatSession do
             coding_checkout_uncommitted: false,
             title: "Updated chat",
             title_pending: false,
+            system_kind: nil,
             pinned_context: nil,
             mode: nil,
             local_daemon_state: nil,
