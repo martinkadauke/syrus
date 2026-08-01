@@ -425,7 +425,7 @@ RSpec.describe App::JobDetailPayload do
       expect(active_process[:id]).not_to eq(finished.id)
     end
 
-    it "includes worker health correlation on each run payload" do
+    it "omits worker health correlation on each run payload" do
       job = Factories.job_record(repository: repo)
       workflow = Workflow.create!(job: job, trigger_kind: "initial", state: "succeeded", worker_hostname: "worker-1")
       step = Step.create!(workflow: workflow, kind: "grader", position: 0, state: "succeeded", details: { "name" => "rspec" })
@@ -448,13 +448,34 @@ RSpec.describe App::JobDetailPayload do
 
       correlation = payload_for(job).dig(:workflows, 0, :steps, 0, :runs, 0, :worker_health_correlation)
 
-      expect(correlation).to include(
-        run_id: run.id,
-        step_kind: "grader",
-        primary_hostname: "worker-1",
-        sample_count: 1
+      expect(correlation).to be_nil
+    end
+
+    it "serializes only workflow artifact fields needed by the detail UI" do
+      job = Factories.job_record(repository: repo)
+      Workflow.create!(
+        job: job,
+        trigger_kind: "initial",
+        state: "succeeded",
+        artifacts: {
+          "summary" => "Done",
+          "iterations" => [ { "name" => "rspec", "output" => "large" } ],
+          "coverage" => {
+            "summary" => { "lines_pct" => 90.0 },
+            "files" => { "app.rb" => { "lines_pct" => 90.0 } },
+            "diff_annotations" => { "app.rb" => { "1" => "covered" } },
+            "pr_comment_body" => "large markdown"
+          }
+        }
       )
-      expect(correlation.dig(:pressure, :level)).to eq("critical")
+
+      artifacts = payload_for(job).dig(:workflows, 0, :artifacts)
+
+      expect(artifacts).to include("summary" => "Done")
+      expect(artifacts).not_to have_key("iterations")
+      expect(artifacts.dig("coverage", "summary")).to eq("lines_pct" => 90.0)
+      expect(artifacts["coverage"]).not_to have_key("diff_annotations")
+      expect(artifacts["coverage"]).not_to have_key("pr_comment_body")
     end
   end
 

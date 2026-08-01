@@ -20,7 +20,7 @@ module App
             agent_provider: workflow.agent_provider,
             state: workflow.state,
             failure_count: workflow.failure_count,
-            artifacts: workflow.artifacts,
+            artifacts: workflow_artifacts_json(workflow),
             cleaned_up_at: iso8601(workflow.cleaned_up_at),
             retry_available: workflow.retry_available?,
             started_at: iso8601(workflow.started_at),
@@ -155,7 +155,7 @@ module App
           run_diagnostic: run_diagnostic_json(run.run_diagnostic),
           health_snapshots: run.run_health_snapshots.ordered.map { |snapshot| health_snapshot_json(snapshot) },
           active_process: active_process_json(run),
-          worker_health_correlation: WorkerHealthRunCorrelation.for_run(run, sample_limit: 0),
+          worker_health_correlation: nil,
           agent_session: agent_session_json(session),
           can_stop: run.may_cancel?,
           can_diagnose: run.queued? || run.running?,
@@ -194,6 +194,43 @@ module App
                       .sort_by { |candidate| candidate.finished_at || candidate.updated_at || candidate.created_at }
                       .last
         failure_classification_json(run&.run_failure_classification)
+      end
+
+      def workflow_artifacts_json(workflow)
+        artifacts = workflow.artifacts
+        return artifacts unless artifacts.is_a?(Hash)
+
+        artifacts.slice(
+          "adversarial_review_iterations",
+          "auto_rebase_reason",
+          "auto_rebase_result",
+          "branch_divergence",
+          "branch_divergence_recovery",
+          "branch_divergence_recovery_error",
+          "branch_divergence_recovery_pending",
+          "chat_feedback",
+          "feedback_source",
+          "no_pr_reason",
+          "pr_body",
+          "pr_title",
+          "summary",
+          "test_plan"
+        ).tap do |safe|
+          safe["coverage"] = coverage_artifact_json(artifacts["coverage"]) if artifacts["coverage"].is_a?(Hash)
+        end
+      end
+
+      def coverage_artifact_json(coverage)
+        coverage.slice(
+          "coverage_unavailable",
+          "files",
+          "hit_map_attached",
+          "pr_delta",
+          "sources_status",
+          "summary",
+          "threshold_miss",
+          "threshold_miss_details"
+        )
       end
 
       def visible_run_ids
