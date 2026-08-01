@@ -414,6 +414,23 @@ module WorkEngine
         end
       end
 
+      class RunningStepWithTerminalRuns < Base
+        def plan
+          automatic_plan(
+            "reconcile_step_from_terminal_run",
+            primary_step,
+            "The Step is still running, but all of its Runs are terminal. Reconcile the Step to the latest terminal Run outcome so normal workflow dispatch can continue.",
+            execution_steps: [ "Step#succeed! / Step#fail! / Step#cancel! from latest terminal Run" ],
+            preconditions: {
+              step_state: "running",
+              all_runs_terminal: true,
+              terminal_run_id: issue.evidence["terminal_run_id"],
+              terminal_run_state: issue.evidence["terminal_run_state"]
+            }
+          )
+        end
+      end
+
       class RetryableRunFailure < Base
         def plan
           if delayed_provider_retry?

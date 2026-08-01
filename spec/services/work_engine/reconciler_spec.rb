@@ -482,6 +482,42 @@ RSpec.describe WorkEngine::Reconciler do
     expect(run.reload).to have_attributes(state: "failed", agent_outcome: "worker_died")
   end
 
+  it "reconciles a running grader Step whose Run already failed and resumes the queued tail" do
+    next_step = Step.create!(workflow: workflow, kind: "grader", position: 1)
+    step.update!(kind: "grader", next_step: next_step)
+    workflow.update_columns(state: "running", started_at: 10.minutes.ago)
+    step.update_columns(state: "running", started_at: 10.minutes.ago, finished_at: nil)
+    next_step.update_columns(state: "queued", started_at: nil, finished_at: nil)
+    run.update_columns(
+      state: "failed",
+      started_at: 10.minutes.ago,
+      last_heartbeat_at: 9.minutes.ago,
+      finished_at: 8.minutes.ago
+    )
+    RunFailureClassification.create!(
+      run: run,
+      classification: "database_connection_error",
+      retryable: true,
+      confidence: 0.95,
+      reason: "Too many connections",
+      classified_at: 8.minutes.ago
+    )
+
+    result = reconcile_and_execute(workflow_id: workflow.id)
+
+    expect(kind(result, :running_step_with_terminal_runs)).to be_present
+    expect(kind(result, :retryable_run_failure)).to be_nil
+    expect(plan(result, :reconcile_step_from_terminal_run)).to have_attributes(
+      auto_executable: true,
+      target_type: "Step",
+      target_id: step.id
+    )
+    expect(step.reload).to be_failed
+    expect(next_step.reload).to be_queued
+    expect(next_step.runs.last).to have_attributes(state: "queued", job_id: job.id)
+    expect(result.repair_executions.map(&:message)).to include("reconciled Step ##{step.id} to failed from Run ##{run.id}")
+  end
+
   it "executes stale running agent session resume after marking worker_died" do
     agent_step = workflow.steps.find_by!(kind: "implement")
     agent_run = agent_step.runs.create!(

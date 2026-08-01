@@ -139,6 +139,7 @@ module WorkEngine
       issues.concat(classify_queued_runs)
       issues.concat(classify_paused_queues)
       issues.concat(classify_running_runs)
+      issues.concat(classify_running_steps_with_terminal_runs)
       issues.concat(classify_workflows)
       issues.concat(classify_stale_auto_retry_workflows)
       issues.concat(classify_job_workflow_drift)
@@ -325,6 +326,35 @@ module WorkEngine
             live_spawned_process: live_process&.id
           ),
           explanation: "Run ##{run.id} is running without enough evidence of a live worker continuing it."
+        )
+      end
+    end
+
+    def classify_running_steps_with_terminal_runs
+      steps.select(&:running?).filter_map do |step|
+        step_runs = runs.select { |run| run.step_id == step.id }
+        next if step_runs.empty?
+        next if step_runs.any? { |run| run.queued? || run.running? }
+        next unless step_runs.all?(&:terminal?)
+
+        terminal_run = latest_terminal_run(step_runs)
+        next unless terminal_run
+
+        issue(
+          kind: :running_step_with_terminal_runs,
+          severity: :error,
+          affected_ids: ids_for(step).merge(run_ids: step_runs.map(&:id)),
+          safe_to_auto_repair: true,
+          recommended_repair_action: "reconcile_step_from_terminal_run",
+          evidence: workflow_evidence(step.workflow).merge(
+            step_id: step.id,
+            step_kind: step.kind,
+            step_state: step.state,
+            terminal_run_id: terminal_run.id,
+            terminal_run_state: terminal_run.state,
+            terminal_run_finished_at: terminal_run.finished_at&.iso8601
+          ),
+          explanation: "Step ##{step.id} is running but all of its Runs are terminal, so no worker can advance it."
         )
       end
     end
@@ -602,6 +632,8 @@ module WorkEngine
 
     def classify_resumable_sessions
       runs.select { |run| run.failed? && run.step&.agentic? }.filter_map do |run|
+        next if step_needs_terminal_run_reconciliation?(run.step)
+
         retryable_worker_failure = run.agent_outcome == AutoRetryScheduler::WORKER_DIED_CLASSIFICATION ||
           run.run_failure_classification&.classification == AutoRetryScheduler::WORKER_DIED_CLASSIFICATION
         next unless retryable_worker_failure
@@ -632,6 +664,8 @@ module WorkEngine
 
     def classify_retryable_failures
       runs.select(&:failed?).filter_map do |run|
+        next if step_needs_terminal_run_reconciliation?(run.step)
+
         classification = run.run_failure_classification
         next if classification.nil?
         next unless classification.retryable || provider_quota_classification?(classification)
@@ -659,6 +693,8 @@ module WorkEngine
 
     def classify_nonretryable_failures
       runs.select(&:failed?).filter_map do |run|
+        next if step_needs_terminal_run_reconciliation?(run.step)
+
         classification = run.run_failure_classification
         next if classification.nil?
         next if provider_quota_classification?(classification)
@@ -874,6 +910,17 @@ module WorkEngine
       workflow.steps.active.exists? || workflow.runs.active.exists?
     end
 
+    def step_needs_terminal_run_reconciliation?(step)
+      return false unless step&.running?
+
+      step_runs = runs.select { |run| run.step_id == step.id }
+      step_runs.any? && step_runs.all?(&:terminal?)
+    end
+
+    def latest_terminal_run(step_runs)
+      step_runs.select(&:terminal?).max_by { |run| [ run.finished_at || run.updated_at || run.created_at || Time.zone.at(0), run.id || 0 ] }
+    end
+
     def start_blocked?(workflow)
       reason = workflow.artifact("start_blocked_reason")
       return false if reason.blank?
@@ -944,6 +991,8 @@ module WorkEngine
       case record
       when Run
         { job_ids: [ record.job_id ], workflow_ids: [ record.workflow_id ], step_ids: [ record.step_id ], run_ids: [ record.id ] }
+      when Step
+        { job_ids: [ record.workflow.job_id ], workflow_ids: [ record.workflow_id ], step_ids: [ record.id ] }
       when Workflow
         { job_ids: [ record.job_id ], workflow_ids: [ record.id ], step_ids: record.steps.map(&:id), run_ids: record.runs.pluck(:id) }
       when Job

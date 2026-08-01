@@ -48,6 +48,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       queued_with_healthy_queue_job_beside_dead_resume_job
       inline_successor_owned_by_live_root_job
       stale_auto_retry_workflow_with_queued_run
+      running_step_with_failed_terminal_run
       stale_running_run_without_worker_evidence
       fresh_running_run
       missing_local_workspace
@@ -63,6 +64,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       topology_queued_without_queue_claim
       topology_queued_failed_solid_queue_execution
       topology_queued_dead_resume_queue
+      topology_running_step_with_failed_terminal_run
       topology_stale_running_run_without_worker_evidence
       topology_missing_local_workspace
       topology_terminal_workflow_with_active_descendant
@@ -409,6 +411,18 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       )
     end
 
+    def topology_running_step_with_failed_terminal_run(workflow, step)
+      run = failed_terminal_run_on_running_step!(workflow, step)
+      expectation(
+        "topology running step with failed terminal run",
+        target: { workflow_id: workflow.id },
+        expected_issue: :running_step_with_terminal_runs,
+        expected_action: :reconcile_step_from_terminal_run,
+        required_plans: [ [ :reconcile_step_from_terminal_run, step ] ],
+        forbidden_issues: %i[retryable_run_failure nonretryable_semantic_git_failure]
+      )
+    end
+
     def topology_missing_local_workspace(workflow, step)
       running_run_on_step!(workflow, step, heartbeat_age: random.rand(10..50).seconds)
       missing_workspace!(workflow)
@@ -470,6 +484,36 @@ RSpec.describe "Work engine reconciler chaos simulation" do
         last_heartbeat_at: heartbeat_age.ago
       )
       trace << "run=#{run.id}:topology_running step=#{step.kind} heartbeat_age=#{heartbeat_age.inspect}"
+      run
+    end
+
+    def failed_terminal_run_on_running_step!(workflow, step)
+      age = old_active_age
+      Run.where(step_id: step.id).delete_all
+      workflow.update_columns(state: "running", started_at: age.ago)
+      step.update_columns(state: "running", started_at: age.ago, finished_at: nil, updated_at: age.ago)
+      run = step.runs.create!(
+        job: workflow.job,
+        user: workflow.job.user,
+        trigger_kind: workflow.trigger_kind,
+        agent_provider: workflow.agent_provider,
+        state: "failed",
+        iteration: step.iteration,
+        started_at: age.ago,
+        last_heartbeat_at: age.ago,
+        finished_at: age.ago,
+        created_at: age.ago,
+        updated_at: age.ago
+      )
+      RunFailureClassification.create!(
+        run: run,
+        classification: "database_connection_error",
+        retryable: true,
+        confidence: 0.9,
+        reason: "chaos terminal run on running step",
+        classified_at: age.ago
+      )
+      trace << "run=#{run.id}:failed_terminal_on_running_step step=#{step.kind} age=#{age.inspect}"
       run
     end
 
@@ -602,6 +646,21 @@ RSpec.describe "Work engine reconciler chaos simulation" do
         expected_action: :cancel_stale_auto_retry_workflow,
         forbidden_issues: %i[queued_run_without_queue_claim],
         forbidden_actions: %i[reenqueue_run]
+      )
+    end
+
+    def running_step_with_failed_terminal_run
+      _job, workflow, step, _run = graph
+      run = failed_terminal_run_on_running_step!(workflow, step)
+
+      expectation(
+        "running step with failed terminal run",
+        target: { workflow_id: workflow.id },
+        expected_issue: :running_step_with_terminal_runs,
+        expected_action: :reconcile_step_from_terminal_run,
+        required_plans: [ [ :reconcile_step_from_terminal_run, step ] ],
+        forbidden_issues: %i[retryable_run_failure nonretryable_semantic_git_failure],
+        forbidden_plans: [ [ :retry_failed_step, run ], [ :retry_workflow, workflow ] ]
       )
     end
 
@@ -908,6 +967,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
 
     assert_chaos_case!(simulation.empty_topology_case)
     assert_chaos_case!(simulation.send(:stale_auto_retry_workflow_with_queued_run))
+    assert_chaos_case!(simulation.send(:running_step_with_failed_terminal_run))
   end
 
   it "reconciles one random degradation on a fully materialized random workflow topology" do

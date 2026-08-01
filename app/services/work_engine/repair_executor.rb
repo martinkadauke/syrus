@@ -326,6 +326,53 @@ module WorkEngine
         end
       end
 
+      class ReconcileStepFromTerminalRun < Base
+        def perform
+          step = target_step
+          return skipped("Step no longer exists") unless step
+          return skipped("Step is #{step.state}, not running") unless step.running?
+
+          step_runs = step.runs.to_a
+          return skipped("Step has no Runs") if step_runs.empty?
+          return skipped("Step still has active Runs") if step_runs.any? { |run| run.queued? || run.running? }
+
+          run = latest_terminal_run(step_runs)
+          return skipped("Step has no terminal Run") unless run
+
+          StateTransition.with_source("reconciler") do
+            case run.state
+            when "succeeded"
+              return skipped("Step cannot transition to succeeded") unless step.may_succeed?
+
+              step.succeed!
+            when "failed"
+              return skipped("Step cannot transition to failed") unless step.may_fail?
+
+              step.fail!
+            when "cancelled"
+              return skipped("Step cannot transition to cancelled") unless step.may_cancel?
+
+              step.cancel!
+            else
+              return skipped("Run is #{run.state}, not terminal")
+            end
+            step.save!
+          end
+
+          success("reconciled Step ##{step.id} to #{step.state} from Run ##{run.id}")
+        end
+
+        private
+
+        def target_step
+          @target_step ||= Step.includes(:workflow, :runs).find_by(id: plan.target_id)
+        end
+
+        def latest_terminal_run(step_runs)
+          step_runs.select(&:terminal?).max_by { |run| [ run.finished_at || run.updated_at || run.created_at || Time.zone.at(0), run.id || 0 ] }
+        end
+      end
+
       class MarkWorkerDied < Base
         def perform = mark_worker_died!
       end
