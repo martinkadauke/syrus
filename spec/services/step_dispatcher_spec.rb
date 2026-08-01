@@ -1026,6 +1026,27 @@ RSpec.describe StepDispatcher, "urgent_blocking gate" do
     }.to change { s1.runs.count }.by(1)
   end
 
+  it "does not block main_grader workflows when an urgent job exists" do
+    create_urgent_job!
+    main_grader_job = Job.create!(
+      user: job_model.user,
+      repository: job_model.repository,
+      kind: "main_grader",
+      issue_title: "main_grader:abc123",
+      issue_number: nil
+    )
+    main_grader_workflow = Workflow.create!(
+      job: main_grader_job,
+      trigger_kind: "main_grader"
+    )
+    grader_fanout = Step.create!(workflow: main_grader_workflow, kind: "grader_fanout", position: 0)
+
+    expect {
+      described_class.start_workflow(main_grader_workflow)
+    }.to change { grader_fanout.runs.count }.by(1)
+    expect(main_grader_workflow.reload.artifact("start_blocked_reason")).to be_nil
+  end
+
   it "starts the workflow when the formerly urgent job is now closed" do
     create_urgent_job!(state: "closed")
 

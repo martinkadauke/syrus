@@ -287,7 +287,8 @@ the layout and ordering that fit that folder.
 Main branch health warnings distinguish severity: `broken` health can pause
 repository work while Syrus opens or offers repair, while `inconclusive`
 health is warning-only and does not hold queued work or the landing queue by
-itself.
+itself. Internal main-branch grader checks still run while urgent Jobs are
+active so the repository health signal stays current.
 
 If no Job appears, start with
 [the poller troubleshooting checklist](/docs/troubleshooting#the-poller-never-picks-up-my-issue).

@@ -92,6 +92,7 @@ class StepDispatcher
   # workflow, so it must never be blocked by the state it is trying to measure.
   # The fix-main direct job must also be exempt: it IS the recovery agent.
   MAIN_HEALTH_EXEMPT_TRIGGERS = %w[ rebase stack_rebase main_grader ].freeze
+  URGENT_EXEMPT_TRIGGERS = %w[ main_grader ].freeze
   MAIN_HEALTH_BLOCK_REASON = "main_branch_broken"
   URGENT_BLOCK_REASON = "urgent_job_active"
   STACK_BLOCK_REASON = "stack_dependencies_not_ready"
@@ -109,6 +110,7 @@ class StepDispatcher
   end
 
   def self.urgent_blocking?(workflow)
+    return false if URGENT_EXEMPT_TRIGGERS.include?(workflow.trigger_kind)
     return false if workflow.job.priority == "urgent"
 
     workflow.job.repository.jobs
