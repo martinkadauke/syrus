@@ -96,6 +96,7 @@ RSpec.describe "App API insight suggestions", type: :request do
       body = parse_body
       expect(body["suggestions"]).to eq([])
       expect(body.dig("repository", "id")).to eq(repository.id)
+      expect(body["meta"]).to include("total" => 0, "page" => 1, "per_page" => 20, "total_pages" => 1)
     end
 
     it "returns tabs including the insights tab" do
@@ -116,6 +117,36 @@ RSpec.describe "App API insight suggestions", type: :request do
       expect(response).to have_http_status(:ok)
       ids = parse_body["suggestions"].map { |s| s["id"] }
       expect(ids).to eq([ s_high.id, s_medium.id, s_low.id ])
+    end
+
+    it "returns meta with total, page, per_page, and total_pages" do
+      3.times { create_suggestion }
+
+      get "/api/v1/app/repositories/#{repository.id}/insight_suggestions"
+
+      body = parse_body
+      expect(body["meta"]).to include(
+        "total"       => 3,
+        "page"        => 1,
+        "per_page"    => 20,
+        "total_pages" => 1
+      )
+    end
+
+    it "paginates suggestions and returns the correct subset on page 2" do
+      suggestions = 25.times.map { |i| create_suggestion(title: "Suggestion #{i}", confidence: (25 - i).to_f / 25) }
+
+      get "/api/v1/app/repositories/#{repository.id}/insight_suggestions", params: { page: 2, per_page: 20 }
+
+      expect(response).to have_http_status(:ok)
+      body = parse_body
+      expect(body["suggestions"].length).to eq(5)
+      expect(body["meta"]).to include(
+        "total"       => 25,
+        "page"        => 2,
+        "per_page"    => 20,
+        "total_pages" => 2
+      )
     end
 
     it "returns the expected fields for each suggestion" do
@@ -273,6 +304,85 @@ RSpec.describe "App API insight suggestions", type: :request do
             params: { action_type: "save_memory" }, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
+    end
+  end
+
+  describe "PATCH /api/v1/app/insight_suggestions/:id — undismiss" do
+    before do
+      enable_feature
+      sign_in_as(user)
+    end
+
+    it "transitions a dismissed suggestion back to pending" do
+      suggestion = create_suggestion
+      suggestion.dismiss!
+
+      patch "/api/v1/app/insight_suggestions/#{suggestion.id}",
+            params: { action_type: "undismiss" }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body["suggestion"]["state"]).to eq("pending")
+      expect(parse_body["message"]).to include("pending")
+      expect(suggestion.reload.pending?).to be true
+      expect(suggestion.reload.dismissed_at).to be_nil
+    end
+
+    it "returns 422 when the suggestion is not dismissed (pending)" do
+      suggestion = create_suggestion
+
+      patch "/api/v1/app/insight_suggestions/#{suggestion.id}",
+            params: { action_type: "undismiss" }, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(suggestion.reload.pending?).to be true
+    end
+
+    it "returns 422 when the suggestion is accepted" do
+      suggestion = create_suggestion
+      suggestion.accept!
+
+      patch "/api/v1/app/insight_suggestions/#{suggestion.id}",
+            params: { action_type: "undismiss" }, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(suggestion.reload.accepted?).to be true
+    end
+
+    it "returns 404 for a suggestion belonging to another user" do
+      other_user = Factories.user
+      other_repo = Factories.repository(user: other_user)
+      other_job  = Factories.job(user: other_user, repository: other_repo, kind: "agent_insight", issue_number: nil)
+      other_suggestion = InsightSuggestion.create!(
+        job: other_job, repository: other_repo,
+        title: "Other", category: "c", severity: "low", confidence: 0.5
+      )
+      other_suggestion.dismiss!
+
+      patch "/api/v1/app/insight_suggestions/#{other_suggestion.id}",
+            params: { action_type: "undismiss" }, as: :json
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "PATCH /api/v1/app/insight_suggestions/:id — save_memory on accepted suggestion" do
+    before do
+      enable_feature
+      sign_in_as(user)
+    end
+
+    it "can save memory on an accepted suggestion (independent of job acceptance)" do
+      suggestion = create_suggestion(memory_suggestion: "Always warm the cache")
+      suggestion.accept!
+
+      expect {
+        patch "/api/v1/app/insight_suggestions/#{suggestion.id}",
+              params: { action_type: "save_memory" }, as: :json
+      }.to change(ChatMemory, :count).by(1)
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body["message"]).to include("saved")
+      expect(suggestion.reload.accepted?).to be true
     end
   end
 

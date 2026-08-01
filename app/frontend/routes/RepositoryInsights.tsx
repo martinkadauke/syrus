@@ -3,13 +3,16 @@ import { useState } from "react"
 import { Link, useParams, useLocation } from "react-router-dom"
 import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useT } from "../hooks/useT"
+import { useConfirm } from "../hooks/useConfirm"
 import { RepositoryTabs } from "../components/RepositoryTabs"
 import {
   acceptInsightSuggestion,
   dismissInsightSuggestion,
+  undismissInsightSuggestion,
   fetchInsightSuggestions,
   saveInsightMemory,
-  type InsightSuggestion
+  type InsightSuggestion,
+  type PaginationMeta
 } from "../api/insights"
 import { errorMessage } from "../lib/errorMessage"
 
@@ -21,10 +24,11 @@ export function RepositoryInsightsRoute() {
   const location = useLocation()
   const repositoryId = params.id || ""
   const prefix = routePrefix(location.pathname)
+  const [page, setPage] = useState(1)
 
   const query = useQuery({
-    queryKey: ["repositories", repositoryId, "insight_suggestions"],
-    queryFn: () => fetchInsightSuggestions(repositoryId),
+    queryKey: ["repositories", repositoryId, "insight_suggestions", page],
+    queryFn: () => fetchInsightSuggestions(repositoryId, page),
     enabled: repositoryId.length > 0
   })
 
@@ -44,7 +48,7 @@ export function RepositoryInsightsRoute() {
     )
   }
 
-  const { repository, tabs, suggestions } = query.data
+  const { repository, tabs, suggestions, meta } = query.data
 
   return (
     <main aria-label={t("aria_insights")} className="mx-auto max-w-[96rem] space-y-6 p-6">
@@ -61,6 +65,9 @@ export function RepositoryInsightsRoute() {
       <InsightSuggestionsList
         repositoryId={repositoryId}
         suggestions={suggestions}
+        meta={meta}
+        page={page}
+        onPageChange={setPage}
         prefix={prefix}
       />
     </main>
@@ -70,14 +77,25 @@ export function RepositoryInsightsRoute() {
 function InsightSuggestionsList({
   repositoryId,
   suggestions,
+  meta,
+  page,
+  onPageChange,
   prefix
 }: {
   repositoryId: string
   suggestions: InsightSuggestion[]
+  meta: PaginationMeta
+  page: number
+  onPageChange: (page: number) => void
   prefix: string
 }) {
   const { t } = useT("insights")
   const [stateFilter, setStateFilter] = useState<StateFilter>("pending")
+
+  function handleFilterChange(filter: StateFilter) {
+    setStateFilter(filter)
+    onPageChange(1)
+  }
 
   const filtered = suggestions.filter((s) => stateFilter === "all" || s.state === stateFilter)
   const counts = {
@@ -93,6 +111,9 @@ function InsightSuggestionsList({
     { key: "all", label: t("filter_all"), count: suggestions.length }
   ]
 
+  const firstItem = meta.total === 0 ? 0 : (page - 1) * meta.per_page + 1
+  const lastItem = Math.min(page * meta.per_page, meta.total)
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
@@ -102,7 +123,7 @@ function InsightSuggestionsList({
             <button
               className={`rounded px-3 py-1 text-sm font-medium transition-colors ${stateFilter === tab.key ? "bg-terracotta-600 text-white" : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"}`}
               key={tab.key}
-              onClick={() => setStateFilter(tab.key)}
+              onClick={() => handleFilterChange(tab.key)}
               type="button"
             >
               {tab.label}
@@ -129,6 +150,40 @@ function InsightSuggestionsList({
           ))}
         </div>
       )}
+
+      {meta.total_pages > 1 && (
+        <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+          <span>{t("pagination_showing", { first: firstItem, last: lastItem, total: meta.total })}</span>
+          <div className="flex gap-2">
+            {page > 1 ? (
+              <button
+                className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800"
+                onClick={() => onPageChange(page - 1)}
+                type="button"
+              >
+                {t("pagination_previous")}
+              </button>
+            ) : (
+              <span className="rounded border border-gray-200 px-3 py-1 text-gray-300 dark:border-gray-700 dark:text-gray-600">
+                {t("pagination_previous")}
+              </span>
+            )}
+            {page < meta.total_pages ? (
+              <button
+                className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800"
+                onClick={() => onPageChange(page + 1)}
+                type="button"
+              >
+                {t("pagination_next")}
+              </button>
+            ) : (
+              <span className="rounded border border-gray-200 px-3 py-1 text-gray-300 dark:border-gray-700 dark:text-gray-600">
+                {t("pagination_next")}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -142,6 +197,7 @@ function SuggestionCard({
 }) {
   const { t } = useT("insights")
   const queryClient = useQueryClient()
+  const { confirm, dialog: confirmDialog } = useConfirm()
   const [expanded, setExpanded] = useState(false)
   const [showAcceptForm, setShowAcceptForm] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -159,6 +215,16 @@ function SuggestionCard({
     onError: (err) => setError(errorMessage(err, t("dismiss_error")))
   })
 
+  const undismissMutation = useMutation({
+    mutationFn: () => undismissInsightSuggestion(suggestion.id),
+    onSuccess: (data) => {
+      setNotice(data.message)
+      setError(null)
+      queryClient.invalidateQueries({ queryKey })
+    },
+    onError: (err) => setError(errorMessage(err, t("undismiss_error")))
+  })
+
   const saveMemoryMutation = useMutation({
     mutationFn: () => saveInsightMemory(suggestion.id),
     onSuccess: (data) => {
@@ -168,8 +234,18 @@ function SuggestionCard({
     onError: (err) => setError(errorMessage(err, t("save_memory_error")))
   })
 
+  async function handleDismiss() {
+    const confirmed = await confirm({
+      message: t("dismiss_confirm_message"),
+      confirmLabel: t("dismiss"),
+      destructive: true
+    })
+    if (confirmed) dismissMutation.mutate()
+  }
+
   return (
     <article className="rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+      {confirmDialog}
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -183,6 +259,14 @@ function SuggestionCard({
               </span>
               {suggestion.state !== "pending" && (
                 <StatePill state={suggestion.state} />
+              )}
+              {suggestion.state === "accepted" && suggestion.created_job && (
+                <Link
+                  className="text-xs text-terracotta-700 underline hover:no-underline dark:text-terracotta-400"
+                  to={suggestion.created_job.job_path}
+                >
+                  {suggestion.created_job.slug}
+                </Link>
               )}
             </div>
             <h3 className="mt-1.5 text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -272,7 +356,7 @@ function SuggestionCard({
             <button
               className="rounded border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
               disabled={dismissMutation.isPending}
-              onClick={() => dismissMutation.mutate()}
+              onClick={handleDismiss}
               type="button"
             >
               {dismissMutation.isPending ? t("dismissing") : t("dismiss")}
@@ -287,6 +371,32 @@ function SuggestionCard({
                 {saveMemoryMutation.isPending ? t("saving_memory") : t("save_as_memory")}
               </button>
             )}
+          </div>
+        )}
+
+        {suggestion.state === "accepted" && suggestion.has_memory_suggestion && (
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
+            <button
+              className="rounded border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+              disabled={saveMemoryMutation.isPending}
+              onClick={() => saveMemoryMutation.mutate()}
+              type="button"
+            >
+              {saveMemoryMutation.isPending ? t("saving_memory") : t("save_as_memory")}
+            </button>
+          </div>
+        )}
+
+        {suggestion.state === "dismissed" && (
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
+            <button
+              className="rounded border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+              disabled={undismissMutation.isPending}
+              onClick={() => undismissMutation.mutate()}
+              type="button"
+            >
+              {undismissMutation.isPending ? t("undismissing") : t("undismiss")}
+            </button>
           </div>
         )}
       </div>
@@ -322,14 +432,14 @@ function AcceptForm({
   onError: (message: string) => void
 }) {
   const { t } = useT("insights")
-  const [createJob, setCreateJob] = useState(suggestion.suggested_prompt != null)
+  const [promptExpanded, setPromptExpanded] = useState(!suggestion.suggested_prompt)
   const [prompt, setPrompt] = useState(suggestion.suggested_prompt || "")
 
   const mutation = useMutation({
     mutationFn: () =>
       acceptInsightSuggestion(suggestion.id, {
-        createJob,
-        prompt: createJob ? prompt : undefined
+        createJob: true,
+        prompt
       }),
     onSuccess: (data) => {
       onSuccess(data.job ? t("accepted_with_job", { slug: data.job.slug }) : t("accepted"))
@@ -342,26 +452,29 @@ function AcceptForm({
       <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">{t("accept_heading")}</h4>
 
       <div className="mt-3">
-        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-          <input
-            checked={createJob}
-            className="rounded border-gray-300"
-            onChange={(e) => setCreateJob(e.target.checked)}
-            type="checkbox"
-          />
-          {t("create_job_label")}
-        </label>
+        <button
+          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          onClick={() => setPromptExpanded((v) => !v)}
+          type="button"
+        >
+          <svg
+            className={`h-3 w-3 transition-transform ${promptExpanded ? "rotate-90" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+          </svg>
+          {t("edit_prompt")}
+        </button>
       </div>
 
-      {createJob && (
-        <div className="mt-3">
-          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
-            {t("prompt_label")}
-          </label>
+      {promptExpanded && (
+        <div className="mt-2">
           <textarea
+            aria-label={t("prompt_label")}
             className="mt-1 w-full rounded border border-gray-300 p-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
             onChange={(e) => setPrompt(e.target.value)}
-            required={createJob}
             rows={6}
             value={prompt}
           />
@@ -371,7 +484,7 @@ function AcceptForm({
       <div className="mt-3 flex gap-2">
         <button
           className="rounded bg-terracotta-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-terracotta-700 disabled:opacity-50"
-          disabled={mutation.isPending || (createJob && !prompt.trim())}
+          disabled={mutation.isPending || !prompt.trim()}
           onClick={() => mutation.mutate()}
           type="button"
         >

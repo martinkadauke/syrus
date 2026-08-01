@@ -36,6 +36,13 @@ export type InsightSuggestion = {
   created_job: InsightJobSummary | null
 }
 
+export type PaginationMeta = {
+  total: number
+  page: number
+  per_page: number
+  total_pages: number
+}
+
 export type InsightSuggestionsPayload = {
   repository: {
     id: number
@@ -45,6 +52,7 @@ export type InsightSuggestionsPayload = {
   }
   tabs: RepositoryTab[]
   suggestions: InsightSuggestion[]
+  meta: PaginationMeta
 }
 
 export type InsightSuggestionUpdatePayload = {
@@ -69,10 +77,13 @@ export type AdminInsightSuggestion = InsightSuggestion & {
 
 export type AdminInsightsPayload = {
   suggestions: AdminInsightSuggestion[]
+  meta: PaginationMeta
 }
 
-export function fetchInsightSuggestions(repositoryId: string | number) {
-  return getJson<InsightSuggestionsPayload>(`/api/v1/app/repositories/${repositoryId}/insight_suggestions`)
+export function fetchInsightSuggestions(repositoryId: string | number, page = 1, perPage = 20) {
+  return getJson<InsightSuggestionsPayload>(
+    `/api/v1/app/repositories/${repositoryId}/insight_suggestions?page=${page}&per_page=${perPage}`
+  )
 }
 
 export function acceptInsightSuggestion(
@@ -93,14 +104,20 @@ export function dismissInsightSuggestion(id: number) {
   })
 }
 
+export function undismissInsightSuggestion(id: number) {
+  return patchJson<InsightSuggestionUpdatePayload>(`/api/v1/app/insight_suggestions/${id}`, {
+    action_type: "undismiss"
+  })
+}
+
 export function saveInsightMemory(id: number) {
   return patchJson<InsightSuggestionUpdatePayload>(`/api/v1/app/insight_suggestions/${id}`, {
     action_type: "save_memory"
   })
 }
 
-export function fetchAdminInsights() {
-  return getJson<AdminInsightsPayload>("/api/v1/app/admin/insights")
+export function fetchAdminInsights(page = 1, perPage = 20) {
+  return getJson<AdminInsightsPayload>(`/api/v1/app/admin/insights?page=${page}&per_page=${perPage}`)
 }
 
 export function promoteInsightMemory(id: number) {

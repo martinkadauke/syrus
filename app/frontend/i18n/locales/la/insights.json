@@ -22,10 +22,14 @@
   "accept": "Accipe",
   "dismiss": "Dimitte",
   "dismissing": "Dimittens…",
+  "dismiss_confirm_message": "Hanc perspectivam dimittere? Eam postea in tabella 'Dimissae' restituere potes.",
+  "undismiss": "Restitue",
+  "undismissing": "Restituens…",
+  "undismiss_error": "Suggestionem restituere non potuit.",
   "save_as_memory": "Serva ut memoriam",
   "saving_memory": "Servans…",
   "accept_heading": "Suggestionem accipe",
-  "create_job_label": "Crea officium ex hac suggestione",
+  "edit_prompt": "Mandatum edita",
   "prompt_label": "Mandatum",
   "confirm_accept": "Confirma",
   "confirming": "Creans…",
@@ -53,5 +57,8 @@
   "view_job": "Vide officium",
   "promote_to_instance": "Promove ad memoriam instantiae",
   "promoting": "Promovens…",
-  "promote_error": "Memoriam promovere non potuit."
+  "promote_error": "Memoriam promovere non potuit.",
+  "pagination_showing": "Monstrans {{first}}–{{last}} ex {{total}}",
+  "pagination_previous": "Prior",
+  "pagination_next": "Sequens"
 }
