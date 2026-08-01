@@ -1,5 +1,5 @@
 class ChatTitleJob < ApplicationJob
-  queue_as :chat
+  queue_as :default
   discard_on ActiveRecord::RecordNotFound
 
   class << self

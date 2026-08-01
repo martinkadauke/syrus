@@ -19,10 +19,10 @@ RSpec.describe ChatTitleJob do
     ChatTitleJob.agent_runner = nil
   end
 
-  it "enqueues on the chat queue" do
+  it "enqueues on the default queue" do
     expect {
       described_class.perform_later(chat.id, message.id)
-    }.to have_enqueued_job(described_class).with(chat.id, message.id).on_queue("chat")
+    }.to have_enqueued_job(described_class).with(chat.id, message.id).on_queue("default")
   end
 
   it "stores the generated title once" do

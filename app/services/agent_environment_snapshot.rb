@@ -79,7 +79,7 @@ class AgentEnvironmentSnapshot
     lines = [
       "- Chat: ##{chat_session&.id || 'new'}#{repository ? " scoped to #{repository.slug}" : ' with no pinned repository'}",
       "- Workspace: #{chat_workspace_label}",
-      "- Agent provider: Claude chat turn with `syrus-chat-sidecar` MCP tools.",
+      "- Agent provider: #{chat_provider_label} chat turn with `syrus-chat-sidecar` MCP tools.",
       "- Tool availability: no commit, push, or PR-opening tool is available in chat; draft proposals or schedules for operator confirmation.",
       "- Repository checkout rule: attached checkouts under `/syrus-home/.syrus/chat-workspaces/*/repositories/` are read-only; never use Write, Edit, or Bash to create, modify, delete, rename, move, format, or generate files there. Propose Syrus Jobs or Epics for code changes and wait for operator confirmation.",
       "- Writable area: attached repository checkouts must not be written. Do not write memory to the filesystem -- use the Syrus memory MCP tools instead (see Memory section below).",
@@ -229,6 +229,10 @@ class AgentEnvironmentSnapshot
     return "(not created yet)" unless chat_session
 
     ChatWorkspace.path_for(chat_session).to_s
+  end
+
+  def chat_provider_label
+    chat_session&.chat_provider.presence || chat_session&.user&.chat_provider.presence || "default"
   end
 
   def chat_repository_lines
