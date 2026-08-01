@@ -170,6 +170,31 @@ RSpec.describe ChatSession do
     expect(session.cumulative_cost).to eq(BigDecimal("0.014321"))
   end
 
+  it "records very large provider token counts" do
+    session = described_class.create!(
+      repository: repo,
+      user: repo.user,
+      cumulative_input_tokens: 2_147_483_000,
+      cumulative_output_tokens: 2_147_483_000
+    )
+    result = AgentInvocation::Result.new(
+      turns: 1,
+      exit_status: 0,
+      timed_out: false,
+      is_error: false,
+      outcome: "success",
+      final_text: "Done",
+      session_id: "codex-session",
+      input_tokens: 10_000,
+      output_tokens: 20_000
+    )
+
+    session.record_turn_usage!(result)
+
+    expect(session.reload.cumulative_input_tokens).to eq(2_147_493_000)
+    expect(session.cumulative_output_tokens).to eq(2_147_503_000)
+  end
+
   it "records zero usage fields without changing existing totals" do
     session = described_class.create!(
       repository: repo,

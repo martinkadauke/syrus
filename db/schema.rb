@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_31_171000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_01_010500) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -292,8 +292,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_31_171000) do
     t.string "coding_relay_token"
     t.datetime "created_at", null: false
     t.decimal "cumulative_cost_usd", precision: 12, scale: 6, default: "0.0", null: false
-    t.integer "cumulative_input_tokens", default: 0, null: false
-    t.integer "cumulative_output_tokens", default: 0, null: false
+    t.bigint "cumulative_input_tokens", default: 0, null: false
+    t.bigint "cumulative_output_tokens", default: 0, null: false
     t.string "daemon_branch"
     t.boolean "daemon_connected", default: false, null: false
     t.string "daemon_repo"
@@ -1173,18 +1173,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_31_171000) do
     t.text "agent_summary"
     t.integer "agent_turns"
     t.string "base_sha"
-    t.integer "cache_creation_input_tokens"
-    t.integer "cache_read_input_tokens"
+    t.bigint "cache_creation_input_tokens"
+    t.bigint "cache_read_input_tokens"
     t.decimal "cost_usd", precision: 12, scale: 6
     t.datetime "created_at", null: false
     t.datetime "finished_at"
     t.string "head_sha"
-    t.integer "input_tokens"
+    t.bigint "input_tokens"
     t.integer "iteration", default: 1, null: false
     t.integer "job_id", null: false
     t.datetime "last_heartbeat_at"
     t.string "live_session_id"
-    t.integer "output_tokens"
+    t.bigint "output_tokens"
     t.string "parent_session_id"
     t.text "prompt"
     t.datetime "started_at"
