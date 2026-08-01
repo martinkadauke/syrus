@@ -102,7 +102,7 @@ module App
     end
 
     def retry_budget
-      AppSetting.max_job_failures
+      @retry_budget ||= AppSetting.max_job_failures
     end
 
     def auto_retry_exhausted?

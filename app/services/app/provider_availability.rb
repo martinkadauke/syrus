@@ -59,7 +59,7 @@ module App
       usage_signal = usage_limit_signal
       return usage_limit_status(usage_signal) if usage_signal
 
-      circuit = ProviderCircuitBreaker.call(provider, now: now)
+      circuit = ProviderCircuitBreaker.call(provider, now: now, include_logs: false)
       return nil unless circuit.open?
       return nil if circuit.usage_limit?
 
@@ -123,7 +123,7 @@ module App
 
     def usage_limit_failed_runs
       Run.left_outer_joins(:run_diagnostic, :run_failure_classification)
-         .includes(:run_diagnostic, :run_failure_classification)
+         .includes(:run_diagnostic, :run_failure_classification, :step)
          .where(user_id: user.id, state: "failed", agent_provider: provider)
          .where("runs.finished_at >= ?", now - ProviderCircuitBreaker::USAGE_LIMIT_WINDOW)
          .order(finished_at: :desc, updated_at: :desc)
@@ -141,19 +141,12 @@ module App
     end
 
     def diagnostic_text(run)
-      cheap_text = [
+      [
         run.agent_outcome,
         run.run_failure_classification&.classification,
         run.run_diagnostic&.error_class,
         run.run_diagnostic&.error_message
       ].compact.join(" ")
-      return cheap_text if ProviderUsageLimit.detect?(cheap_text)
-
-      [ cheap_text, recent_log_text(run) ].compact.join(" ")
-    end
-
-    def recent_log_text(run)
-      run.job_logs.order(sequence: :desc).limit(5).pluck(:chunk).join(" ")
     end
 
     def provider_label

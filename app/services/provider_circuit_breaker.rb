@@ -54,7 +54,7 @@ class ProviderCircuitBreaker
   FailureSignal = Data.define(:run, :signature, :retryable)
   UsageLimitSignal = Data.define(:run, :signature, :model)
 
-  def self.call(provider, now: Time.current) = new(provider, now: now).call
+  def self.call(provider, now: Time.current, include_logs: true) = new(provider, now: now, include_logs: include_logs).call
 
   def self.open?(provider, now: Time.current) = call(provider, now: now).open?
 
@@ -65,9 +65,10 @@ class ProviderCircuitBreaker
     end
   end
 
-  def initialize(provider, now: Time.current)
+  def initialize(provider, now: Time.current, include_logs: true)
     @provider = provider.to_s
     @now = now
+    @include_logs = include_logs
   end
 
   def call
@@ -147,7 +148,7 @@ class ProviderCircuitBreaker
 
   def recent_failed_runs
     Run.left_outer_joins(:run_diagnostic)
-       .includes(:run_diagnostic)
+       .includes(:run_diagnostic, :run_failure_classification)
        .where(state: "failed", agent_provider: provider)
        .where("runs.finished_at >= ?", now - WINDOW)
   end
@@ -167,7 +168,7 @@ class ProviderCircuitBreaker
 
   def usage_limit_failed_runs
     Run.left_outer_joins(:run_diagnostic, :run_failure_classification)
-       .includes(:run_diagnostic, :run_failure_classification)
+       .includes(:run_diagnostic, :run_failure_classification, :step)
        .where(state: "failed", agent_provider: provider)
        .where("runs.finished_at >= ?", now - USAGE_LIMIT_WINDOW)
        .order(finished_at: :desc, updated_at: :desc)
@@ -186,6 +187,8 @@ class ProviderCircuitBreaker
   def retryable?(run)
     return true if RETRYABLE_OUTCOMES.include?(run.agent_outcome.to_s)
     return true if transient_text?(diagnostic_text(run))
+    return false unless include_logs?
+
     return true if run.job_logs.where(kind: "rate_limited").exists?
 
     false
@@ -201,7 +204,7 @@ class ProviderCircuitBreaker
       run.run_failure_classification&.classification,
       run.run_diagnostic&.error_class,
       run.run_diagnostic&.error_message,
-      recent_log_text(run)
+      include_logs? ? recent_log_text(run) : nil
     ].compact.join(" ")
   end
 
@@ -211,7 +214,7 @@ class ProviderCircuitBreaker
       run.run_failure_classification&.classification,
       run.run_diagnostic&.error_class,
       run.run_diagnostic&.error_message,
-      recent_log_text(run)
+      include_logs? ? recent_log_text(run) : nil
     ].compact.join(": ")
     normalized = raw.downcase
                     .gsub(%r{https?://\S+}, "<url>")
@@ -229,5 +232,9 @@ class ProviderCircuitBreaker
 
   def recent_log_text(run)
     run.job_logs.order(sequence: :desc).limit(5).pluck(:chunk).join(" ")
+  end
+
+  def include_logs?
+    @include_logs
   end
 end

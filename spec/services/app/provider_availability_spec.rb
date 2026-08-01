@@ -90,4 +90,27 @@ RSpec.describe App::ProviderAvailability do
 
     expect(described_class.for_user(user, "codex", now: now)).to be_nil
   end
+
+  it "does not scan job logs while checking provider availability" do
+    failed_run(
+      provider: "codex",
+      outcome: nil,
+      classification: nil,
+      message: "generic failure"
+    ).tap do |run|
+      JobLog.append!(run: run, chunk: "model gpt-5.5 weekly usage limit exhausted", kind: "system")
+    end
+
+    queries = []
+    callback = lambda do |_name, _started, _finished, _id, payload|
+      queries << payload[:sql].to_s if payload[:sql].to_s.include?("job_logs")
+    end
+
+    status = ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      described_class.for_user(user, "codex", now: now, cached: false)
+    end
+
+    expect(status).to be_nil
+    expect(queries).to be_empty
+  end
 end
