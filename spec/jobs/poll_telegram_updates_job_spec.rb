@@ -128,9 +128,8 @@ RSpec.describe PollTelegramUpdatesJob do
         }
         allow_any_instance_of(TelegramClient).to receive(:get_updates).and_return([update])
 
-        expect(ActionCable.server).to receive(:broadcast).with(
-          "app_user_#{user.id}",
-          hash_including(event: "platform_identity_linked")
+        expect(AppEvents).to receive(:broadcast).with(
+          hash_including(user: user, type: :platform_identity_linked)
         )
 
         described_class.new.perform
@@ -149,7 +148,7 @@ RSpec.describe PollTelegramUpdatesJob do
           }
         }
         allow_any_instance_of(TelegramClient).to receive(:get_updates).and_return([update])
-        allow(ActionCable.server).to receive(:broadcast)
+        allow(AppEvents).to receive(:broadcast)
 
         telegram = instance_double(TelegramClient, get_updates: [update], send_message: nil)
         allow(TelegramClient).to receive(:new).and_return(telegram)

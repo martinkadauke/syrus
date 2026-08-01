@@ -45,15 +45,25 @@ class PollTelegramUpdatesJob < PlatformPollingJob
 
   def handle_linking(token:, from:)
     payload = Rails.application.message_verifier(:platform_linking).verify(token)
-    user_id = payload["user_id"]
+    user = User.find(payload["user_id"])
 
     identity = PlatformIdentity.find_or_initialize_by(platform: "telegram", external_id: from["id"].to_s)
-    identity.assign_attributes(user_id: user_id, external_handle: from["username"], linked_at: Time.current)
+    identity.assign_attributes(user_id: user.id, external_handle: from["username"], linked_at: Time.current)
     identity.save!
 
-    ActionCable.server.broadcast(
-      "app_user_#{user_id}",
-      { event: "platform_identity_linked", platform: "telegram" }
+    AppEvents.broadcast(
+      user: user,
+      type: :platform_identity_linked,
+      resource: :platform_identity,
+      payload: {
+        platform_identities: user.platform_identities.reload.order(:platform).map { |pi|
+          { id: pi.id, platform: pi.platform, external_handle: pi.external_handle, linked_at: pi.linked_at.iso8601 }
+        },
+        available_platforms: [
+          { platform: "telegram", configured: AppSetting.telegram_configured? },
+          { platform: "slack", configured: false }
+        ]
+      }
     )
 
     telegram_client.send_message(
