@@ -481,6 +481,24 @@ RSpec.describe RepositoryThroughputMetricContract do
     expect(funnel.fetch(:feedback_rounds_by_job)).to contain_exactly(include(job_id: job.id, round_count: 3, comment_count: 1))
   end
 
+  it "uses actioned_at as the addressed feedback fallback when handled_at is absent" do
+    job = Factories.job_record(user: user, repository: repository, pr_number: 129)
+    PrReviewComment.create!(
+      job: job,
+      pr_type: "direct",
+      comment_kind: "issue",
+      github_comment_id: 30,
+      actionable: true,
+      comment_created_at: now - 35.minutes,
+      actioned_at: now - 15.minutes,
+      handled_at: nil
+    )
+
+    latency = call.fetch(:windows).fetch("1h").dig(:review_funnel, :feedback_to_addressed_seconds)
+
+    expect(latency).to include(sample_count: 1, average: 20.minutes.to_i)
+  end
+
   it "separates auto-approval from operator approval where approved_via supports it" do
     operator_job = Factories.job_record(
       user: user,

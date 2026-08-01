@@ -548,9 +548,15 @@ class RepositoryThroughputMetricContract
   end
 
   def feedback_to_addressed_latencies(range)
+    comments = PrReviewComment.arel_table
+    handled_in_range = comments[:handled_at].gteq(range.begin).and(comments[:handled_at].lteq(range.end))
+    actioned_fallback_in_range = comments[:handled_at].eq(nil).and(
+      comments[:actioned_at].gteq(range.begin).and(comments[:actioned_at].lteq(range.end))
+    )
+
     PrReviewComment.joins(:job)
       .where(jobs: { repository_id: repository.id })
-      .where(handled_at: range)
+      .where(handled_in_range.or(actioned_fallback_in_range))
       .where(actionable: true)
       .to_a
       .filter_map do |comment|
