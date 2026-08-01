@@ -59,19 +59,13 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       terminal_workflow_with_active_descendants
     ].freeze
 
-    MIXED_MUTATIONS = %i[
-      mixed_queued_without_queue_claim
-      mixed_queued_failed_solid_queue_execution
-      mixed_queued_dead_resume_queue
-      mixed_queued_with_healthy_queue_job_beside_dead_resume_job
-      mixed_stale_auto_retry_workflow_with_queued_run
-      mixed_stale_running_run_without_worker_evidence
-      mixed_fresh_running_run
-      mixed_missing_remote_live_worker_workspace
-      mixed_dependency_start_block
-      mixed_recovered_main_health_start_block
-      mixed_running_workflow_without_active_descendants
-      mixed_terminal_workflow_with_active_descendants
+    TOPOLOGY_DEGRADATIONS = %i[
+      topology_queued_without_queue_claim
+      topology_queued_failed_solid_queue_execution
+      topology_queued_dead_resume_queue
+      topology_stale_running_run_without_worker_evidence
+      topology_missing_local_workspace
+      topology_terminal_workflow_with_active_descendant
     ].freeze
 
     def initialize(seed:, spec_context:)
@@ -93,55 +87,9 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       send(scenario)
     end
 
-    def next_mixed_case
+    def empty_topology_case
       @case_number += 1
-      @trace = [ "seed=#{seed}", "case=#{@case_number}", "mode=mixed" ]
-      @live_worker_hosts.clear
-      clear_solid_queue
-      reset_shared_repository!
-
-      job = Factories.job(
-        user: shared_user,
-        repository: shared_repository,
-        issue_number: 10_000 + case_number,
-        agent_provider: random_provider
-      )
-      mutation_count = random.rand(2..6)
-      mutations = MIXED_MUTATIONS.sample(mutation_count, random: random)
-      trace << "job=#{job.id} mutations=#{mutations.join(",")}"
-
-      expected_issues = []
-      expected_actions = []
-      required_plans = []
-      forbidden_plans = []
-      forbidden_workflow_issues = []
-      stale_auto_retry_workflows = []
-
-      mutations.each do |mutation|
-        mutation_expectation = send(mutation, job)
-        expected_issues.concat(mutation_expectation.fetch(:expected_issues, []))
-        expected_actions.concat(mutation_expectation.fetch(:expected_actions, []))
-        required_plans.concat(mutation_expectation.fetch(:required_plans, []))
-        forbidden_plans.concat(mutation_expectation.fetch(:forbidden_plans, []))
-        forbidden_workflow_issues.concat(mutation_expectation.fetch(:forbidden_workflow_issues, []))
-        stale_auto_retry_workflows.concat(mutation_expectation.fetch(:stale_auto_retry_workflows, []))
-      end
-
-      expectation(
-        "mixed reconciler graph",
-        target: { job_id: job.id },
-        expected_issues: expected_issues,
-        expected_actions: expected_actions,
-        required_plans: required_plans,
-        forbidden_plans: forbidden_plans,
-        forbidden_workflow_issues: forbidden_workflow_issues,
-        stale_auto_retry_workflow_ids: stale_auto_retry_workflows
-      )
-    end
-
-    def empty_mixed_case
-      @case_number += 1
-      @trace = [ "seed=#{seed}", "case=#{@case_number}", "mode=mixed", "mutations=none" ]
+      @trace = [ "seed=#{seed}", "case=#{@case_number}", "mode=topology", "mutations=none" ]
       @live_worker_hosts.clear
       clear_solid_queue
       reset_shared_repository!
@@ -154,7 +102,25 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       )
       trace << "job=#{job.id}"
 
-      expectation("empty mixed reconciler graph", target: { job_id: job.id })
+      expectation("empty topology reconciler graph", target: { job_id: job.id })
+    end
+
+    def next_topology_case
+      @case_number += 1
+      @trace = [ "seed=#{seed}", "case=#{@case_number}", "mode=topology" ]
+      @live_worker_hosts.clear
+      clear_solid_queue
+      reset_shared_repository!
+
+      entry = Workflow::TriggerKind::ENTRIES.sample(random: random)
+      workflow = materialized_random_workflow(entry)
+      step = workflow.steps.order(:position, :id).sample(random: random)
+      degradation = TOPOLOGY_DEGRADATIONS.sample(random: random)
+      trace << "workflow_entry=#{entry.kind} template=#{entry.template} workflow=#{workflow.id} actual_trigger=#{workflow.trigger_kind}"
+      trace << "selected_step=#{step.id}:#{step.kind}:position=#{step.position}:iteration=#{step.iteration}:loop=#{step.loop_id || "none"}"
+      trace << "degradation=#{degradation}"
+
+      send(degradation, workflow, step)
     end
 
     def live_worker?(hostname)
@@ -296,6 +262,227 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       [ workflow, step, run ]
     end
 
+    def materialized_random_workflow(entry)
+      AppSetting.current.update!(
+        adversarial_review_rounds: random.rand(0..2),
+        grade_max_iterations: 3
+      )
+      job = Factories.job_record(
+        user: shared_user,
+        repository: shared_repository,
+        issue_number: 30_000 + case_number,
+        state: "queued",
+        agent_provider: random_provider
+      )
+      workflow = entry.template_class.instantiate(job: job, agent_provider: job.agent_provider)
+      workflow.update_columns(state: "running", started_at: random.rand(6..12).minutes.ago)
+
+      expand_adversarial_review_loops!(workflow)
+      expand_try_branches!(workflow)
+      expand_grader_retry_loops!(workflow)
+      workflow.reload
+    end
+
+    def expand_adversarial_review_loops!(workflow)
+      review = workflow.steps.where(kind: "adversarial_review", iteration: 1).order(:position).first
+      return unless review && random.rand(2).zero?
+
+      max_extra_iterations = random.rand(0..1)
+      max_extra_iterations.times do
+        current_review = workflow.reload.steps.where(kind: "adversarial_review", loop_id: review.loop_id).order(:iteration).last
+        current_review.update_columns(state: "succeeded", finished_at: 4.minutes.ago)
+        StepDispatcher.advance_from(current_review)
+      end
+    end
+
+    def expand_try_branches!(workflow)
+      workflow.steps.order(:position).to_a.each do |step|
+        next unless step.details.to_h["try_id"].present?
+        next unless random.rand(2).zero?
+
+        failure_code =
+          case step.kind
+          when "push"
+            "remote_branch_advanced_rebase_conflict"
+          when "merge_train_land"
+            Steps::MergeTrainLand::BaseMoved::FAILURE_CODE
+          end
+        next unless failure_code
+
+        step.update!(details: step.details.to_h.merge("failure_code" => failure_code))
+        StepDispatcher.fail_from(step)
+      end
+    end
+
+    def expand_grader_retry_loops!(workflow)
+      workflow.steps.where(kind: "grader_fanout").order(:position).to_a.each do |fanout|
+        next unless fanout.reload.persisted?
+        next if workflow.steps.where(kind: "grader", loop_id: fanout.loop_id, iteration: fanout.iteration).exists?
+
+        if fanout.loop_id.blank?
+          insert_dynamic_grader_steps!(workflow, loop_id: nil, iteration: fanout.iteration, count: random.rand(1..4))
+          next
+        end
+
+        desired_iterations = random.rand(1..3)
+        current_iteration = fanout.iteration
+        loop_id = fanout.loop_id
+        loop do
+          insert_dynamic_grader_steps!(workflow, loop_id: loop_id, iteration: current_iteration, count: random.rand(1..4))
+          break if current_iteration >= desired_iterations
+
+          collect = workflow.steps.find_by!(kind: "grader_collect", loop_id: loop_id, iteration: current_iteration)
+          StepDispatcher.fail_from(collect)
+          current_iteration += 1
+        end
+      end
+    end
+
+    def insert_dynamic_grader_steps!(workflow, loop_id:, iteration:, count:)
+      fanout = workflow.steps.find_by!(kind: "grader_fanout", loop_id: loop_id, iteration: iteration)
+      collect = workflow.steps.find_by!(kind: "grader_collect", loop_id: loop_id, iteration: iteration)
+      return unless fanout && collect
+      return if workflow.steps.where(kind: "grader", loop_id: loop_id, iteration: iteration).exists?
+
+      insertion_position = fanout.position + 1
+      workflow.steps.where("position >= ?", insertion_position).update_all([ "position = position + ?", count ])
+
+      graders = count.times.map do |index|
+        Step.create!(
+          workflow: workflow,
+          kind: "grader",
+          position: insertion_position + index,
+          iteration: iteration,
+          loop_id: loop_id,
+          details: { "name" => "topology-grader-#{iteration}-#{index + 1}", "required" => true }
+        )
+      end
+
+      ([ fanout ] + graders + [ collect ]).each_cons(2) { |step, next_step| step.update!(next_step_id: next_step.id) }
+      trace << "grader_loop=#{loop_id}:iteration=#{iteration}:graders=#{count}"
+    end
+
+    def topology_queued_without_queue_claim(workflow, step)
+      run = queued_run_on_step!(workflow, step)
+      expectation(
+        "topology queued run without queue claim",
+        target: { workflow_id: workflow.id },
+        expected_issue: :queued_run_without_queue_claim,
+        expected_action: :reenqueue_run,
+        required_plans: [ [ :reenqueue_run, run ] ]
+      )
+    end
+
+    def topology_queued_failed_solid_queue_execution(workflow, step)
+      run = queued_run_on_step!(workflow, step)
+      solid_queue_run_job(run, failed: true)
+      expectation(
+        "topology queued run with failed Solid Queue execution",
+        target: { workflow_id: workflow.id },
+        expected_issue: :queued_run_solid_queue_failed_execution,
+        expected_action: :reenqueue_run,
+        required_plans: [ [ :reenqueue_run, run ] ]
+      )
+    end
+
+    def topology_queued_dead_resume_queue(workflow, step)
+      run = queued_run_on_step!(workflow, step)
+      worker_host = "chaos-topology-dead-worker-#{case_number}-#{workflow.id}"
+      workflow.update_columns(worker_hostname: worker_host)
+      solid_queue_run_job(run, ready: true, queue_name: "resume-#{worker_host}")
+      expectation(
+        "topology queued run on dead resume queue",
+        target: { workflow_id: workflow.id },
+        expected_issue: :queued_run_on_dead_resume_queue,
+        expected_action: :reenqueue_run,
+        required_plans: [ [ :reenqueue_run, run ] ]
+      )
+    end
+
+    def topology_stale_running_run_without_worker_evidence(workflow, step)
+      run = running_run_on_step!(workflow, step, heartbeat_age: stale_heartbeat_age)
+      expectation(
+        "topology stale running run without worker evidence",
+        target: { workflow_id: workflow.id },
+        expected_issue: :running_run_without_live_worker_evidence,
+        required_plans: []
+      )
+    end
+
+    def topology_missing_local_workspace(workflow, step)
+      running_run_on_step!(workflow, step, heartbeat_age: random.rand(10..50).seconds)
+      missing_workspace!(workflow)
+      expectation(
+        "topology missing local workspace",
+        target: { workflow_id: workflow.id },
+        expected_issue: :workspace_missing,
+        expected_action: :operator_review_missing_workspace
+      )
+    end
+
+    def topology_terminal_workflow_with_active_descendant(workflow, step)
+      deactivate_other_descendants!(workflow, except_step: step)
+      run = running_run_on_step!(workflow, step, heartbeat_age: random.rand(10..50).seconds)
+      Run.where(step_id: workflow.steps.select(:id))
+         .where.not(id: run.id)
+         .where(state: %w[queued running])
+         .update_all(state: "succeeded", finished_at: 4.minutes.ago)
+      workflow.update_columns(state: "failed", finished_at: 5.minutes.ago, cleaned_up_at: nil)
+      expectation(
+        "topology terminal workflow with active descendant",
+        target: { workflow_id: workflow.id },
+        expected_issue: :cleanup_blocked_by_active_descendants,
+        expected_action: :operator_review_active_descendants
+      )
+    end
+
+    def queued_run_on_step!(workflow, step)
+      age = old_active_age
+      Run.where(step_id: step.id).delete_all
+      workflow.update_columns(state: "running", started_at: age.ago)
+      step.update_columns(state: "queued", started_at: nil, finished_at: nil, created_at: age.ago, updated_at: age.ago)
+      run = step.runs.create!(
+        job: workflow.job,
+        user: workflow.job.user,
+        trigger_kind: workflow.trigger_kind,
+        agent_provider: workflow.agent_provider,
+        state: "queued",
+        iteration: step.iteration,
+        created_at: age.ago,
+        updated_at: age.ago
+      )
+      trace << "run=#{run.id}:topology_queued step=#{step.kind} age=#{age.inspect}"
+      run
+    end
+
+    def running_run_on_step!(workflow, step, heartbeat_age:)
+      Run.where(step_id: step.id).delete_all
+      workflow.update_columns(state: "running", started_at: heartbeat_age.ago)
+      step.update_columns(state: "running", started_at: heartbeat_age.ago, finished_at: nil)
+      run = step.runs.create!(
+        job: workflow.job,
+        user: workflow.job.user,
+        trigger_kind: workflow.trigger_kind,
+        agent_provider: workflow.agent_provider,
+        state: "running",
+        iteration: step.iteration,
+        started_at: heartbeat_age.ago,
+        last_heartbeat_at: heartbeat_age.ago
+      )
+      trace << "run=#{run.id}:topology_running step=#{step.kind} heartbeat_age=#{heartbeat_age.inspect}"
+      run
+    end
+
+    def deactivate_other_descendants!(workflow, except_step:)
+      workflow.steps.where.not(id: except_step.id).where(state: %w[queued running]).update_all(
+        state: "succeeded",
+        finished_at: 4.minutes.ago
+      )
+      Run.where(step_id: workflow.steps.where.not(id: except_step.id).select(:id))
+         .where(state: %w[queued running])
+         .update_all(state: "succeeded", finished_at: 4.minutes.ago)
+    end
+
     def queued_without_queue_claim
       _job, workflow, step, run = graph
       queued_run!(workflow, step, run)
@@ -416,193 +603,6 @@ RSpec.describe "Work engine reconciler chaos simulation" do
         forbidden_issues: %i[queued_run_without_queue_claim],
         forbidden_actions: %i[reenqueue_run]
       )
-    end
-
-    def mixed_queued_without_queue_claim(job)
-      _workflow, _step, run = start_with_queued_run!(job)
-      {
-        expected_issues: %i[queued_run_without_queue_claim],
-        expected_actions: %i[reenqueue_run],
-        required_plans: [ [ :reenqueue_run, run ] ]
-      }
-    end
-
-    def mixed_queued_failed_solid_queue_execution(job)
-      _workflow, _step, run = start_with_queued_run!(job)
-      solid_queue_run_job(run, failed: true)
-      {
-        expected_issues: %i[queued_run_solid_queue_failed_execution],
-        expected_actions: %i[reenqueue_run],
-        required_plans: [ [ :reenqueue_run, run ] ]
-      }
-    end
-
-    def mixed_queued_dead_resume_queue(job)
-      workflow, _step, run = start_with_queued_run!(job)
-      worker_host = "chaos-dead-worker-#{case_number}-#{workflow.id}"
-      workflow.update_columns(worker_hostname: worker_host)
-      solid_queue_run_job(run, ready: true, queue_name: "resume-#{worker_host}")
-      {
-        expected_issues: %i[queued_run_on_dead_resume_queue],
-        expected_actions: %i[reenqueue_run],
-        required_plans: [ [ :reenqueue_run, run ] ]
-      }
-    end
-
-    def mixed_queued_with_healthy_queue_job_beside_dead_resume_job(job)
-      workflow, _step, run = start_with_queued_run!(job)
-      worker_host = "chaos-dead-worker-#{case_number}-#{workflow.id}"
-      workflow.update_columns(worker_hostname: worker_host)
-      solid_queue_run_job(run, ready: true, queue_name: "resume-#{worker_host}")
-      solid_queue_run_job(run, ready: true, queue_name: "runs")
-      {
-        forbidden_plans: [ [ :reenqueue_run, run ] ]
-      }
-    end
-
-    def mixed_stale_auto_retry_workflow_with_queued_run(job)
-      source, source_step = fresh_retry_workflow(job)
-      source_run = StepDispatcher.start_workflow(source)
-      fail_run!(source.reload, source_step.reload, source_run.reload)
-      job.update!(state: "implemented")
-      successful = Workflows::Retry.instantiate(job: job, agent_provider: job.agent_provider)
-      successful.update_columns(
-        state: "succeeded",
-        created_at: 4.minutes.ago,
-        started_at: 4.minutes.ago,
-        finished_at: 3.minutes.ago
-      )
-      attempt = AutoRetryAttempt.create!(
-        job: job,
-        workflow: source,
-        run: source_run,
-        agent_provider: job.agent_provider,
-        failure_classification: "worker_died",
-        retry_kind: "retry_workflow",
-        attempt_number: 1,
-        scheduled_at: 2.minutes.ago,
-        performed_at: 2.minutes.ago
-      )
-      stale = Workflows::Retry.instantiate(
-        job: job,
-        artifacts: { "auto_retry_attempt_id" => attempt.id },
-        agent_provider: job.agent_provider
-      )
-      stale.update_columns(created_at: 2.minutes.ago, updated_at: 2.minutes.ago)
-      StepDispatcher.start_workflow(stale)
-      stale_run = stale.first_step.runs.first
-      stale_run.update_columns(created_at: old_active_age.ago, updated_at: old_active_age.ago)
-      trace << "workflow=#{stale.id}:mixed_stale_auto_retry run=#{stale_run.id}:old_queued"
-      {
-        expected_issues: %i[stale_auto_retry_workflow],
-        expected_actions: %i[cancel_stale_auto_retry_workflow],
-        required_plans: [ [ :cancel_stale_auto_retry_workflow, stale ] ],
-        forbidden_plans: [ [ :reenqueue_run, stale_run ] ],
-        stale_auto_retry_workflows: [ stale ]
-      }
-    end
-
-    def mixed_stale_running_run_without_worker_evidence(job)
-      workflow, step = fresh_retry_workflow(job)
-      run = StepDispatcher.start_workflow(workflow)
-      running_run!(workflow.reload, step.reload, run.reload, heartbeat_age: stale_heartbeat_age)
-      {
-        expected_issues: %i[running_run_without_live_worker_evidence],
-        expected_actions: %i[mark_worker_died_and_retry_failed_step],
-        required_plans: [ [ :mark_worker_died_and_retry_failed_step, run ] ]
-      }
-    end
-
-    def mixed_fresh_running_run(job)
-      workflow, step = fresh_retry_workflow(job)
-      run = StepDispatcher.start_workflow(workflow)
-      running_run!(workflow.reload, step.reload, run.reload, heartbeat_age: random.rand(10..50).seconds)
-      {
-        forbidden_plans: [
-          [ :mark_worker_died, run ],
-          [ :mark_worker_died_and_retry_failed_step, run ],
-          [ :mark_worker_died_and_retry_workflow, run ]
-        ]
-      }
-    end
-
-    def mixed_missing_remote_live_worker_workspace(job)
-      workflow, step = fresh_retry_workflow(job)
-      run = StepDispatcher.start_workflow(workflow)
-      worker_host = "chaos-remote-live-worker-#{case_number}-#{workflow.id}"
-      live_worker_hosts << worker_host
-      running_run!(workflow.reload, step.reload, run.reload, heartbeat_age: random.rand(10..50).seconds)
-      workflow.update_columns(worker_hostname: worker_host)
-      missing_workspace!(workflow)
-      {
-        forbidden_workflow_issues: [ [ :workspace_missing, workflow ] ]
-      }
-    end
-
-    def mixed_dependency_start_block(job)
-      workflow, _step = fresh_retry_workflow(job)
-      run = StepDispatcher.start_workflow(workflow)
-      remove_first_run!(workflow.reload, run.reload)
-      workflow.update!(
-        artifacts: {
-          "start_blocked_reason" => "stack_dependencies_not_ready",
-          "start_blocked_next_check_at" => 5.minutes.from_now.iso8601
-        }
-      )
-      {
-        expected_issues: %i[queued_workflow_without_first_run dependency_stack_start_block],
-        expected_actions: %i[wait_for_start_block_to_clear wait_for_dependency_or_stack_readiness],
-        required_plans: [ [ :wait_for_start_block_to_clear, workflow ], [ :wait_for_dependency_or_stack_readiness, workflow ] ],
-        forbidden_plans: [ [ :start_workflow, workflow ] ]
-      }
-    end
-
-    def mixed_recovered_main_health_start_block(job)
-      workflow, _step = fresh_retry_workflow(job)
-      run = StepDispatcher.start_workflow(workflow)
-      remove_first_run!(workflow.reload, run.reload)
-      job.repository.update!(main_branch_health_enabled: true, ci_health: "healthy", grader_health: "healthy", landing_paused: false)
-      workflow.update!(
-        artifacts: {
-          "start_blocked_reason" => StepDispatcher::MAIN_HEALTH_BLOCK_REASON,
-          "start_blocked_next_check_at" => 5.minutes.from_now.iso8601
-        }
-      )
-      {
-        expected_issues: %i[queued_workflow_without_first_run],
-        expected_actions: %i[start_workflow],
-        required_plans: [ [ :start_workflow, workflow ] ],
-        forbidden_workflow_issues: [ [ :main_health_start_block, workflow ] ],
-        forbidden_plans: [ [ :wait_for_main_health, workflow ] ]
-      }
-    end
-
-    def mixed_running_workflow_without_active_descendants(job)
-      workflow, step = fresh_retry_workflow(job)
-      run = StepDispatcher.start_workflow(workflow)
-      workflow.update_columns(state: "running", started_at: 6.minutes.ago)
-      workflow.steps.update_all(state: "succeeded", finished_at: 4.minutes.ago)
-      run.update_columns(state: "succeeded", finished_at: 4.minutes.ago)
-      trace << "workflow=#{workflow.id}:mixed_running_without_active_descendants"
-      {
-        expected_issues: %i[running_workflow_without_active_descendants],
-        expected_actions: %i[finish_workflow_from_terminal_descendants],
-        required_plans: [ [ :finish_workflow_from_terminal_descendants, workflow ] ]
-      }
-    end
-
-    def mixed_terminal_workflow_with_active_descendants(job)
-      workflow, step = fresh_retry_workflow(job)
-      run = StepDispatcher.start_workflow(workflow)
-      workflow.update_columns(state: "failed", finished_at: 5.minutes.ago, cleaned_up_at: nil)
-      step.update_columns(state: "running", started_at: 6.minutes.ago)
-      run.update_columns(state: "running", started_at: 6.minutes.ago, last_heartbeat_at: 30.seconds.ago)
-      trace << "workflow=#{workflow.id}:mixed_terminal_with_active_descendants"
-      {
-        expected_issues: %i[cleanup_blocked_by_active_descendants],
-        expected_actions: %i[operator_review_active_descendants],
-        required_plans: [ [ :operator_review_active_descendants, run ] ]
-      }
     end
 
     def stale_running_run_without_worker_evidence
@@ -901,15 +901,22 @@ RSpec.describe "Work engine reconciler chaos simulation" do
     end
   end
 
-  it "reconciles seeded mixed failure graphs and preserves repair precedence" do
+  it "covers an empty graph and known interaction precedence cases" do
     seed = Integer(ENV.fetch("WORK_ENGINE_CHAOS_SEED", Random.new_seed))
     simulation = ReconcilerChaosSimulation.new(seed: seed, spec_context: self)
     allow(InstanceVersion).to receive(:worker_live?) { |hostname| simulation.live_worker?(hostname) }
 
-    assert_chaos_case!(simulation.empty_mixed_case)
+    assert_chaos_case!(simulation.empty_topology_case)
+    assert_chaos_case!(simulation.send(:stale_auto_retry_workflow_with_queued_run))
+  end
+
+  it "reconciles one random degradation on a fully materialized random workflow topology" do
+    seed = Integer(ENV.fetch("WORK_ENGINE_CHAOS_SEED", Random.new_seed))
+    simulation = ReconcilerChaosSimulation.new(seed: seed, spec_context: self)
+    allow(InstanceVersion).to receive(:worker_live?) { |hostname| simulation.live_worker?(hostname) }
 
     chaos_case_count.times do
-      expectation = simulation.next_mixed_case
+      expectation = simulation.next_topology_case
       assert_chaos_case!(expectation)
     end
   end
