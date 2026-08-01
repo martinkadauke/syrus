@@ -173,6 +173,12 @@ module WorkEngine
           classification = source_run&.run_failure_classification&.classification.presence ||
             source_run&.agent_outcome.presence ||
             "unknown"
+          circuit = ProviderCircuitBreaker.call(agent_provider, now: now)
+          if circuit.open?
+            retry_at = circuit.retry_after ? " until #{circuit.retry_after.iso8601}" : ""
+            return skipped("provider circuit is open for #{agent_provider}#{retry_at}: #{circuit.reason}")
+          end
+
           attempt_number = AutoRetryAttempt.budget_scope_for(
             job: job,
             agent_provider: agent_provider,

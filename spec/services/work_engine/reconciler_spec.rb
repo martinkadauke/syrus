@@ -730,6 +730,41 @@ RSpec.describe WorkEngine::Reconciler do
     expect(result.repair_executions.map(&:message)).to include(match(/scheduled failed_step auto-retry/))
   end
 
+  it "does not execute safe retry plans while the provider circuit is open" do
+    step.update_columns(kind: "grader", state: "failed", finished_at: Time.current)
+    workflow.update_columns(state: "failed", finished_at: Time.current, cleaned_up_at: nil)
+    run.update_columns(state: "failed", finished_at: Time.current)
+    RunFailureClassification.create!(
+      run: run,
+      classification: "timeout",
+      retryable: true,
+      confidence: 0.85,
+      reason: "grader timed out",
+      classified_at: Time.current
+    )
+    allow(File).to receive(:directory?).and_call_original
+    allow(File).to receive(:directory?).with(WorkflowWorkspace.path_for(workflow)).and_return(true)
+    decision = ProviderCircuitBreaker::Decision.new(
+      provider: "claude",
+      open: true,
+      reason: "provider transient failures",
+      retry_after: 10.minutes.from_now,
+      failure_count: 5,
+      job_count: 3,
+      signature: "timeout"
+    )
+    allow(ProviderCircuitBreaker).to receive(:call).with("claude", now: kind_of(Time)).and_return(decision)
+    allow(ProviderCircuitBreaker).to receive(:open_circuits).and_return([ decision ])
+
+    result = nil
+    expect {
+      result = reconcile_and_execute(run_id: run.id)
+    }.not_to change { AutoRetryAttempt.count }
+
+    expect(plan(result, :retry_failed_step)).to have_attributes(auto_executable: true)
+    expect(result.repair_executions.map(&:message)).to include(match(/provider circuit is open for claude/))
+  end
+
   it "executes unambiguous Job state drift repairs" do
     run.update_columns(state: "succeeded", finished_at: Time.current)
     step.update_columns(state: "succeeded", finished_at: Time.current)
