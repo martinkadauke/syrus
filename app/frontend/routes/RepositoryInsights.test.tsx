@@ -35,6 +35,7 @@ function makeMeta(overrides: Record<string, unknown> = {}) {
 function payload(suggestions: unknown[] = [makeSuggestion()], meta = makeMeta({ total: suggestions.length })) {
   return {
     repository: { id: 1, slug: "acme/widgets", repository_path: "/repositories/1", insights_path: "/repositories/1/insights" },
+    tabs: [],
     suggestions,
     meta
   }
