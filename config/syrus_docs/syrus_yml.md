@@ -102,6 +102,29 @@ grade:
 
 Use CI-only specs for checks that are too slow, too environmental, or too broad for the normal Syrus grader loop but still important in GitHub Actions. They should run during `ci_failure` workflows so the agent can verify that a CI failure is actually fixed. Normal implementation, feedback, landing, and main-grader workflows should use `run` or `fast`, not the CI-only command.
 
+### Recommended test setup
+
+For repositories with meaningful test suites, prefer small wrapper scripts over long inline grader commands. Put test-runner-specific policy in the repository, not in Syrus:
+
+- formatter setup (for example, progress on stdout plus JSON or JUnit artifacts)
+- coverage toggles and artifact paths
+- parallelization and per-worker result files
+- exclusion of CI-only tests from the normal fast suite
+
+A good default shape is:
+
+```yaml
+grade:
+  - name: tests
+    run: bin/test-with-coverage
+    fast: bin/test-fast
+    ci: bin/test-ci
+```
+
+Use `run` for the normal validation command. If coverage reporting is configured, this is usually the command that produces coverage artifacts. Use `fast` for pass/fail-only rechecks where fresh coverage is not consumed, such as landing, main-branch grading, repair checks, and repeat grade-loop iterations. Use `ci` only for CI-failure repair workflows, where Syrus needs to run the slower checks that GitHub Actions ran.
+
+Keep the normal grader suite fast enough for repeated agent use. A useful target is under 30 seconds for the primary pass/fail suite. If tests are slow because they create real repositories, spawn shells, hit network services, exercise large filesystem trees, or boot full integrations, first try to replace that cost with fakes, dependency injection, fixtures, or narrower unit coverage. Mark tests CI-only only when the real integration behavior is important and cannot reasonably be made fast.
+
 ### when_files_changed
 
 `when_files_changed` is an optional array of glob strings on any grader step. When set, Syrus computes the PR's changed files via `git diff --name-only <base>...HEAD` at fanout time and skips the grader if none of the changed files match any of the supplied patterns. An absent or empty list means the grader always runs.
