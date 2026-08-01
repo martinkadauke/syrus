@@ -32,7 +32,7 @@ RSpec.describe WorkEngine::Reconciler do
     result.repair_plans.find { |repair_plan| repair_plan.action == action.to_s }
   end
 
-  def solid_queue_run_job(run, claimed: false, process_id: nil, created_at: 10.minutes.ago)
+  def solid_queue_run_job(run, claimed: false, failed: false, error: "worker process failed", process_id: nil, created_at: 10.minutes.ago)
     ensure_solid_queue_test_tables!
     queue_job = SolidQueue::Job.create!(
       class_name: "RunJob",
@@ -58,6 +58,7 @@ RSpec.describe WorkEngine::Reconciler do
         created_at: created_at
       )
     end
+    SolidQueue::FailedExecution.create!(job: queue_job, error: error, created_at: created_at) if failed
     queue_job
   end
 
@@ -207,6 +208,134 @@ RSpec.describe WorkEngine::Reconciler do
     expect(repair_plan).to have_attributes(auto_executable: true, target_id: agent_run.id)
     expect(repair_plan.execution_steps).to eq([ "Run#fail!(agent_outcome: worker_died)", "ResumeWorkflowEnqueuer.call" ])
     expect(agent_run.reload.state).to eq("running")
+  end
+
+  it "auto-fails a stale running grader Run when no retry path is available" do
+    step.update_columns(kind: "grader", state: "running", started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago)
+    workflow.update_columns(state: "running", started_at: step.started_at)
+    run.update_columns(
+      state: "running",
+      started_at: step.started_at,
+      last_heartbeat_at: step.started_at
+    )
+    ensure_solid_queue_test_tables!
+    allow(File).to receive(:directory?).and_call_original
+    allow(File).to receive(:directory?).with(WorkflowWorkspace.path_for(workflow)).and_return(false)
+
+    result = nil
+    expect {
+      result = reconcile_and_execute(run_id: run.id)
+    }.not_to change { AutoRetryAttempt.count }
+
+    repair_plan = plan(result, :mark_worker_died)
+    expect(repair_plan).to have_attributes(auto_executable: true, target_id: run.id)
+    expect(repair_plan.execution_steps).to eq([ "Run#fail!(agent_outcome: worker_died)" ])
+    expect(run.reload).to have_attributes(state: "failed", agent_outcome: "worker_died")
+    expect(result.repair_executions.map(&:message)).to include(match(/no automatic retry was scheduled/))
+    expect(JobLog.where(run: run).pluck(:chunk)).to include(match(/applied mark_worker_died: .*no automatic retry was scheduled/))
+  end
+
+  it "auto-fails a stale running prepare Run whose SolidQueue job failed with ProcessPrunedError" do
+    step.update_columns(kind: "prepare", state: "running", started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago)
+    workflow.update_columns(state: "running", started_at: step.started_at)
+    run.update_columns(
+      state: "running",
+      started_at: step.started_at,
+      last_heartbeat_at: step.started_at
+    )
+    solid_queue_run_job(run, failed: true, error: { exception_class: "SolidQueue::Processes::ProcessPrunedError" }.to_json)
+    allow(File).to receive(:directory?).and_call_original
+    allow(File).to receive(:directory?).with(WorkflowWorkspace.path_for(workflow)).and_return(false)
+
+    result = reconcile_and_execute(run_id: run.id)
+
+    issue = kind(result, :running_run_without_live_worker_evidence)
+    expect(issue.evidence.dig("solid_queue", "error")).to include("ProcessPrunedError")
+    expect(plan(result, :mark_worker_died)).to have_attributes(auto_executable: true, target_id: run.id)
+    expect(run.reload).to have_attributes(state: "failed", agent_outcome: "worker_died")
+  end
+
+  it "executes stale running agent session resume after marking worker_died" do
+    agent_step = workflow.steps.find_by!(kind: "implement")
+    agent_run = agent_step.runs.create!(
+      job: job,
+      trigger_kind: workflow.trigger_kind,
+      agent_provider: "claude",
+      state: "running",
+      started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago,
+      last_heartbeat_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago
+    )
+    ClaudeSession.create!(resumable: agent_run, provider: "claude", session_id: "session-1", transcript_jsonl: "{}\n")
+    agent_step.update_columns(state: "running", started_at: agent_run.started_at)
+    workflow.update_columns(state: "running", started_at: agent_run.started_at)
+    ensure_solid_queue_test_tables!
+
+    expect {
+      reconcile_and_execute(run_id: agent_run.id)
+    }.to change { AutoRetryAttempt.where(retry_kind: "resume_failed_step").count }.by(1)
+
+    expect(agent_run.reload).to have_attributes(state: "failed", agent_outcome: "worker_died")
+  end
+
+  it "executes stale running workspace retry after marking worker_died" do
+    ensure_solid_queue_test_tables!
+    agent_step = workflow.steps.find_by!(kind: "implement")
+    agent_run = agent_step.runs.create!(
+      job: job,
+      trigger_kind: workflow.trigger_kind,
+      agent_provider: "claude",
+      state: "running",
+      started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago,
+      last_heartbeat_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago
+    )
+    agent_step.update_columns(state: "running", started_at: agent_run.started_at)
+    workflow.update_columns(state: "running", started_at: agent_run.started_at)
+    allow(File).to receive(:directory?).and_call_original
+    allow(File).to receive(:directory?).with(WorkflowWorkspace.path_for(workflow)).and_return(true)
+
+    expect {
+      reconcile_and_execute(run_id: agent_run.id)
+    }.to change { AutoRetryAttempt.where(retry_kind: "failed_step").count }.by(1)
+
+    expect(agent_run.reload).to have_attributes(state: "failed", agent_outcome: "worker_died")
+  end
+
+  it "does not fail a fresh-heartbeat Run or a Run with a live spawned process" do
+    fresh = step.runs.create!(
+      job: job,
+      trigger_kind: workflow.trigger_kind,
+      agent_provider: "claude",
+      state: "running",
+      started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago,
+      last_heartbeat_at: 30.seconds.ago
+    )
+    live_step = workflow.steps.find_by!(kind: "implement")
+    live = live_step.runs.create!(
+      job: job,
+      trigger_kind: workflow.trigger_kind,
+      agent_provider: "claude",
+      state: "running",
+      started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago,
+      last_heartbeat_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago
+    )
+    SpawnedProcess.create!(
+      run: live,
+      workflow: workflow,
+      kind: "agent",
+      command: "codex exec",
+      hostname: "worker-1",
+      started_at: 5.minutes.ago
+    )
+    step.update_columns(state: "running", started_at: fresh.started_at)
+    live_step.update_columns(state: "running", started_at: live.started_at)
+    workflow.update_columns(state: "running", started_at: live.started_at)
+
+    result = reconcile_and_execute(workflow_id: workflow.id)
+
+    affected_run_ids = kind(result, :running_run_without_live_worker_evidence)&.affected_ids&.dig(:run_ids) || []
+    expect(affected_run_ids).not_to include(fresh.id, live.id)
+    expect(fresh.reload.state).to eq("running")
+    expect(live.reload.state).to eq("running")
   end
 
   it "classifies a queued Workflow without a first Run" do

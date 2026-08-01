@@ -56,9 +56,13 @@ RSpec.describe SyrusChatMcp::ExplainStuckJobTool do
     ))
     expect(payload.fetch(:issues).first).to include(
       kind: "running_run_without_live_worker_evidence",
-      attention_state: "operator_action_required",
+      attention_state: "auto_repairable",
       workflow_id: workflow.id,
       run_id: run.id
+    )
+    expect(payload.fetch(:issues).first.fetch(:repair_plan)).to include(
+      action: "mark_worker_died",
+      auto_executable: true
     )
   end
 

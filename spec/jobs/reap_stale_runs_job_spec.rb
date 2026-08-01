@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe ReapStaleRunsJob do
+  include ActiveJob::TestHelper
+
   let(:job) { Factories.job }
 
   # Build a Run in `running` state with the given heartbeat age.
@@ -51,9 +53,24 @@ RSpec.describe ReapStaleRunsJob do
   end
 
   describe "#perform" do
-    it "delegates to the unified reconciler without reaping when that gate is enabled" do
+    def stale_workflow_run
+      workflow = job.latest_workflow
+      step = workflow.first_step
+      run = step.runs.first
+      age = Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes
+      workflow.update_columns(state: "running", started_at: age.ago)
+      step.update_columns(state: "running", started_at: age.ago)
+      run.update_columns(
+        state: "running",
+        started_at: age.ago,
+        last_heartbeat_at: age.ago
+      )
+      run
+    end
+
+    it "delegates to the unified reconciler and releases stale running Runs when that gate is enabled" do
       enable_unified_work_engine_reconciler!
-      run = running_run(heartbeat_age: Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes)
+      run = stale_workflow_run
 
       expect {
         described_class.perform_now
@@ -64,7 +81,8 @@ RSpec.describe ReapStaleRunsJob do
         run_id: nil
       )
 
-      expect(run.reload.state).to eq("running")
+      perform_enqueued_jobs(only: WorkEngine::ReconcileJob)
+      expect(run.reload).to have_attributes(state: "failed", agent_outcome: "worker_died")
     end
 
     it "marks a run with stale heartbeat as failed" do

@@ -198,6 +198,20 @@ module WorkEngine
         def retry_budget_limit(classification)
           classification == AutoRetryScheduler::WORKER_DIED_CLASSIFICATION ? AutoRetryScheduler::MAX_WORKER_DIED_ATTEMPTS : AutoRetryScheduler::MAX_ATTEMPTS
         end
+
+        def mark_worker_died!
+          run = target_run
+          return skipped("Run no longer exists") unless run
+          return skipped("Run is #{run.state}, not running") unless run.running?
+          return skipped("Run cannot transition to failed") unless run.may_fail?
+
+          StateTransition.with_source("reconciler") do
+            run.agent_outcome = AutoRetryScheduler::WORKER_DIED_CLASSIFICATION
+            run.fail!
+            run.save!
+          end
+          success("marked Run ##{run.id} worker_died; no automatic retry was scheduled, leaving follow-up to terminal-state reconciliation or operator review")
+        end
       end
 
       class Default < Base; end
@@ -267,38 +281,33 @@ module WorkEngine
         end
       end
 
+      class MarkWorkerDied < Base
+        def perform = mark_worker_died!
+      end
+
       class MarkWorkerDiedAndResumeFailedStep < Base
         def perform
-          mark_worker_died!
+          result = mark_worker_died!
+          return result unless result.status == "applied"
+
           schedule_auto_retry!(retry_kind: "resume_failed_step")
-        end
-
-        private
-
-        def mark_worker_died!
-          run = target_run
-          return unless run&.running? && run.may_fail?
-
-          StateTransition.with_source("reconciler") do
-            run.agent_outcome = AutoRetryScheduler::WORKER_DIED_CLASSIFICATION
-            run.fail!
-            run.save!
-          end
         end
       end
 
-      class MarkWorkerDiedAndRetryFailedStep < MarkWorkerDiedAndResumeFailedStep
+      class MarkWorkerDiedAndRetryFailedStep < Base
         def perform
-          mark_worker_died!
+          result = mark_worker_died!
+          return result unless result.status == "applied"
           return skipped("worker_died failure already created active replacement work") if target_job&.any_active_run?
 
           schedule_auto_retry!(retry_kind: "failed_step")
         end
       end
 
-      class MarkWorkerDiedAndRetryWorkflow < MarkWorkerDiedAndResumeFailedStep
+      class MarkWorkerDiedAndRetryWorkflow < Base
         def perform
-          mark_worker_died!
+          result = mark_worker_died!
+          return result unless result.status == "applied"
           return skipped("worker_died failure already created active replacement work") if target_job&.any_active_run?
 
           schedule_auto_retry!(retry_kind: "retry_workflow")
