@@ -1381,7 +1381,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
       patch "/api/v1/app/chats/#{chat.id}", params: { chat: { mode: "coding" } }
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(parse_body.dig("error", "code")).to eq("feature_disabled")
       expect(chat.reload.mode).to be_nil
     end
@@ -1393,7 +1393,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
       patch "/api/v1/app/chats/#{chat.id}", params: { chat: { mode: "turbo" } }
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(parse_body.dig("error", "code")).to eq("validation_failed")
     end
 

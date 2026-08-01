@@ -18,14 +18,15 @@ RSpec.describe ChatAgentQuestion do
   it "records an answer as a user chat message and enqueues a new turn" do
     question = chat_session.agent_questions.create!(question: "Deploy now?", options: [ "Yes", "No" ], asked_at: Time.current)
 
-    expect(question.answer_and_record!("No")).to eq(true)
+    expect {
+      expect(question.answer_and_record!("No")).to eq(true)
+    }.to have_enqueued_job(ChatTurnJob).with(chat_session.id, kind_of(Integer))
     expect(question.reload.answer).to eq("No")
     expect(chat_session.messages.sole).to have_attributes(
       role: "user",
       content: { "text" => "No" }
     )
     expect(chat_session.reload.last_message_at).to be_present
-    expect(ChatTurnJob).to have_been_enqueued.with(chat_session.id, chat_session.messages.sole.id)
   end
 
   it "does not enqueue a ChatTurnJob when an agent turn is already running" do

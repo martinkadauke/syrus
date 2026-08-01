@@ -49,13 +49,13 @@ RSpec.describe "Admin GitHub App registration", type: :request do
 
   it "rejects the bounce page for forged or expired states" do
     get "/admin/github_app/manifest", params: { state: "forged" }
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
     expect(response.body).to include("invalid or has expired")
 
     state = register_state
     travel (GithubAppManifestState::TTL + 1.minute) do
       get "/admin/github_app/manifest", params: { state: state }
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
   end
 
@@ -97,7 +97,7 @@ RSpec.describe "Admin GitHub App registration", type: :request do
     expect {
       get "/admin/github_app/callback", params: { code: "temp-code", state: "wrong" }
     }.not_to change { AppSetting.current.reload.github_app_id }
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
     expect(response.body).to include("invalid or has expired")
   end
 
@@ -112,7 +112,7 @@ RSpec.describe "Admin GitHub App registration", type: :request do
     expect(response).to redirect_to(admin_github_app_confirm_path)
 
     get "/admin/github_app/callback", params: { code: "temp-code", state: state }
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
     expect(response.body).to include("invalid or has expired")
   end
 
@@ -121,7 +121,7 @@ RSpec.describe "Admin GitHub App registration", type: :request do
 
     get "/admin/github_app/callback", params: { state: state }
 
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
     expect(response.body).to include("GitHub did not return a manifest code.")
   end
 
