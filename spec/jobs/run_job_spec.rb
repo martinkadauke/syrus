@@ -898,6 +898,17 @@ RSpec.describe RunJob, :ci_only do
       expect(main_grader_run.reload.state).to eq("queued")
     end
 
+    it "preserves main_grader priority when delayed re-enqueue is needed" do
+      main_grader_run = main_grader_run!
+      urgent_priority = Job::PRIORITY_TO_SQ["urgent"]
+
+      clear_enqueued_jobs
+      RunJob.new.send(:defer_run, main_grader_run.id, 15.seconds)
+      run_jobs = ActiveJob::Base.queue_adapter.enqueued_jobs.select { |j| j[:job] == RunJob }
+
+      expect(run_jobs.last[:priority]).to be < urgent_priority
+    end
+
     it "classifies runs-queue trigger kinds, excluding landing and merge workflows" do
       kinds = Workflow.runs_queue_trigger_kinds
 

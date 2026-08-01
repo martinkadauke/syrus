@@ -123,8 +123,8 @@ class RunJob < ApplicationJob
   # the workspace, not fall back to the class-default `:runs` queue on any pod.
   # Used by the runs-paused and agent-concurrency gates.
   def defer_run(run_id, delay)
-    sq_priority = ::Run.joins(:job).where(id: run_id).pick("jobs.priority")
-    sq_num = ::Job::PRIORITY_TO_SQ.fetch(sq_priority.to_s, ::Job::PRIORITY_TO_SQ["medium"])
+    run = ::Run.find_by(id: run_id)
+    sq_num = run&.solid_queue_priority || ::Job::PRIORITY_TO_SQ["medium"]
     self.class.set(queue: queue_name, wait: delay, priority: sq_num).perform_later(run_id)
   end
 

@@ -213,6 +213,30 @@ RSpec.describe Run do
       expect(run_jobs.last[:priority]).to eq(Job::PRIORITY_TO_SQ["medium"])
     end
 
+    it "enqueues main_grader workflow runs ahead of urgent user work" do
+      main_grader_job = Job.create!(
+        user: job.user,
+        repository: job.repository,
+        kind: "main_grader",
+        issue_title: "main_grader:abc123",
+        issue_number: nil
+      )
+      workflow = Workflows::MainGrader.instantiate(job: main_grader_job)
+      step = workflow.steps.first
+      urgent_priority = Job::PRIORITY_TO_SQ["urgent"]
+
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+
+      step.runs.create!(
+        job: main_grader_job,
+        trigger_kind: workflow.trigger_kind,
+        agent_provider: workflow.agent_provider
+      )
+      run_jobs = ActiveJob::Base.queue_adapter.enqueued_jobs.select { |j| j[:job] == RunJob }
+
+      expect(run_jobs.last[:priority]).to be < urgent_priority
+    end
+
     it "enqueues AutoMerge workflow runs on the merges queue" do
       job
       ActiveJob::Base.queue_adapter.enqueued_jobs.clear

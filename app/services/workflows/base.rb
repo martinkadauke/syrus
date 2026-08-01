@@ -37,6 +37,10 @@ module Workflows
 
     def self.queue_name = :runs
 
+    def self.solid_queue_priority(job)
+      job.solid_queue_priority
+    end
+
     # Lifecycle hooks. The Workflow model invokes the matching hook
     # on the workflow-template class via Workflow#dispatch_hook after
     # the model handles generic concerns (timestamps, workspace
