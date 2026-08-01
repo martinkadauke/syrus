@@ -16,12 +16,22 @@ module App
     DELAYED_UNTIL_KEYS = %w[provider_circuit_until retry_delayed_until delayed_until circuit_open_until].freeze
     DELAY_REASON_KEYS = %w[retry_delay_reason provider_circuit_reason circuit_reason delay_reason].freeze
 
-    def self.for(job)
-      new(job).as_json
+    UNSET = Object.new.freeze
+
+    def self.for(job, latest_workflow: UNSET, latest_run: UNSET, latest_run_diagnostic: UNSET)
+      new(
+        job,
+        latest_workflow: latest_workflow,
+        latest_run: latest_run,
+        latest_run_diagnostic: latest_run_diagnostic
+      ).as_json
     end
 
-    def initialize(job)
+    def initialize(job, latest_workflow: UNSET, latest_run: UNSET, latest_run_diagnostic: UNSET)
       @job = job
+      @latest_workflow_override = latest_workflow
+      @latest_run_override = latest_run
+      @latest_run_diagnostic_override = latest_run_diagnostic
     end
 
     def as_json
@@ -45,16 +55,34 @@ module App
 
     attr_reader :job
 
+    def latest_workflow
+      return job.latest_workflow if @latest_workflow_override.equal?(UNSET)
+
+      @latest_workflow_override
+    end
+
+    def latest_run
+      return job.current_run if @latest_run_override.equal?(UNSET)
+
+      @latest_run_override
+    end
+
+    def latest_run_diagnostic
+      return latest_failed_run&.run_diagnostic if @latest_run_diagnostic_override.equal?(UNSET)
+
+      @latest_run_diagnostic_override
+    end
+
     def latest_failed_workflow
       @latest_failed_workflow ||= begin
-        workflow = job.latest_workflow
+        workflow = latest_workflow
         workflow if workflow&.failed?
       end
     end
 
     def latest_failed_run
       @latest_failed_run ||= begin
-        run = job.current_run
+        run = latest_run
         run if run&.failed?
       end
     end
@@ -143,8 +171,8 @@ module App
         job.landing_failure_reason,
         latest_failed_workflow&.failure_reason,
         artifacts["failure_reason"],
-        latest_failed_run&.run_diagnostic&.error_class,
-        latest_failed_run&.run_diagnostic&.error_message
+        latest_run_diagnostic&.error_class,
+        latest_run_diagnostic&.error_message
       ].compact.join("\n")
     end
 

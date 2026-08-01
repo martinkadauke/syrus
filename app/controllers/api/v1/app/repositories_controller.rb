@@ -427,13 +427,16 @@ module Api
 
         def repository_detail_payload(repository, page:, message: nil)
           jobs_scope = repository.jobs
-            .includes(:runs, :scheduled_task, workflows: :steps)
+            .with_latest_workflow_snapshot
+            .includes(:repository, :scheduled_task)
             .order(updated_at: :desc)
           total_jobs = repository.jobs.count
           total_pages = [ (total_jobs / PER_PAGE.to_f).ceil, 1 ].max
           jobs = jobs_scope
             .limit(PER_PAGE)
             .offset((page - 1) * PER_PAGE)
+            .to_a
+          preload_repository_detail_job_state(jobs)
 
           payload = {
             message: message,
@@ -510,10 +513,12 @@ module Api
         end
 
         def repositories_payload(message: nil)
-          repos = Current.user.repositories.order(:owner, :name)
+          repos = Current.user.repositories.includes(:user).order(:owner, :name).to_a
+          preload_repository_index_job_state(repos)
+
           {
-            active_repositories: repos.active.map { |repository| repository_json(repository) },
-            archived_repositories: repos.archived.map { |repository| repository_json(repository) },
+            active_repositories: repos.select { |repository| !repository.archived? }.map { |repository| repository_json(repository) },
+            archived_repositories: repos.select(&:archived?).map { |repository| repository_json(repository) },
             repositories: repos.map { |repository| repository_cli_json(repository) },
             new_repository_path: new_repository_path,
             setup: ::App::SetupStatus.call(user: Current.user),
@@ -548,13 +553,21 @@ module Api
         end
 
         def repository_cli_json(repository)
-          jobs = repository.jobs.order(updated_at: :desc)
-          last_job = jobs.first
+          last_job = if defined?(@repository_index_last_jobs_by_repository_id)
+            @repository_index_last_jobs_by_repository_id[repository.id]
+          else
+            repository.jobs.order(updated_at: :desc).first
+          end
+
           {
             id: repository.id,
             slug: repository.slug,
             archived: repository.archived?,
-            active_jobs_count: repository.jobs.open_threads.count,
+            active_jobs_count: if defined?(@repository_index_open_job_counts)
+              @repository_index_open_job_counts.fetch(repository.id, 0)
+            else
+              repository.jobs.open_threads.count
+            end,
             last_job: last_job && {
               id: last_job.id,
               title: last_job.issue_title.to_s,
@@ -815,9 +828,9 @@ module Api
             pr_url: ::App::Presentation.job_pr_url(job),
             external_pr_number: job.external_pr_number,
             external_pr_url: ::App::Presentation.external_pr_url(job),
-            current_step_caption: ::App::Presentation.current_step_caption(job),
-            retry_state: ::App::RetryState.for(job),
-            runs_count: job.runs.size,
+            current_step_caption: current_step_caption_for(job),
+            retry_state: retry_state_for(job),
+            runs_count: runs_count_for(job),
             updated_at: job.updated_at.iso8601
           }
         end
@@ -976,9 +989,126 @@ module Api
         end
 
         def retryable_failed_jobs(repository)
-          repository.jobs.open_threads.select do |job|
-            !job.any_active_run? && job.current_run&.failed?
-          end
+          open_job_ids = repository.jobs.open_threads.pluck(:id)
+          return [] if open_job_ids.empty?
+
+          active_job_ids = Run.active.where(job_id: open_job_ids).distinct.pluck(:job_id)
+          inactive_job_ids = open_job_ids - active_job_ids
+          return [] if inactive_job_ids.empty?
+
+          failed_job_ids = latest_runs_by_job_id(inactive_job_ids).values.select(&:failed?).map(&:job_id)
+          return [] if failed_job_ids.empty?
+
+          repository.jobs.where(id: failed_job_ids).to_a
+        end
+
+        def preload_repository_index_job_state(repositories)
+          repository_ids = repositories.map(&:id)
+          @repository_index_open_job_counts = Job.open_threads
+            .where(repository_id: repository_ids)
+            .group(:repository_id)
+            .count
+          @repository_index_last_jobs_by_repository_id = latest_jobs_by_repository_id(repository_ids)
+        end
+
+        def preload_repository_detail_job_state(jobs)
+          job_ids = jobs.map(&:id)
+          @repository_detail_runs_count_by_job_id = Run.where(job_id: job_ids).group(:job_id).count
+          @repository_detail_latest_runs_by_job_id = latest_runs_by_job_id(job_ids)
+          @repository_detail_latest_workflows_by_job_id = latest_workflows_by_job_id(job_ids)
+          @repository_detail_run_diagnostics_by_run_id = RunDiagnostic
+            .where(run_id: @repository_detail_latest_runs_by_job_id.values.map(&:id))
+            .index_by(&:run_id)
+          @repository_detail_running_workflows_by_job_id = current_running_workflows_by_job_id(job_ids)
+          @repository_detail_current_steps_by_workflow_id = current_steps_by_workflow_id(
+            @repository_detail_running_workflows_by_job_id.values.map(&:id)
+          )
+        end
+
+        def latest_jobs_by_repository_id(repository_ids)
+          return {} if repository_ids.empty?
+
+          ranked = Job.where(repository_id: repository_ids)
+            .select("jobs.*, ROW_NUMBER() OVER (PARTITION BY repository_id ORDER BY updated_at DESC, id DESC) AS syrus_row_number")
+          Job.from("(#{ranked.to_sql}) jobs")
+            .where("syrus_row_number = 1")
+            .index_by(&:repository_id)
+        end
+
+        def latest_runs_by_job_id(job_ids)
+          return {} if job_ids.empty?
+
+          ranked = Run.where(job_id: job_ids)
+            .select("runs.*, ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY created_at DESC, id DESC) AS syrus_row_number")
+          Run.from("(#{ranked.to_sql}) runs")
+            .where("syrus_row_number = 1")
+            .index_by(&:job_id)
+        end
+
+        def latest_workflows_by_job_id(job_ids)
+          return {} if job_ids.empty?
+
+          ranked = Workflow.where(job_id: job_ids)
+            .select("workflows.*, ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY (finished_at IS NULL) DESC, finished_at DESC, id DESC) AS syrus_row_number")
+          Workflow.from("(#{ranked.to_sql}) workflows")
+            .where("syrus_row_number = 1")
+            .index_by(&:job_id)
+        end
+
+        def current_running_workflows_by_job_id(job_ids)
+          return {} if job_ids.empty?
+
+          ranked = Workflow.where(job_id: job_ids, state: "running")
+            .select("workflows.*, ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY created_at DESC, id DESC) AS syrus_row_number")
+          Workflow.from("(#{ranked.to_sql}) workflows")
+            .where("syrus_row_number = 1")
+            .index_by(&:job_id)
+        end
+
+        def current_steps_by_workflow_id(workflow_ids)
+          return {} if workflow_ids.empty?
+
+          active_steps = Step.where(workflow_id: workflow_ids, state: %w[ queued running ])
+            .order(:workflow_id, :position, :id)
+            .to_a
+          steps_by_workflow_id = active_steps.group_by(&:workflow_id).transform_values(&:first)
+          missing_workflow_ids = workflow_ids - steps_by_workflow_id.keys
+          return steps_by_workflow_id if missing_workflow_ids.empty?
+
+          last_steps = Step.where(workflow_id: missing_workflow_ids)
+            .order(:workflow_id, position: :desc, id: :desc)
+            .to_a
+          steps_by_workflow_id.merge(last_steps.group_by(&:workflow_id).transform_values(&:first))
+        end
+
+        def runs_count_for(job)
+          return job.runs.size unless defined?(@repository_detail_runs_count_by_job_id)
+
+          @repository_detail_runs_count_by_job_id.fetch(job.id, 0)
+        end
+
+        def current_step_caption_for(job)
+          return ::App::Presentation.current_step_caption(job) unless defined?(@repository_detail_running_workflows_by_job_id)
+
+          workflow = @repository_detail_running_workflows_by_job_id[job.id]
+          return nil unless workflow
+
+          step = @repository_detail_current_steps_by_workflow_id[workflow.id]
+          return "currently: #{workflow.trigger_kind_humanized}" unless step
+
+          "currently: #{Step::Kind.label_for(step.kind)} (workflow: #{workflow.trigger_kind_humanized})"
+        end
+
+        def retry_state_for(job)
+          return ::App::RetryState.for(job) unless defined?(@repository_detail_latest_runs_by_job_id)
+
+          latest_run = @repository_detail_latest_runs_by_job_id[job.id]
+          ::App::RetryState.for(
+            job,
+            latest_workflow: @repository_detail_latest_workflows_by_job_id[job.id],
+            latest_run: latest_run,
+            latest_run_diagnostic: latest_run && @repository_detail_run_diagnostics_by_run_id[latest_run.id]
+          )
         end
 
         def detail_page
