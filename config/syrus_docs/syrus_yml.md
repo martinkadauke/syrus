@@ -75,7 +75,7 @@ grade:
 
 ### fast
 
-`fast` is an optional alternate command for the same grader. Syrus uses it when the grader result is only a pass/fail safety check and no fresh coverage report is consumed: `main_grader`, `main_branch_repair`, `auto_merge`, `merge_train`, and implementation/feedback/coding grade-loop iterations after the first. If `fast` is absent, Syrus falls back to `run`.
+`fast` is an optional alternate command for the same grader. Syrus uses it when the grader result is only a pass/fail safety check and no fresh coverage report is consumed: `main_branch_repair`, `auto_merge`, `merge_train`, and implementation/feedback/coding grade-loop iterations after the first. `main_grader` uses `ci` when present, otherwise `fast`, otherwise `run`. If `fast` is absent in a fast context, Syrus falls back to `run`.
 
 For Ruby projects, prefer putting formatter, coverage, parallelization, and CI-only filtering policy in a wrapper script such as `bin/rspec-fast`. Grader infrastructure should run the configured command as-is instead of appending RSpec-specific flags.
 
@@ -100,7 +100,7 @@ grade:
     ci: COVERAGE=false bin/rspec-ci
 ```
 
-Use CI-only specs for checks that are too slow, too environmental, or too broad for the normal Syrus grader loop but still important in GitHub Actions. They should run during `ci_failure` workflows so the agent can verify that a CI failure is actually fixed. Normal implementation, feedback, landing, and main-grader workflows should use `run` or `fast`, not the CI-only command.
+Use CI-only specs for checks that are too slow, too environmental, or too broad for the normal Syrus grader loop but still important in GitHub Actions. They should run during `ci_failure` workflows so the agent can verify that a CI failure is actually fixed. Main-grader workflows also use `ci` when present so main-branch health reflects the GitHub CI suite. Normal implementation, feedback, and landing workflows should use `run` or `fast`, not the CI-only command.
 
 ### Recommended test setup
 
@@ -121,7 +121,7 @@ grade:
     ci: bin/test-ci
 ```
 
-Use `run` for the normal validation command. If coverage reporting is configured, this is usually the command that produces coverage artifacts. Use `fast` for pass/fail-only rechecks where fresh coverage is not consumed, such as landing, main-branch grading, repair checks, and repeat grade-loop iterations. Use `ci` only for CI-failure repair workflows, where Syrus needs to run the slower checks that GitHub Actions ran.
+Use `run` for the normal validation command. If coverage reporting is configured, this is usually the command that produces coverage artifacts. Use `fast` for pass/fail-only rechecks where fresh coverage is not consumed, such as landing, repair checks, and repeat grade-loop iterations. Use `ci` for CI-failure repair workflows and main-branch grading, where Syrus needs to run the slower checks that GitHub Actions ran.
 
 Keep the normal grader suite fast enough for repeated agent use. A useful target is under 30 seconds for the primary pass/fail suite. If tests are slow because they create real repositories, spawn shells, hit network services, exercise large filesystem trees, or boot full integrations, first try to replace that cost with fakes, dependency injection, fixtures, or narrower unit coverage. Mark tests CI-only only when the real integration behavior is important and cannot reasonably be made fast.
 

@@ -20,6 +20,8 @@ class RepoGradePlan
       case variant.to_sym
       when :ci
         ci_command.presence || command
+      when :ci_or_fast
+        ci_command.presence || fast_command.presence || command
       when :fast
         fast_command.presence || command
       else

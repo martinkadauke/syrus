@@ -158,6 +158,46 @@ RSpec.describe Steps::GraderFanout do
     expect(details["ci_variant"]).to be true
   end
 
+  it "uses the CI grader command for main branch grader validations when configured" do
+    workflow.update!(trigger_kind: "main_grader")
+    write_config(<<~YAML)
+      grade:
+        - name: rspec
+          run: bin/rspec
+          fast: bin/rspec-fast
+          ci: bin/rspec-ci
+    YAML
+
+    handler.call
+
+    details = workflow.steps.find_by!(kind: "grader").details
+    expect(details["command"]).to eq("bin/rspec-ci")
+    expect(details["standard_command"]).to eq("bin/rspec")
+    expect(details["fast_command"]).to eq("bin/rspec-fast")
+    expect(details["ci_command"]).to eq("bin/rspec-ci")
+    expect(details["command_variant"]).to eq("ci_or_fast")
+    expect(details["fast_variant"]).to be false
+    expect(details["ci_variant"]).to be true
+  end
+
+  it "falls back to the fast grader command for main branch grader validations when no CI command is configured" do
+    workflow.update!(trigger_kind: "main_grader")
+    write_config(<<~YAML)
+      grade:
+        - name: rspec
+          run: bin/rspec
+          fast: bin/rspec-fast
+    YAML
+
+    handler.call
+
+    details = workflow.steps.find_by!(kind: "grader").details
+    expect(details["command"]).to eq("bin/rspec-fast")
+    expect(details["command_variant"]).to eq("ci_or_fast")
+    expect(details["fast_variant"]).to be true
+    expect(details["ci_variant"]).to be false
+  end
+
   it "falls back to the normal command in CI failure contexts when no CI command is configured" do
     workflow.update!(trigger_kind: "ci_failure")
     write_config(<<~YAML)

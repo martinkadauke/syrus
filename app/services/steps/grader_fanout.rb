@@ -18,7 +18,6 @@ module Steps
     FAST_GRADER_TRIGGER_KINDS = %w[
       auto_merge
       main_branch_repair
-      main_grader
       merge_train
     ].freeze
 
@@ -194,13 +193,19 @@ module Steps
             "fast_command" => grader.fast_command,
             "ci_command" => grader.ci_command,
             "command_variant" => variant.to_s,
-            "fast_variant" => variant == :fast && grader.fast_command.present?,
-            "ci_variant" => variant == :ci && grader.ci_command.present?
+            "fast_variant" => fast_variant?(grader, variant),
+            "ci_variant" => %i[ci ci_or_fast].include?(variant) && grader.ci_command.present?
           }.compact
 
           grader.with(command: command, metadata: metadata)
         end
       )
+    end
+
+    def fast_variant?(grader, variant)
+      return true if variant == :fast && grader.fast_command.present?
+
+      variant == :ci_or_fast && grader.ci_command.blank? && grader.fast_command.present?
     end
 
     def normal_grader_context?
@@ -209,6 +214,7 @@ module Steps
 
     def grader_command_variant
       return :ci if workflow.trigger_kind == "ci_failure"
+      return :ci_or_fast if workflow.trigger_kind == "main_grader"
       return :fast if fast_grader_context?
 
       :normal
