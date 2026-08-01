@@ -236,6 +236,16 @@ module WorkEngine
             evidence: run_evidence(run).merge(solid_queue: sq, solid_queue_state: "failed_execution"),
             explanation: "Run ##{run.id} is queued but its SolidQueue RunJob has a failed execution."
           )
+        elsif sq[:ready] && dead_resume_queue?(sq[:queue_name])
+          issue(
+            kind: :queued_run_on_dead_resume_queue,
+            severity: :error,
+            affected_ids: ids_for(run).merge(solid_queue_job_ids: [ sq[:id] ]),
+            safe_to_auto_repair: workflow&.running? || workflow&.queued?,
+            recommended_repair_action: "reenqueue_run",
+            evidence: run_evidence(run).merge(solid_queue: sq, solid_queue_state: "dead_resume_queue"),
+            explanation: "Run ##{run.id} is queued on a per-worker resume queue whose worker is no longer live."
+          )
         elsif sq[:claimed] && older_than?(sq[:claimed_at], QUEUE_STARVATION_AFTER) && !solid_queue_process_live?(sq[:process_id])
           issue(
             kind: :queued_run_stale_queue_claim,
@@ -688,12 +698,14 @@ module WorkEngine
 
         claim = job.claimed_execution
         failed = job.failed_execution
+        ready = SolidQueue::ReadyExecution.where(job_id: job.id).exists?
         {
           id: job.id,
           root_run_id: root_run_id,
           queue_name: job.queue_name,
           priority: job.priority,
           finished_at: job.finished_at,
+          ready: ready,
           claimed: claim.present?,
           claimed_at: claim&.created_at,
           process_id: claim&.process_id,
@@ -717,6 +729,13 @@ module WorkEngine
 
       solid_queue[:jobs].find { |job| job[:root_run_id] == run.id } ||
         solid_queue[:jobs].find { |job| workflow_root_run_ids(run.workflow).include?(job[:root_run_id]) }
+    end
+
+    def dead_resume_queue?(queue_name)
+      queue_name = queue_name.to_s
+      return false unless queue_name.start_with?("resume-")
+
+      !InstanceVersion.worker_live?(queue_name.delete_prefix("resume-"))
     end
 
     def solid_queue_process_live?(process_id)

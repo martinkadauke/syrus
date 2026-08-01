@@ -287,6 +287,18 @@ module WorkEngine
         end
       end
 
+      class QueuedRunOnDeadResumeQueue < Base
+        def plan
+          automatic_plan(
+            "reenqueue_run",
+            primary_run,
+            "The Run is ready on a dead per-worker resume queue, so re-enqueueing routes it to the normal queue or a live worker.",
+            execution_steps: [ "Run#reenqueue!" ],
+            preconditions: { run_state: "queued", workflow_state: %w[queued running], resume_worker_live: false }
+          )
+        end
+      end
+
       class QueuedRunStaleQueueClaim < Base
         def plan
           waiting_plan(

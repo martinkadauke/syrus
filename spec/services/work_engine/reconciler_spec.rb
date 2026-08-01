@@ -32,16 +32,24 @@ RSpec.describe WorkEngine::Reconciler do
     result.repair_plans.find { |repair_plan| repair_plan.action == action.to_s }
   end
 
-  def solid_queue_run_job(run, claimed: false, failed: false, error: "worker process failed", process_id: nil, created_at: 10.minutes.ago)
+  def solid_queue_run_job(run, claimed: false, failed: false, ready: false, queue_name: "runs", error: "worker process failed", process_id: nil, created_at: 10.minutes.ago)
     ensure_solid_queue_test_tables!
     queue_job = SolidQueue::Job.create!(
       class_name: "RunJob",
-      queue_name: "runs",
+      queue_name: queue_name,
       priority: 10,
       arguments: { "arguments" => [ run.id ] },
       created_at: created_at,
       updated_at: created_at
     )
+    if ready
+      SolidQueue::ReadyExecution.create!(
+        job: queue_job,
+        priority: queue_job.priority,
+        queue_name: queue_job.queue_name,
+        created_at: created_at
+      )
+    end
     if claimed
       process_id ||= SolidQueue::Process.create!(
         hostname: "worker-1",
@@ -130,6 +138,27 @@ RSpec.describe WorkEngine::Reconciler do
     expect(issue).to be_present
     expect(issue.safe_to_auto_repair).to eq(true)
     expect(plan(result, :reenqueue_run)).to have_attributes(target_id: retry_run.id)
+  end
+
+  it "classifies a queued Run ready on a dead per-worker resume queue" do
+    run.update_columns(state: "queued", created_at: 5.minutes.ago, updated_at: 5.minutes.ago)
+    workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_hostname: "syrus-worker-dead")
+    solid_queue_run_job(run, ready: true, queue_name: "resume-syrus-worker-dead", created_at: 5.minutes.ago)
+
+    result = reconcile(run_id: run.id)
+    issue = kind(result, :queued_run_on_dead_resume_queue)
+
+    expect(issue).to have_attributes(
+      severity: "error",
+      safe_to_auto_repair: true,
+      recommended_repair_action: "reenqueue_run"
+    )
+    expect(issue.evidence["solid_queue_state"]).to eq("dead_resume_queue")
+    expect(plan(result, :reenqueue_run)).to have_attributes(
+      auto_executable: true,
+      target_type: "Run",
+      target_id: run.id
+    )
   end
 
   it "executes safe queued Run re-enqueue repairs when requested" do
