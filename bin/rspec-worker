@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export RAILS_ENV="${RAILS_ENV:-test}"
+export RSPEC_JSON_DIR="${RSPEC_JSON_DIR:-.syrus/rspec-json}"
+
+mkdir -p "$RSPEC_JSON_DIR"
+worker_id="${TEST_ENV_NUMBER:-1}"
+
+exec bin/rspec \
+  --format progress \
+  --format json \
+  --out "$RSPEC_JSON_DIR/rspec-${worker_id}.json" \
+  "$@"

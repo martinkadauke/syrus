@@ -4,6 +4,15 @@ set -euo pipefail
 export RAILS_ENV="${RAILS_ENV:-test}"
 export COVERAGE="${COVERAGE:-false}"
 export PARALLEL_TEST_PROCESSORS="${RSPEC_PROCESSES:-8}"
+export RSPEC_JSON_DIR="${RSPEC_JSON_DIR:-.syrus/rspec-json}"
+
+mkdir -p "$RSPEC_JSON_DIR"
+if [ "$COVERAGE" = "true" ]; then
+  rm -f coverage/.resultset.json coverage/.resultset.json.lock coverage/lcov.info
+fi
 
 bundle exec rake parallel:prepare
-exec bundle exec parallel_rspec -n "$PARALLEL_TEST_PROCESSORS" --serialize-stdout "$@"
+exec bundle exec parallel_rspec \
+  -n "$PARALLEL_TEST_PROCESSORS" \
+  --exec-args bin/rspec-worker \
+  "$@"

@@ -31,19 +31,11 @@ module Steps
       absolute_log_path = workspace.path.join(log_path)
       FileUtils.mkdir_p(absolute_log_path.dirname)
 
-      # Augment rspec commands with a structured output file so failure
-      # details survive even when stdout is cut off mid-output (OOM, signal).
-      json_results_path = nil
-      if command.include?("rspec") && !command.include?("--format json")
-        json_results_path = Rails.root.join("tmp", "rspec_grade_#{SecureRandom.hex(8)}.json").to_s
-        command = "#{command} --format json --out #{json_results_path}"
-      end
-
       started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       exit_code = nil
       timed_out = false
 
-      line_buffer = +""
+      sink, flush = buffered_log_sink
 
       File.open(absolute_log_path, "wb") do |file|
         result = ProcessRunner.new(
@@ -57,10 +49,7 @@ module Steps
           on_output_chunk: ->(chunk) do
             file.write(chunk)
             file.flush
-            line_buffer << chunk
-            while (nl = line_buffer.index("\n"))
-              log(line_buffer.slice!(0..nl), kind: "grade_log")
-            end
+            sink.call(chunk, kind: "grade_log")
           end
         ).run
 
@@ -75,27 +64,10 @@ module Steps
         end
       end
 
-      log(line_buffer, kind: "grade_log") if line_buffer.present?
+      flush.call
 
       duration_s = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
       passed = exit_code.to_i.zero?
-
-      # When RSpec exits with failures, supplement the transcript with
-      # structured details from the JSON formatter — available even if
-      # stdout was cut off before the summary printed.
-      if !passed && json_results_path && File.exist?(json_results_path)
-        begin
-          results = JSON.parse(File.read(json_results_path))
-          failures = results.dig("examples")&.select { |e| e["status"] == "failed" } || []
-          if failures.any?
-            append_grade_diagnostic(absolute_log_path, rspec_failure_summary(failures))
-          end
-        rescue JSON::ParserError
-          # partial write — ignore
-        ensure
-          File.delete(json_results_path) rescue nil
-        end
-      end
 
       append_grade_diagnostic(absolute_log_path, "\n[grader:#{name}] failed (exit #{exit_code})\n") unless passed
 
@@ -125,16 +97,6 @@ module Steps
     def append_grade_diagnostic(path, text)
       File.open(path, "ab") { |file| file.write(text) }
       log(text, kind: "grade_log")
-    end
-
-    def rspec_failure_summary(failures)
-      summary = +"[rspec failures from JSON output]\n"
-      failures.each do |failure|
-        summary << "#{failure["full_description"]}\n"
-        summary << "  #{failure.dig("exception", "message")}\n" if failure.dig("exception", "message")
-        summary << "  #{failure["location"]}\n" if failure["location"]
-      end
-      summary
     end
 
     def grader_output_excerpt(path)
