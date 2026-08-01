@@ -697,13 +697,14 @@ module WorkEngine
     def capture_solid_queue
       root_ids = solid_queue_root_run_ids
       ready_job_ids = SolidQueue::ReadyExecution.pluck(:job_id).to_set
-      jobs = SolidQueue::Job.where(class_name: "RunJob").where(finished_at: nil).includes(:claimed_execution, :failed_execution).to_a
+      jobs = SolidQueue::Job.where(class_name: "RunJob").where(finished_at: nil).includes(:claimed_execution, :failed_execution, :scheduled_execution).to_a
       parsed = jobs.filter_map do |job|
         root_run_id = run_id_from_solid_queue_arguments(job.arguments)
         next if root_ids.any? && !root_ids.include?(root_run_id)
 
         claim = job.claimed_execution
         failed = job.failed_execution
+        scheduled = job.scheduled_execution
         {
           id: job.id,
           root_run_id: root_run_id,
@@ -714,6 +715,8 @@ module WorkEngine
           claimed: claim.present?,
           claimed_at: claim&.created_at,
           process_id: claim&.process_id,
+          scheduled: scheduled.present?,
+          scheduled_at: scheduled&.scheduled_at,
           failed: failed.present?,
           error: failed&.error
         }
@@ -753,6 +756,7 @@ module WorkEngine
 
     def queue_job_can_progress?(sq)
       return false if sq[:failed]
+      return true if sq[:scheduled] && !dead_resume_queue?(sq[:queue_name])
       return true if sq[:ready] && !sq[:claimed] && !dead_resume_queue?(sq[:queue_name])
       return true if sq[:claimed] && solid_queue_process_live?(sq[:process_id])
 

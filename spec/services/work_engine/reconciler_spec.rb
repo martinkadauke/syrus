@@ -32,13 +32,14 @@ RSpec.describe WorkEngine::Reconciler do
     result.repair_plans.find { |repair_plan| repair_plan.action == action.to_s }
   end
 
-  def solid_queue_run_job(run, claimed: false, failed: false, ready: false, queue_name: "runs", error: "worker process failed", process_id: nil, created_at: 10.minutes.ago)
+  def solid_queue_run_job(run, claimed: false, failed: false, ready: false, run_at: nil, queue_name: "runs", error: "worker process failed", process_id: nil, created_at: 10.minutes.ago)
     ensure_solid_queue_test_tables!
     queue_job = SolidQueue::Job.create!(
       class_name: "RunJob",
       queue_name: queue_name,
       priority: 10,
       arguments: { "arguments" => [ run.id ] },
+      scheduled_at: run_at,
       created_at: created_at,
       updated_at: created_at
     )
@@ -47,6 +48,15 @@ RSpec.describe WorkEngine::Reconciler do
         job: queue_job,
         priority: queue_job.priority,
         queue_name: queue_job.queue_name,
+        created_at: created_at
+      )
+    end
+    if run_at
+      SolidQueue::ScheduledExecution.create!(
+        job: queue_job,
+        priority: queue_job.priority,
+        queue_name: queue_job.queue_name,
+        scheduled_at: run_at,
         created_at: created_at
       )
     end
@@ -195,6 +205,23 @@ RSpec.describe WorkEngine::Reconciler do
 
     expect(kind(result, :queued_run_on_dead_resume_queue)).to be_nil
     expect(kind(result, :queued_run_solid_queue_failed_execution)).to be_nil
+    expect(result.repair_plans.select { |repair_plan| repair_plan.action == "reenqueue_run" }).to be_empty
+  end
+
+  it "does not re-enqueue a queued Run while a normal-queue RunJob is scheduled for retry" do
+    run.update_columns(state: "queued", created_at: 5.minutes.ago, updated_at: 5.minutes.ago)
+    workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_hostname: "syrus-worker-dead")
+    solid_queue_run_job(run, ready: true, queue_name: "resume-syrus-worker-dead", created_at: 5.minutes.ago)
+    scheduled = solid_queue_run_job(run, run_at: 15.seconds.from_now, queue_name: "runs", created_at: Time.current)
+
+    result = reconcile(run_id: run.id)
+
+    expect(kind(result, :queued_run_on_dead_resume_queue)).to be_nil
+    expect(kind(result, :queued_run_without_queue_claim)).to be_nil
+    expect(result.snapshot.solid_queue_jobs.find { |job| job[:id] == scheduled.id }).to include(
+      scheduled: true,
+      scheduled_at: be_within(1.second).of(scheduled.scheduled_execution.scheduled_at)
+    )
     expect(result.repair_plans.select { |repair_plan| repair_plan.action == "reenqueue_run" }).to be_empty
   end
 

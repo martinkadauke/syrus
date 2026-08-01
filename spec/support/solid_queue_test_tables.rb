@@ -65,6 +65,16 @@ module SolidQueueTestTables
       end
     end
 
+    unless connection.table_exists?(:solid_queue_scheduled_executions)
+      connection.create_table :solid_queue_scheduled_executions do |t|
+        t.datetime :created_at, null: false
+        t.bigint :job_id, null: false
+        t.integer :priority, default: 0, null: false
+        t.string :queue_name, null: false
+        t.datetime :scheduled_at, null: false
+      end
+    end
+
     unless connection.table_exists?(:solid_queue_failed_executions)
       connection.create_table :solid_queue_failed_executions do |t|
         t.datetime :created_at, null: false
@@ -103,6 +113,7 @@ module SolidQueueTestTables
       SolidQueue::ClaimedExecution,
       SolidQueue::BlockedExecution,
       SolidQueue::ReadyExecution,
+      SolidQueue::ScheduledExecution,
       SolidQueue::FailedExecution,
       SolidQueue::Process,
       SolidQueue::Pause,
@@ -117,6 +128,7 @@ module SolidQueueTestTables
       solid_queue_recurring_executions
       solid_queue_recurring_tasks
       solid_queue_failed_executions
+      solid_queue_scheduled_executions
       solid_queue_ready_executions
       solid_queue_pauses
       solid_queue_blocked_executions
@@ -134,6 +146,7 @@ module SolidQueueTestTables
       solid_queue_recurring_executions
       solid_queue_recurring_tasks
       solid_queue_failed_executions
+      solid_queue_scheduled_executions
       solid_queue_ready_executions
       solid_queue_claimed_executions
       solid_queue_pauses
