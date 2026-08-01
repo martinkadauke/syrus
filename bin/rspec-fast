@@ -7,12 +7,72 @@ export PARALLEL_TEST_PROCESSORS="${RSPEC_PROCESSES:-8}"
 export RSPEC_JSON_DIR="${RSPEC_JSON_DIR:-.syrus/rspec-json}"
 
 mkdir -p "$RSPEC_JSON_DIR"
+rm -f "$RSPEC_JSON_DIR"/rspec-*.json
 if [ "$COVERAGE" = "true" ]; then
   rm -f coverage/.resultset.json coverage/.resultset.json.lock coverage/lcov.info
 fi
 
 bundle exec rake parallel:prepare
-exec bundle exec parallel_rspec \
+spec_file_count=""
+if [ "$#" -eq 0 ]; then
+  spec_file_count="$(find spec -type f -name '*_spec.rb' | wc -l | tr -d ' ')"
+else
+  selected_spec_file_count=0
+  for arg in "$@"; do
+    case "$arg" in
+      -*) continue ;;
+    esac
+
+    if [ -f "$arg" ]; then
+      case "$arg" in
+        *_spec.rb) selected_spec_file_count=$((selected_spec_file_count + 1)) ;;
+      esac
+    elif [ -d "$arg" ]; then
+      count="$(find "$arg" -type f -name '*_spec.rb' | wc -l | tr -d ' ')"
+      selected_spec_file_count=$((selected_spec_file_count + count))
+    fi
+  done
+  if [ "$selected_spec_file_count" -gt 0 ]; then
+    spec_file_count="$selected_spec_file_count"
+  fi
+fi
+
+if [ -n "$spec_file_count" ]; then
+  if [ "$spec_file_count" -eq 1 ]; then
+    echo "$PARALLEL_TEST_PROCESSORS processes for 1 spec file"
+  else
+    echo "$PARALLEL_TEST_PROCESSORS processes for $spec_file_count spec files"
+  fi
+else
+  echo "$PARALLEL_TEST_PROCESSORS processes for selected spec files"
+fi
+
+start_time="$SECONDS"
+set +e
+bundle exec parallel_rspec \
   -n "$PARALLEL_TEST_PROCESSORS" \
+  --quiet \
   --exec-args bin/rspec-worker \
   "$@"
+status="$?"
+set -e
+
+ruby -rjson -e '
+  files = Dir[File.join(ARGV.fetch(0), "rspec-*.json")]
+  exit if files.empty?
+
+  totals = files.each_with_object(Hash.new(0)) do |path, memo|
+    summary = JSON.parse(File.read(path)).fetch("summary", {})
+    memo[:examples] += summary.fetch("example_count", 0).to_i
+    memo[:failures] += summary.fetch("failure_count", 0).to_i
+    memo[:pending] += summary.fetch("pending_count", 0).to_i
+  end
+
+  parts = ["#{totals[:examples]} examples", "#{totals[:failures]} failures"]
+  parts << "#{totals[:pending]} pending" if totals[:pending].positive?
+  puts
+  puts parts.join(", ")
+' "$RSPEC_JSON_DIR"
+echo
+echo "Took $((SECONDS - start_time)) seconds"
+exit "$status"
