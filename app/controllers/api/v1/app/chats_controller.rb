@@ -1316,6 +1316,7 @@ module Api
             agent_busy: chat_session.agent_busy?,
             switching_provider: false,
             has_more_older: has_more_older,
+            pending_proposal_count: chat_session.proposals.where(state: "proposed").count,
             messages: messages_json(messages, repository: repository),
             bookmarks: chat_session.bookmarks.includes(:chat_message).map { |bookmark| bookmark_json(bookmark) },
             recent_chats: recent_chats_json(chat_session),
@@ -1354,6 +1355,7 @@ module Api
               app_video_walkthroughs_path: "/api/v1/app/chats/#{chat_session.id}/video_walkthroughs",
               app_cancel_coding_checkout_path: "/api/v1/app/chats/#{chat_session.id}/coding_checkout",
               app_coding_files_path: "/api/v1/app/chats/#{chat_session.id}/coding_files",
+              app_coding_commits_path: "/api/v1/app/chats/#{chat_session.id}/coding_commits",
               app_coding_file_path: "/api/v1/app/chats/#{chat_session.id}/coding_file",
               app_coding_diff_path: "/api/v1/app/chats/#{chat_session.id}/coding_diff"
             },
@@ -1629,7 +1631,10 @@ module Api
           when "Repository"
             Current.user.repositories.active.order(:owner, :name, :id)
           when "Job"
-            Current.user.jobs.includes(:repository).order(created_at: :desc, id: :desc)
+            Current.user.jobs
+              .where.not(kind: ChatAttachmentSearch::INFRA_JOB_KINDS)
+              .includes(:repository)
+              .order(created_at: :desc, id: :desc)
           when "Document"
             Document.where(user: Current.user, attachable_type: "Repository").includes(:attachable).order(:title, :id)
           when "Epic"
