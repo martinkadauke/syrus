@@ -262,12 +262,22 @@ RSpec.describe ChatMessage do
       described_class.create!(chat_session: platform_session, role: "user", content: { "text" => "Hi" })
     end
 
+    it "does not raise or deliver when no adapter is registered for the platform" do
+      Factories.platform_identity(user: repo.user, platform: "telegram")
+      allow(AppEvents).to receive(:broadcast)
+
+      expect {
+        described_class.create!(chat_session: platform_session, role: "assistant", content: { "text" => "Hello" })
+      }.not_to raise_error
+    end
+
     it "calls deliver on the adapter for each participant with a matching identity" do
       other_user = Factories.user
       platform_session.chat_participants.create!(user: other_user, role: "member")
 
       identity = Factories.platform_identity(user: repo.user, platform: "telegram")
       adapter = instance_double(PlatformDelivery::WebAdapter, deliver: nil)
+      allow(PlatformDelivery::Registry).to receive(:registered?).with("telegram").and_return(true)
       allow(PlatformDelivery::Registry).to receive(:for).with("telegram").and_return(adapter)
       allow(AppEvents).to receive(:broadcast)
 
@@ -281,6 +291,7 @@ RSpec.describe ChatMessage do
       platform_session.chat_participants.create!(user: participant_without_identity, role: "member")
 
       adapter = instance_double(PlatformDelivery::BaseAdapter, deliver: nil)
+      allow(PlatformDelivery::Registry).to receive(:registered?).with("telegram").and_return(true)
       allow(PlatformDelivery::Registry).to receive(:for).with("telegram").and_return(adapter)
       allow(AppEvents).to receive(:broadcast)
 

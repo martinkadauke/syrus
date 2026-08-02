@@ -13,15 +13,24 @@ class PlatformPollingJob < ApplicationJob
       @registry << subclass
     end
 
-    # Enqueue all registered subclasses that are not already running.
+    # Enqueue configured registered subclasses that are not already running.
     # Tolerates missing SolidQueue tables (non-server environments).
     def start_all!
-      registry.each do |klass|
-        next if SolidQueue::Job.where(class_name: klass.name, finished_at: nil).exists?
-        klass.perform_later
-      end
+      registry.filter_map { |klass| start_one(klass) }
     rescue ActiveRecord::StatementInvalid, ActiveRecord::NoDatabaseError => e
       Rails.logger.warn("PlatformPollingJob.start_all! skipped: #{e.message}")
+      []
+    end
+
+    def start_one(klass)
+      return unless klass.new.send(:configured?)
+      return if SolidQueue::Job.where(class_name: klass.name, finished_at: nil).exists?
+
+      klass.perform_later
+      klass.name
+    rescue ActiveRecord::StatementInvalid, ActiveRecord::NoDatabaseError => e
+      Rails.logger.warn("PlatformPollingJob.start_one skipped for #{klass.name}: #{e.message}")
+      nil
     end
   end
 

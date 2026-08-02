@@ -15,6 +15,16 @@ RSpec.describe PlatformDelivery::Registry do
     end
   end
 
+  describe ".registered?" do
+    it "is true for built-in adapters" do
+      expect(described_class.registered?("web")).to be true
+    end
+
+    it "is false for unknown platforms" do
+      expect(described_class.registered?("unknown_platform")).to be false
+    end
+  end
+
   describe ".register" do
     let(:custom_adapter_class) do
       Class.new(PlatformDelivery::BaseAdapter) do
@@ -30,6 +40,7 @@ RSpec.describe PlatformDelivery::Registry do
     it "registers an adapter for a platform and returns it via .for" do
       described_class.register("test_platform", custom_adapter_class)
       expect(described_class.for("test_platform")).to be_a(custom_adapter_class)
+      expect(described_class.registered?("test_platform")).to be true
     end
 
     it "registered adapters take precedence over ADAPTERS defaults" do

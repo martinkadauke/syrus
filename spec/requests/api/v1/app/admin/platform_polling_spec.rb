@@ -41,6 +41,10 @@ RSpec.describe "API: POST /api/v1/app/admin/platform_polling/start", type: :requ
       it "enqueues registered subclasses not already running and returns their names" do
         stub_klass = Class.new(PlatformPollingJob) do
           def self.name = "FakePlatformPollingJob"
+
+          private
+
+          def configured? = true
         end
         allow(PlatformPollingJob).to receive(:registry).and_return([stub_klass])
         allow(stub_klass).to receive(:perform_later)
@@ -55,6 +59,10 @@ RSpec.describe "API: POST /api/v1/app/admin/platform_polling/start", type: :requ
       it "skips subclasses that already have an unfinished job" do
         stub_klass = Class.new(PlatformPollingJob) do
           def self.name = "FakePlatformPollingJob"
+
+          private
+
+          def configured? = true
         end
         allow(PlatformPollingJob).to receive(:registry).and_return([stub_klass])
         SolidQueue::Job.create!(

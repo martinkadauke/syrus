@@ -96,6 +96,8 @@ class ChatMessage < ApplicationRecord
 
   def deliver_to_platform
     platform = chat_session.origin_platform
+    return unless PlatformDelivery::Registry.registered?(platform)
+
     adapter = PlatformDelivery::Registry.for(platform)
     chat_session.participants.each do |participant|
       identity = participant.platform_identities.find_by(platform: platform)

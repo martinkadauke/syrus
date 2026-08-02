@@ -153,6 +153,13 @@ RSpec.describe PlatformPollingJob do
         )
         expect { described_class.start_all! }.not_to have_enqueued_job(concrete_class)
       end
+
+      it "skips unconfigured subclasses" do
+        concrete_class.configured_flag = false
+
+        expect(described_class.start_all!).to eq([])
+        expect { described_class.start_all! }.not_to have_enqueued_job(concrete_class)
+      end
     end
 
     it "tolerates missing SolidQueue tables without raising" do
