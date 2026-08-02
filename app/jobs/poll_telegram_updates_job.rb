@@ -51,21 +51,6 @@ class PollTelegramUpdatesJob < PlatformPollingJob
     identity.assign_attributes(user_id: user.id, external_handle: from["username"], linked_at: Time.current)
     identity.save!
 
-    AppEvents.broadcast(
-      user: user,
-      type: :platform_identity_linked,
-      resource: :platform_identity,
-      payload: {
-        platform_identities: user.platform_identities.reload.order(:platform).map { |pi|
-          { id: pi.id, platform: pi.platform, external_handle: pi.external_handle, linked_at: pi.linked_at.iso8601 }
-        },
-        available_platforms: [
-          { platform: "telegram", configured: AppSetting.telegram_configured? },
-          { platform: "slack", configured: false }
-        ]
-      }
-    )
-
     telegram_client.send_message(
       chat_id: from["id"],
       text: "You're connected! You can now chat with Syrus here."
