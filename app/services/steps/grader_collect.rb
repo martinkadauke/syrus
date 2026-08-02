@@ -21,6 +21,7 @@ module Steps
       failed_required = grader_steps.select do |g|
         g.details && g.details["required"] && g.state == "failed"
       end
+      record_grader_loop_metrics!(grader_steps, failed_required: failed_required)
       aggregate_status = GraderConclusionCache.aggregate_status_for(failed_required)
       record_grader_conclusions!(grader_steps, aggregate_status)
 
@@ -99,6 +100,43 @@ module Steps
       workflow.set_artifact!("iterations", iterations)
     end
 
+    def record_grader_loop_metrics!(grader_steps, failed_required:)
+      timed_steps = grader_steps.select { |g| g.started_at && g.finished_at }
+      return if timed_steps.empty?
+
+      started_at = timed_steps.map(&:started_at).min
+      finished_at = timed_steps.map(&:finished_at).max
+      wall_clock_s = finished_at - started_at
+      summed_duration_s = timed_steps.sum do |g|
+        duration = g.details.to_h["duration_s"]
+        duration.present? ? duration.to_f : (g.finished_at - g.started_at)
+      end
+
+      measurements = Array(workflow.artifact("grader_loops"))
+      measurements[run.iteration - 1] = {
+        "iteration" => run.iteration,
+        "grader_count" => grader_steps.size,
+        "started_at" => started_at.iso8601,
+        "finished_at" => finished_at.iso8601,
+        "wall_clock_s" => wall_clock_s.round(3),
+        "summed_duration_s" => summed_duration_s.round(3),
+        "failed_required_count" => failed_required.size
+      }.compact
+      workflow.set_artifact!("grader_loops", measurements)
+      LandingThroughputMetrics.record_grader_loop!(
+        workflow: workflow,
+        iteration: run.iteration,
+        grader_count: grader_steps.size,
+        started_at: started_at,
+        finished_at: finished_at,
+        wall_clock_s: wall_clock_s,
+        summed_duration_s: summed_duration_s,
+        failed_required_count: failed_required.size
+      )
+
+      log("[grader_collect] grader wall-clock #{wall_clock_s.round(1)}s vs summed duration #{summed_duration_s.round(1)}s")
+    end
+
     def record_grader_conclusions!(grader_steps, aggregate_status)
       return if grader_steps.empty?
 
@@ -117,19 +155,43 @@ module Steps
       return if workflow.trigger_kind == "main_grader"
 
       head_sha = current_head_sha
-      base_sha = workflow.trigger_kind == "auto_merge" ? job.mergeability_base_sha.presence : nil
-      base_ref = workflow.trigger_kind == "auto_merge" ? job.mergeability_base_ref.presence : nil
+      base_sha = landing_base_sha
+      base_ref = landing_base_ref
       return if head_sha.blank?
 
       LandingValidationCache.record!(
         workflow: workflow,
         head_sha: head_sha,
+        tree_sha: current_tree_sha,
         base_sha: base_sha,
-        base_ref: base_ref
+        base_ref: base_ref,
+        grader_fingerprint: workflow.artifact(GraderConclusionCache::ARTIFACT_FINGERPRINT_KEY),
+        changed_files_fingerprint: workflow.artifact("grade_plan_changed_files_fingerprint")
       )
     rescue StandardError => e
       Rails.logger.warn("[GraderCollect] landing validation capture failed for Workflow ##{workflow.id}: #{e.class}: #{e.message}")
       nil
+    end
+
+    def landing_base_sha
+      return job.mergeability_base_sha.presence if workflow.trigger_kind == "auto_merge"
+      return workflow.artifact("merge_train_base_sha").presence if workflow.trigger_kind == "merge_train"
+
+      GitRunner.new.run("rev-parse", default_branch_ref, chdir: workspace.path.to_s).strip.presence
+    end
+
+    def landing_base_ref
+      return job.mergeability_base_ref.presence if workflow.trigger_kind == "auto_merge"
+      return merge_train_base_ref if workflow.trigger_kind == "merge_train"
+
+      job.effective_base_branch.presence
+    end
+
+    def merge_train_base_ref
+      id = workflow.artifact("merge_train_id")
+      return nil if id.blank?
+
+      MergeTrain.find_by(id: id)&.base_branch.presence
     end
 
     def current_head_sha
@@ -141,6 +203,15 @@ module Steps
     rescue StandardError => e
       Rails.logger.warn("[GraderCollect] current HEAD capture failed for Workflow ##{workflow.id}: #{e.class}: #{e.message}")
       @current_head_sha = nil
+    end
+
+    def current_tree_sha
+      return @current_tree_sha if defined?(@current_tree_sha)
+
+      @current_tree_sha = GitRunner.new.run("rev-parse", "HEAD^{tree}", chdir: workspace.path.to_s).strip
+    rescue StandardError => e
+      Rails.logger.warn("[GraderCollect] current tree capture failed for Workflow ##{workflow.id}: #{e.class}: #{e.message}")
+      @current_tree_sha = nil
     end
   end
 end

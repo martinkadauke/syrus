@@ -34,7 +34,7 @@ RSpec.describe Steps::GraderCollect do
       state: "succeeded",
       details: { "name" => "tests", "required" => true }
     )
-    fake_ws = instance_double(WorkflowWorkspace, path: @ws_path)
+    fake_ws = instance_double(WorkflowWorkspace, path: @ws_path, base_ref: "origin/main")
     git = instance_double(GitRunner, run: "abc123\n")
     allow(handler).to receive(:workspace).and_return(fake_ws)
     allow(GitRunner).to receive(:new).and_return(git)
@@ -95,12 +95,67 @@ RSpec.describe Steps::GraderCollect do
     )).to be(false)
   end
 
+  it "passes when only optional graders fail" do
+    workflow.steps.find_by!(kind: "grader").update!(
+      state: "failed",
+      details: { "name" => "lint", "required" => false, "exit_code" => 1 }
+    )
+
+    expect { handler.call }.not_to raise_error
+
+    iteration = workflow.reload.artifact("iterations").first
+    expect(iteration).to include(
+      include("name" => "lint", "required" => false, "status" => "failed")
+    )
+  end
+
+  it "fails collection when any required grader fails" do
+    workflow.steps.find_by!(kind: "grader").update!(
+      state: "failed",
+      details: { "name" => "rspec", "required" => true, "exit_code" => 1 }
+    )
+
+    expect { handler.call }.to raise_error(Steps::Base::StepFailed, "required graders failed: rspec")
+  end
+
   it "records a reusable validation artifact when required graders pass" do
     handler.call
 
     expect(workflow.reload.artifact(LandingValidationCache::ARTIFACT_KEY)).to include(
       "required_graders_passed" => true,
-      "head_sha" => "abc123"
+      "head_sha" => "abc123",
+      "tree_sha" => "abc123",
+      "base_sha" => "abc123",
+      "base_ref" => job.effective_base_branch
+    )
+  end
+
+  it "records auto_merge base semantics on the landing validation artifact" do
+    job.update!(mergeability_base_sha: "base123", mergeability_base_ref: "main")
+    workflow.update!(trigger_kind: "auto_merge")
+
+    handler.call
+
+    expect(workflow.reload.artifact(LandingValidationCache::ARTIFACT_KEY)).to include(
+      "head_sha" => "abc123",
+      "base_sha" => "base123",
+      "base_ref" => "main"
+    )
+  end
+
+  it "records merge_train integration branch base semantics on the landing validation artifact" do
+    epic = Factories.epic(user: job.user, repository: job.repository)
+    train = MergeTrain.create!(epic: epic, repository: job.repository, base_branch: "master")
+    workflow.update!(trigger_kind: "merge_train")
+    workflow.set_artifact!("merge_train_id", train.id)
+    workflow.set_artifact!("merge_train_base_sha", "trainbase123")
+
+    handler.call
+
+    expect(workflow.reload.artifact(LandingValidationCache::ARTIFACT_KEY)).to include(
+      "head_sha" => "abc123",
+      "base_sha" => "trainbase123",
+      "base_ref" => "master"
     )
   end
 
@@ -180,5 +235,79 @@ RSpec.describe Steps::GraderCollect do
       "timed_out" => false,
       "output" => "Error: Test timed out in 5000ms."
     )
+  end
+
+  it "records grader loop timing without fanout-specific fields" do
+    base_time = Time.zone.parse("2026-07-31 12:00:00 UTC")
+    workflow.steps.where(kind: "grader").delete_all
+    [
+      [ "alpha", base_time, base_time + 0.30.seconds ],
+      [ "beta", base_time + 0.02.seconds, base_time + 0.32.seconds ],
+      [ "gamma", base_time + 0.04.seconds, base_time + 0.34.seconds ]
+    ].each_with_index do |(name, started_at, finished_at), index|
+      Step.create!(
+        workflow: workflow,
+        kind: "grader",
+        position: 100 + index,
+        iteration: 1,
+        loop_id: loop_id,
+        state: "succeeded",
+        started_at: started_at,
+        finished_at: finished_at,
+        details: { "name" => name, "required" => true, "duration_s" => 0.30 }
+      )
+    end
+
+    handler.call
+
+    measurement = workflow.reload.artifact("grader_loops").first
+    expect(measurement).to include(
+      "iteration" => 1,
+      "grader_count" => 3,
+      "wall_clock_s" => be_within(0.001).of(0.34),
+      "summed_duration_s" => be_within(0.001).of(0.9),
+      "failed_required_count" => 0
+    )
+    metrics = workflow.artifact(LandingThroughputMetrics::ARTIFACT_KEY).dig("grader_loops").first
+    expect(metrics).to include(
+      "iteration" => 1,
+      "grader_count" => 3,
+      "wall_clock_s" => be_within(0.001).of(0.34),
+      "summed_duration_s" => be_within(0.001).of(0.9),
+      "failed_required_count" => 0,
+      "outcome" => "passed"
+    )
+    expect(metrics).not_to have_key("cap")
+    expect(metrics).not_to have_key("parallelism_speedup")
+    expect(metrics).not_to have_key("parallelism_efficiency")
+    expect(run.reload.job_logs.pluck(:chunk).join("\n")).to include("grader wall-clock 0.3s vs summed duration 0.9s")
+  end
+
+  it "records failed grader loop metrics before raising" do
+    base_time = Time.zone.parse("2026-07-31 12:00:00 UTC")
+    workflow.update!(trigger_kind: "auto_merge")
+    workflow.steps.where(kind: "grader").delete_all
+    Step.create!(
+      workflow: workflow,
+      kind: "grader",
+      position: 100,
+      iteration: 1,
+      loop_id: loop_id,
+      state: "failed",
+      started_at: base_time,
+      finished_at: base_time + 0.5.seconds,
+      details: { "name" => "rspec", "required" => true, "duration_s" => 0.5 }
+    )
+
+    expect { handler.call }.to raise_error(Steps::Base::StepFailed, "required graders failed: rspec")
+
+    metrics = workflow.reload.artifact(LandingThroughputMetrics::ARTIFACT_KEY).dig("grader_loops").first
+    expect(metrics).to include(
+      "iteration" => 1,
+      "grader_count" => 1,
+      "failed_required_count" => 1,
+      "outcome" => "failed"
+    )
+    expect(metrics).not_to have_key("cap")
   end
 end

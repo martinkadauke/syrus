@@ -46,17 +46,61 @@ module Steps
     def carry_forward_landing_validation!
       return unless repository.trust_clean_rebase_grade?
       return unless clean_auto_rebase?
-      return unless LandingValidationCache.green_validation_present?(job)
+
+      grader_fingerprint = current_landing_grader_fingerprint
+      changed_files_fingerprint = current_changed_files_fingerprint
+      base_ref = job.mergeability_base_ref.presence
+      source = LandingValidationCache.carry_forward_source_for(
+        job: job,
+        base_ref: base_ref,
+        grader_fingerprint: grader_fingerprint,
+        changed_files_fingerprint: changed_files_fingerprint
+      )
+      unless source.reusable?
+        log("force_push: did not carry green grade across clean rebase - #{source.reason}", kind: "system")
+        return
+      end
 
       head_sha = streaming_git.run("rev-parse", "HEAD", chdir: workspace.path.to_s).strip
+      tree_sha = streaming_git.run("rev-parse", "HEAD^{tree}", chdir: workspace.path.to_s).to_s.strip.presence
       base_sha = job.mergeability_base_sha.presence
-      base_ref = job.mergeability_base_ref.presence
-      return if head_sha.blank? || base_sha.blank?
+      if head_sha.blank? || base_sha.blank?
+        log("force_push: did not carry green grade across clean rebase - current head/base SHA unavailable", kind: "system")
+        return
+      end
 
-      LandingValidationCache.record!(workflow: workflow, head_sha: head_sha, base_sha: base_sha, base_ref: base_ref)
-      log("force_push: carried green grade across clean rebase (#{repository.slug}: trust_clean_rebase_grade); next landing will skip re-grading head #{head_sha.first(7)}")
+      LandingValidationCache.record!(
+        workflow: workflow,
+        head_sha: head_sha,
+        tree_sha: tree_sha,
+        base_sha: base_sha,
+        base_ref: base_ref,
+        grader_fingerprint: grader_fingerprint,
+        changed_files_fingerprint: changed_files_fingerprint,
+        validation_source: "clean_rebase"
+      )
+      log("force_push: carried green grade across clean rebase (#{repository.slug}: trust_clean_rebase_grade, #{source.reason}); next landing will skip re-grading head #{head_sha.first(7)}")
     rescue StandardError => e
       Rails.logger.warn("[ForcePush] carry-forward landing validation failed for Workflow ##{workflow.id}: #{e.class}: #{e.message}")
+      nil
+    end
+
+    def current_landing_grader_fingerprint
+      plan = RepoGradePlan.for(workspace.path)
+      plan = LandingGraderPlan.landing(plan)
+      GraderConclusionCache.fingerprint_for_plan(plan)
+    rescue StandardError => e
+      log("force_push: could not fingerprint current landing graders for carry-forward: #{e.message}", kind: "system")
+      nil
+    end
+
+    def current_changed_files_fingerprint
+      base_sha = job.mergeability_base_sha.presence || default_branch_ref
+      files = streaming_git.run("diff", "--name-only", "#{base_sha}...HEAD", chdir: workspace.path.to_s)
+        .split("\n").map(&:strip).reject(&:empty?)
+      LandingValidationCache.changed_files_fingerprint(files)
+    rescue StandardError => e
+      log("force_push: could not fingerprint current changed-file selection for carry-forward: #{e.message}", kind: "system")
       nil
     end
 
@@ -87,6 +131,5 @@ module Steps
         auto_rebase_result["pre_sha"].presence
       end
     end
-
   end
 end

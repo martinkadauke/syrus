@@ -58,6 +58,10 @@ Agentic. An independent reviewer agent critiques the implementation, calls `subm
 
 Non-agentic. Reads grader definitions from `.syrus.yml` and materializes one `grader` Step per configured grader command. Run once at the start of each check cycle.
 
+Grader materialization remains sequential within the current workflow workspace.
+Landing-specific fanout is not enabled; any future design needs isolated
+workspaces for grader side effects before multiple grader Runs can overlap.
+
 ### grader
 
 Non-agentic. Runs a single grader command (e.g., `bin/rspec`). Required graders must pass; non-required graders warn on failure.
@@ -71,6 +75,8 @@ When a grader defines a `.syrus.yml` `ci:` command, Syrus uses it in `ci_failure
 ### grader_collect
 
 Non-agentic. Aggregates grader results. Fails the check cycle if any required grader failed; succeeds otherwise.
+Failed collect steps still write grader loop timing before raising, so landing
+repair loops show whether the failed attempt actually spent time running graders.
 
 ### grade
 

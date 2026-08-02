@@ -37,6 +37,7 @@ RSpec.describe "Steps::MergeTrain*" do
     allow(handler).to receive(:streaming_git).and_return(git)
     allow(git).to receive(:run)
     allow(git).to receive(:run).with("rev-parse", "HEAD", chdir: "/tmp/ws").and_return("#{head}\n")
+    allow(git).to receive(:run).with("rev-parse", "HEAD^{tree}", chdir: "/tmp/ws").and_return("treesha123\n")
     allow(git).to receive(:run).with("rev-parse", "FETCH_HEAD", chdir: "/tmp/ws").and_return("#{base}\n")
     git
   end
@@ -270,7 +271,12 @@ RSpec.describe "Steps::MergeTrain*" do
         artifacts: {
           LandingValidationCache::ARTIFACT_KEY => {
             "required_graders_passed" => true,
-            "head_sha" => "intsha999"
+            "head_sha" => "intsha999",
+            "tree_sha" => "treesha123",
+            "base_sha" => "basesha123",
+            "base_ref" => "master",
+            "grader_fingerprint" => "fp",
+            "changed_files_fingerprint" => LandingValidationCache.changed_files_fingerprint([ "app/models/job.rb" ])
           }
         }
       )
@@ -282,6 +288,8 @@ RSpec.describe "Steps::MergeTrain*" do
       handler = described_class.new(run)
       git = stub_git(handler)
       allow(handler).to receive(:run_agent)
+      allow(GraderConclusionCache).to receive(:fingerprint_for_plan).and_return("fp")
+      allow(git).to receive(:run).with("diff", "--name-only", "basesha123...HEAD", chdir: "/tmp/ws").and_return("app/models/job.rb\n")
 
       handler.call
 
@@ -294,6 +302,77 @@ RSpec.describe "Steps::MergeTrain*" do
         [ "merge_train_land", "queued" ]
       )
       expect(train.reload.integration_sha).to eq("intsha999")
+      expect(run.job_logs.pluck(:chunk).join("\n")).to include("merge_train: reusing cached grading validation (exact_head)")
+    end
+
+    it "skips prepare and graders when a rebuilt integration SHA has the same validated tree" do
+      a = member_job(issue_number: 1)
+      train = build_train([ a ])
+      prior = Workflow.create!(
+        job: a,
+        trigger_kind: "merge_train",
+        artifacts: {
+          LandingValidationCache::ARTIFACT_KEY => {
+            "required_graders_passed" => true,
+            "head_sha" => "oldint111",
+            "tree_sha" => "treesha123",
+            "base_sha" => "basesha123",
+            "base_ref" => "master",
+            "grader_fingerprint" => "fp",
+            "changed_files_fingerprint" => LandingValidationCache.changed_files_fingerprint([ "app/models/job.rb" ])
+          }
+        }
+      )
+      Step.create!(workflow: prior, kind: "merge_train_land", position: 0)
+
+      workflow = Workflows::MergeTrain.instantiate(job: a, artifacts: { "merge_train_id" => train.id })
+      build_step = workflow.steps.find_by!(kind: "merge_train_build")
+      run = Run.create!(job: a, step: build_step, trigger_kind: "merge_train")
+      handler = described_class.new(run)
+      git = stub_git(handler, head: "newint222")
+      allow(handler).to receive(:run_agent)
+      allow(GraderConclusionCache).to receive(:fingerprint_for_plan).and_return("fp")
+      allow(git).to receive(:run).with("diff", "--name-only", "basesha123...HEAD", chdir: "/tmp/ws").and_return("app/models/job.rb\n")
+
+      handler.call
+
+      expect(workflow.steps.find_by!(kind: "grader_fanout")).to be_cancelled
+      expect(workflow.steps.find_by!(kind: "merge_train_land")).to be_queued
+      expect(run.job_logs.pluck(:chunk).join("\n")).to include("merge_train: reusing cached grading validation (same_tree)")
+    end
+
+    it "runs graders when the built integration branch has a different base" do
+      a = member_job(issue_number: 1)
+      train = build_train([ a ])
+      prior = Workflow.create!(
+        job: a,
+        trigger_kind: "merge_train",
+        artifacts: {
+          LandingValidationCache::ARTIFACT_KEY => {
+            "required_graders_passed" => true,
+            "head_sha" => "intsha999",
+            "tree_sha" => "treesha123",
+            "base_sha" => "oldbase",
+            "base_ref" => "master",
+            "grader_fingerprint" => "fp",
+            "changed_files_fingerprint" => LandingValidationCache.changed_files_fingerprint([ "app/models/job.rb" ])
+          }
+        }
+      )
+      Step.create!(workflow: prior, kind: "merge_train_land", position: 0)
+
+      workflow = Workflows::MergeTrain.instantiate(job: a, artifacts: { "merge_train_id" => train.id })
+      build_step = workflow.steps.find_by!(kind: "merge_train_build")
+      run = Run.create!(job: a, step: build_step, trigger_kind: "merge_train")
+      handler = described_class.new(run)
+      stub_git(handler, base: "newbase")
+      allow(handler).to receive(:run_agent)
+      allow(GraderConclusionCache).to receive(:fingerprint_for_plan).and_return("fp")
+
+      handler.call
+
+      expect(workflow.steps.find_by!(kind: "grader_fanout")).to be_queued
+      expect(run.job_logs.pluck(:chunk).join("\n")).to include("merge_train: landing graders will run - base SHA changed")
     end
 
     it "hands the in-progress rebase to the agent on conflict, then verifies by end-state and integrates" do
@@ -813,6 +892,18 @@ RSpec.describe "Steps::MergeTrain*" do
       described_class.new(run)
     end
 
+    def append_recovery_steps(handler)
+      rebase_step = handler.step
+      prepare = Step.create!(workflow: handler.workflow, kind: "prepare", position: 1)
+      fanout = Step.create!(workflow: handler.workflow, kind: "grader_fanout", position: 2)
+      collect = Step.create!(workflow: handler.workflow, kind: "grader_collect", position: 3)
+      land = Step.create!(workflow: handler.workflow, kind: "merge_train_land_after_rebase", position: 4)
+      rebase_step.update!(next_step: prepare)
+      prepare.update!(next_step: fanout)
+      fanout.update!(next_step: collect)
+      collect.update!(next_step: land)
+    end
+
     it "rebases the integration branch onto the new base and updates the base SHA artifact" do
       a = member_job(issue_number: 1)
       train = build_train([ a ])
@@ -834,6 +925,112 @@ RSpec.describe "Steps::MergeTrain*" do
       expect(git).to have_received(:run).with("rebase", "FETCH_HEAD", chdir: "/tmp/ws")
       expect(handler.workflow.artifact(Steps::MergeTrainLand::BASE_SHA_ARTIFACT)).to eq("newbase222")
       expect(train.reload.integration_sha).to eq("newintsha999")
+    end
+
+    it "carries forward a prior merge-train validation after a clean base-moved recovery rebase" do
+      repository.update!(trust_clean_rebase_grade: true)
+      a = member_job(issue_number: 1)
+      train = build_train([ a ])
+      train.update!(integration_branch: "syrus/merge-train-epic-#{epic.id}-x", integration_sha: "intsha111")
+      prior = Workflow.create!(
+        job: a,
+        trigger_kind: "merge_train",
+        artifacts: {
+          LandingValidationCache::ARTIFACT_KEY => {
+            "required_graders_passed" => true,
+            "head_sha" => "intsha111",
+            "tree_sha" => "oldtree111",
+            "base_sha" => "oldbase111",
+            "base_ref" => "master",
+            "grader_fingerprint" => "fp",
+            "changed_files_fingerprint" => LandingValidationCache.changed_files_fingerprint([ "app/models/job.rb" ]),
+            "validation_source" => "graders"
+          }
+        }
+      )
+      Step.create!(workflow: prior, kind: "merge_train_land", position: 0)
+
+      handler = rebase_step_handler(train)
+      append_recovery_steps(handler)
+      allow(handler).to receive(:repository).and_return(repository)
+      workspace = instance_double(WorkflowWorkspace, setup: nil, path: Pathname.new("/tmp/ws"), branch_name: "x")
+      git = instance_double(GitRunner)
+      allow(handler).to receive(:workspace).and_return(workspace)
+      allow(handler).to receive(:streaming_git).and_return(git)
+      allow(git).to receive(:run)
+      allow(git).to receive(:run).with("rev-parse", "FETCH_HEAD", chdir: "/tmp/ws").and_return("newbase222\n")
+      allow(git).to receive(:run).with("rev-parse", "HEAD", chdir: "/tmp/ws").and_return("newintsha999\n")
+      allow(git).to receive(:run).with("rev-parse", "HEAD^{tree}", chdir: "/tmp/ws").and_return("newtree999\n")
+      allow(git).to receive(:run).with("diff", "--name-only", "newbase222...HEAD", chdir: "/tmp/ws").and_return("app/models/job.rb\n")
+      allow(GraderConclusionCache).to receive(:fingerprint_for_plan).and_return("fp")
+
+      handler.call
+
+      artifact = handler.workflow.reload.artifact(LandingValidationCache::ARTIFACT_KEY)
+      expect(artifact).to include(
+        "head_sha" => "newintsha999",
+        "tree_sha" => "newtree999",
+        "base_sha" => "newbase222",
+        "base_ref" => "master",
+        "grader_fingerprint" => "fp",
+        "changed_files_fingerprint" => LandingValidationCache.changed_files_fingerprint([ "app/models/job.rb" ]),
+        "validation_source" => "clean_rebase"
+      )
+      expect(handler.workflow.steps.find_by!(kind: "prepare")).to be_cancelled
+      expect(handler.workflow.steps.find_by!(kind: "grader_fanout")).to be_cancelled
+      expect(handler.workflow.steps.find_by!(kind: "merge_train_land_after_rebase")).to be_queued
+      expect(handler.workflow.artifact(LandingThroughputMetrics::ARTIFACT_KEY).dig("validation_decisions").last).to include(
+        "context" => "merge_train_rebase",
+        "outcome" => "skipped",
+        "match_type" => "clean_rebase_carry_forward",
+        "reason" => "prior required-grader validation matches current grader configuration",
+        "head_sha" => "newintsha999",
+        "base_sha" => "newbase222",
+        "source_workflow_id" => prior.id
+      )
+      expect(handler.run.job_logs.pluck(:chunk).join("\n")).to include("merge_train_rebase: carried green grade across clean rebase")
+    end
+
+    it "does not carry forward merge-train validation when the required grader set changed" do
+      repository.update!(trust_clean_rebase_grade: true)
+      a = member_job(issue_number: 1)
+      train = build_train([ a ])
+      train.update!(integration_branch: "syrus/merge-train-epic-#{epic.id}-x", integration_sha: "intsha111")
+      prior = Workflow.create!(
+        job: a,
+        trigger_kind: "merge_train",
+        artifacts: {
+          LandingValidationCache::ARTIFACT_KEY => {
+            "required_graders_passed" => true,
+            "head_sha" => "intsha111",
+            "base_sha" => "oldbase111",
+            "base_ref" => "master",
+            "grader_fingerprint" => "old-fp",
+            "changed_files_fingerprint" => LandingValidationCache.changed_files_fingerprint([ "app/models/job.rb" ])
+          }
+        }
+      )
+      Step.create!(workflow: prior, kind: "merge_train_land", position: 0)
+
+      handler = rebase_step_handler(train)
+      append_recovery_steps(handler)
+      allow(handler).to receive(:repository).and_return(repository)
+      workspace = instance_double(WorkflowWorkspace, setup: nil, path: Pathname.new("/tmp/ws"), branch_name: "x")
+      git = instance_double(GitRunner)
+      allow(handler).to receive(:workspace).and_return(workspace)
+      allow(handler).to receive(:streaming_git).and_return(git)
+      allow(git).to receive(:run)
+      allow(git).to receive(:run).with("rev-parse", "FETCH_HEAD", chdir: "/tmp/ws").and_return("newbase222\n")
+      allow(git).to receive(:run).with("rev-parse", "HEAD", chdir: "/tmp/ws").and_return("newintsha999\n")
+      allow(git).to receive(:run).with("rev-parse", "HEAD^{tree}", chdir: "/tmp/ws").and_return("newtree999\n")
+      allow(git).to receive(:run).with("diff", "--name-only", "newbase222...HEAD", chdir: "/tmp/ws").and_return("app/models/job.rb\n")
+      allow(GraderConclusionCache).to receive(:fingerprint_for_plan).and_return("new-fp")
+
+      handler.call
+
+      expect(handler.workflow.reload.artifact(LandingValidationCache::ARTIFACT_KEY)).to be_nil
+      expect(handler.workflow.steps.find_by!(kind: "grader_fanout")).to be_queued
+      expect(handler.run.job_logs.pluck(:chunk).join("\n")).to include("required grader configuration changed")
     end
 
     it "raises StepFailed with rebuild-required message when the mechanical rebase conflicts" do

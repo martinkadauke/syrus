@@ -21,7 +21,13 @@ module Steps
       else
         raise StepFailed, "auto_merge: #{gate.reason}" unless gate.merge_ready?
 
-        skip_revalidated_landing_steps!(pr) if LandingValidationCache.valid_for?(job: job, pr: pr)
+        decision = landing_validation_decision(client, pr_repo, pr)
+        record_landing_validation_decision!(decision, pr)
+        if decision.reusable?
+          skip_revalidated_landing_steps!(pr, decision)
+        else
+          log("auto_merge: landing graders will run - #{decision.reason}", kind: "system")
+        end
       end
     end
 
@@ -31,6 +37,18 @@ module Steps
       return unless job.open?
 
       job.close_with_reason!(ClosedPullRequestResolution.reason(job: job, pr: pr, client: client))
+    end
+
+    def landing_validation_decision(client, pr_repo, pr)
+      return LandingValidationCache.decision_for_pr(job: job, pr: pr) unless LandingValidationCache.green_validation_present?(job)
+
+      LandingValidationCache.decision_for_pr(
+        job: job,
+        pr: pr,
+        tree_sha: current_tree_sha(client, pr_repo, pr),
+        grader_fingerprint: current_grader_fingerprint,
+        changed_files_fingerprint: current_changed_files_fingerprint(pr)
+      )
     end
 
     def handle_transient!(gate)
@@ -64,9 +82,10 @@ module Steps
       cancel_workflow!
     end
 
-    def skip_revalidated_landing_steps!(pr)
+    def skip_revalidated_landing_steps!(pr, decision)
       log(
-        "auto_merge: reusing cached landing validation for #{MergeabilityRecorder.head_sha(pr)&.first(7)}/#{MergeabilityRecorder.base_sha(pr)&.first(7)}",
+        "auto_merge: reusing cached landing validation (#{decision.match_type}) for " \
+          "#{MergeabilityRecorder.head_sha(pr)&.first(7)}/#{MergeabilityRecorder.base_sha(pr)&.first(7)} - #{decision.reason}",
         kind: "system"
       )
       Step.suppress_cancel_cascade do
@@ -80,6 +99,48 @@ module Steps
           cursor = cursor.next_step
         end
       end
+    end
+
+    def record_landing_validation_decision!(decision, pr)
+      LandingThroughputMetrics.record_validation_decision!(
+        workflow: workflow,
+        decision: decision,
+        context: "auto_merge",
+        head_sha: MergeabilityRecorder.head_sha(pr),
+        base_sha: MergeabilityRecorder.base_sha(pr)
+      )
+    end
+
+    def current_tree_sha(client, pr_repo, pr)
+      client.commit_tree_sha(pr_repo.slug, MergeabilityRecorder.head_sha(pr)).to_s.presence
+    rescue StandardError => e
+      log("auto_merge: could not read current tree SHA for landing validation cache: #{e.message}", kind: "system")
+      nil
+    end
+
+    def current_changed_files_fingerprint(pr)
+      workspace.setup
+      base_sha = MergeabilityRecorder.base_sha(pr).presence || default_branch_ref
+      files = GitRunner.new.run("diff", "--name-only", "#{base_sha}...HEAD", chdir: workspace.path.to_s)
+        .split("\n").map(&:strip).reject(&:empty?)
+      LandingValidationCache.changed_files_fingerprint(files)
+    rescue StandardError => e
+      log("auto_merge: could not fingerprint current changed-file selection: #{e.message}", kind: "system")
+      nil
+    end
+
+    def current_grader_fingerprint
+      workspace.setup
+      plan = RepoGradePlan.for(workspace.path)
+      plan = fast_grader_plan(plan)
+      GraderConclusionCache.fingerprint_for_plan(plan)
+    rescue StandardError => e
+      log("auto_merge: could not fingerprint current landing graders: #{e.message}", kind: "system")
+      nil
+    end
+
+    def fast_grader_plan(plan)
+      LandingGraderPlan.landing(plan)
     end
   end
 end

@@ -15,20 +15,6 @@ module Steps
   # is snapshotted onto its Step#details — immutable for that Step,
   # immune to `.syrus.yml` evolution.
   class GraderFanout < Base
-    FAST_GRADER_TRIGGER_KINDS = %w[
-      auto_merge
-      main_branch_repair
-      merge_train
-    ].freeze
-
-    FAST_GRADER_REPEAT_TRIGGER_KINDS = %w[
-      chat_feedback
-      coding_handoff
-      initial
-      pr_comment
-      retry
-    ].freeze
-
     def call
       workspace.setup
       plan = effective_plan(RepoGradePlan.for(workspace.path))
@@ -47,6 +33,7 @@ module Steps
 
       # Skip graders whose when_files_changed globs don't match this PR's diff.
       files = changed_files
+      record_changed_files!(files)
       active_graders, skipped_graders = plan.graders.partition { |g| files_match?(g, files) }
       skipped_graders.each { |g| log("[grader_fanout] skipped #{g.name} (no matching files changed)") }
 
@@ -97,6 +84,12 @@ module Steps
       workflow.set_artifact!("grade_plan_source", plan.source)
       workflow.set_artifact!(GraderConclusionCache::ARTIFACT_FINGERPRINT_KEY, grader_fingerprint)
       workflow.set_artifact!(GraderConclusionCache::ARTIFACT_HEAD_SHA_KEY, current_head_sha)
+    end
+
+    def record_changed_files!(files)
+      normalized = Array(files).map(&:to_s).sort
+      workflow.set_artifact!("grade_plan_changed_files", normalized)
+      workflow.set_artifact!("grade_plan_changed_files_fingerprint", LandingValidationCache.changed_files_fingerprint(normalized))
     end
 
     def reusable_success(grader_fingerprint)
@@ -184,28 +177,7 @@ module Steps
     end
 
     def effective_plan(plan)
-      variant = grader_command_variant
-      plan.with(
-        graders: plan.graders.map do |grader|
-          command = grader.command_for(variant: variant)
-          metadata = {
-            "standard_command" => grader.command,
-            "fast_command" => grader.fast_command,
-            "ci_command" => grader.ci_command,
-            "command_variant" => variant.to_s,
-            "fast_variant" => fast_variant?(grader, variant),
-            "ci_variant" => %i[ci ci_or_fast].include?(variant) && grader.ci_command.present?
-          }.compact
-
-          grader.with(command: command, metadata: metadata)
-        end
-      )
-    end
-
-    def fast_variant?(grader, variant)
-      return true if variant == :fast && grader.fast_command.present?
-
-      variant == :ci_or_fast && grader.ci_command.blank? && grader.fast_command.present?
+      LandingGraderPlan.effective(plan, trigger_kind: workflow.trigger_kind, iteration: run.iteration)
     end
 
     def normal_grader_context?
@@ -213,17 +185,12 @@ module Steps
     end
 
     def grader_command_variant
-      return :ci if workflow.trigger_kind == "ci_failure"
-      return :ci_or_fast if workflow.trigger_kind == "main_grader"
-      return :fast if fast_grader_context?
-
-      :normal
+      LandingGraderPlan.variant_for(trigger_kind: workflow.trigger_kind, iteration: run.iteration)
     end
 
     def fast_grader_context?
-      return true if FAST_GRADER_TRIGGER_KINDS.include?(workflow.trigger_kind)
-
-      run.iteration.to_i > 1 && FAST_GRADER_REPEAT_TRIGGER_KINDS.include?(workflow.trigger_kind)
+      LandingGraderPlan::FAST_TRIGGER_KINDS.include?(workflow.trigger_kind) ||
+        (run.iteration.to_i > 1 && LandingGraderPlan::REPEAT_FAST_TRIGGER_KINDS.include?(workflow.trigger_kind))
     end
   end
 end

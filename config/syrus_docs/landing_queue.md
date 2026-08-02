@@ -31,11 +31,23 @@ an already-active merge train, or landing state drift where a Job is in
 
 ### mergeability_preflight
 
-Refreshes GitHub's mergeability status for the PR. If GitHub is still computing (`mergeable: null`), waits briefly and retries. If the branch has conflicts, dispatches a `rebase` workflow and defers. If a prior landing validation is still valid for the current head/base pair, skips grader re-validation.
+Refreshes GitHub's mergeability status for the PR. If GitHub is still computing (`mergeable: null`), waits briefly and retries. If the branch has conflicts, dispatches a `rebase` workflow and defers. If a prior landing validation is still valid for the current artifact, base, and grader configuration, skips grader re-validation and logs the reuse reason.
 
 ### Grader re-validation
 
-Before merging, Syrus re-runs the required grader suite on the exact PR branch being landed, using each grader's `fast` command when configured. Landing validation is pass/fail only and does not run `coverage_analyze`. If graders fail, `landing_fix` (an agentic repair step) attempts a fix, and graders re-run. This loop repeats up to `grade_max_iterations` times.
+Before merging, Syrus re-runs the full required grader suite on the exact PR branch being landed.
+
+Landing throughput instrumentation is written to each Workflow's
+`landing_throughput_metrics` artifact and surfaced in admin workflow debug
+payloads. Validation decisions record whether landing graders were skipped or
+rerun, the cache match type (`exact_head`, `same_tree`, or
+`clean_rebase_carry_forward`), and the rejection reason when Syrus reruns
+validation. Grader loop timing records the grader count, wall-clock duration,
+summed individual durations, and whether required graders failed. Fanout-specific
+cap and efficiency metrics are intentionally absent until parallel landing
+grader fanout is designed and enabled separately.
+
+If graders fail, `landing_fix` (an agentic repair step) attempts a fix, and graders re-run. This loop repeats up to `grade_max_iterations` times.
 
 ### push and auto_merge
 
@@ -51,9 +63,9 @@ The Job transitions to `pr_merged`. If the merged PR was depended on by other Jo
 
 ## trust_clean_rebase_grade
 
-When `Repository#trust_clean_rebase_grade` is enabled (off by default), a clean `rebase` workflow can carry forward a prior green landing validation to the new head/base pair. This allows `auto_merge` to skip re-running graders when the only change is a rebase onto the base branch.
+When `Repository#trust_clean_rebase_grade` is enabled (off by default), a clean `rebase` workflow can carry forward a prior green landing validation to the new head/base pair. A clean `merge_train_rebase` recovery can do the same for a base-moved Epic integration branch. This allows later `auto_merge` or `merge_train` landing steps to skip re-running graders when the only change is a mechanical clean rebase onto the base branch.
 
-Grade carry-forward is gated on the `LandingValidationCache` artifact matching the exact PR head SHA and base SHA being landed. It is never applied speculatively.
+Grade carry-forward records a fresh `LandingValidationCache` artifact for the post-rebase head, tree, base ref, base SHA, required-grader fingerprint, and changed-file fingerprint. It only carries forward from a successful required-grader validation, not from another carried validation, and both fingerprints must match the source validation. The grader fingerprint includes selection inputs such as `when_files_changed`, and the changed-file fingerprint catches a clean rebase that changes which file-glob-gated graders would run. Later reuse reports this as `clean_rebase_carry_forward` rather than as a normal exact-head hit. It is never applied speculatively.
 
 ## LandingValidationCache
 
@@ -63,13 +75,22 @@ Stores the result of a successful required-grader run as a workflow artifact:
 {
   "required_graders_passed": true,
   "head_sha": "abc123",
+  "tree_sha": "tree789",
   "base_sha": "def456",
   "base_ref": "main",
+  "grader_fingerprint": "grade-plan-sha256",
+  "validation_source": "graders",
   "checked_at": "2026-07-13T10:00:00Z"
 }
 ```
 
-Later `auto_merge` or `merge_train` retries can skip re-validation when the artifact's `head_sha` matches the PR's current head.
+Later `auto_merge` or `merge_train` retries can skip re-validation when:
+
+- `exact_head`: the artifact's `head_sha` matches the commit being landed.
+- `clean_rebase_carry_forward`: a trusted clean rebase re-stamped the validation for the new head/base.
+- `same_tree`: the commit SHA differs, but the Git tree SHA matches the validated tree.
+
+All reuse requires the base ref/base SHA and required grader fingerprint to remain unchanged when those values are recorded. Stale validations older than seven days are rejected. Audit logs explain whether landing graders were skipped or rerun, including changed base, changed grader configuration, stale validation, and cache-miss reasons.
 
 ## Dependency gating
 

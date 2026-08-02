@@ -234,6 +234,9 @@ coverage, and landing. Nonlinear Epics with multiple approved leaves are
 assembled into that same combined branch first. A no-diff reconciliation
 continues normally; focused fixes are committed to the integration branch
 and still pass the normal gates before the Epic lands.
+Syrus records landing throughput metrics on workflow artifacts so operators can
+see cache skips, rerun reasons, wall-clock grader loop time, summed grader time,
+and required-grader failures while the throughput dashboard evolves.
 
 New Epics no longer create a standalone `Reconciliation: ...` child Job just
 to review sibling consistency. Existing historical reconciliation Jobs remain
