@@ -109,7 +109,7 @@ RSpec.describe SmartRetryEnqueuer do
     }.to have_enqueued_job(LandingQueueProcessorJob)
   end
 
-  it "dispatches a fresh merge train for approved Epic children with a landing failure" do
+  it "wakes the landing queue for approved Epic children with a landing failure" do
     AppSetting.current.update!(merge_train_enabled: true)
     epic = Factories.epic(user: user, repository: repository, state: "in_progress")
     jobs = 3.times.map do |index|
@@ -125,18 +125,21 @@ RSpec.describe SmartRetryEnqueuer do
       )
     end
 
+    merge_train_workflows_before = Workflow.where(trigger_kind: "merge_train").count
+    merge_trains_before = MergeTrain.count
+
     expect {
       result = described_class.call(job: jobs.first, automatic: true, by_user: user)
 
       expect(result).to be_success
       expect(result.action).to eq(:landing)
-      expect(result.workflow).to be_present
-      expect(result.workflow.trigger_kind).to eq("merge_train")
-    }.to change { Workflow.where(trigger_kind: "merge_train").count }.by(1)
-      .and change { MergeTrain.count }.by(1)
+      expect(result.workflow).to eq(jobs.first.latest_workflow)
+    }.to have_enqueued_job(LandingQueueProcessorJob)
 
+    expect(Workflow.where(trigger_kind: "merge_train").count).to eq(merge_train_workflows_before)
+    expect(MergeTrain.count).to eq(merge_trains_before)
     expect(jobs.map { |job| job.reload.landing_failure_reason }).to all(be_nil)
-    expect(jobs.map { |job| job.reload.state }).to all(eq("landing"))
+    expect(jobs.map { |job| job.reload.state }).to all(eq("approved"))
   end
 
   it "resumes a failed agentic step when a captured session exists" do

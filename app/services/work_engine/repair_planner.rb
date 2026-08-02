@@ -649,6 +649,21 @@ module WorkEngine
         end
       end
 
+      class ApprovedJobLandingStartBlocked < Base
+        def plan
+          automatic_plan(
+            "clear_landing_start_blocker_and_wake_queue",
+            primary_job,
+            "The landing workflow could not start because of a transient queue/dependency gate; clear the stale marker and wake the landing queue.",
+            execution_steps: [ "LandingQueueReentry.call" ],
+            preconditions: {
+              job_state: "approved",
+              landing_failure_reason_prefix: LandingQueueReentry::START_BLOCKER_PREFIX
+            }
+          )
+        end
+      end
+
       class UnambiguousJobStateDrift < Base
         def plan
           automatic_plan(

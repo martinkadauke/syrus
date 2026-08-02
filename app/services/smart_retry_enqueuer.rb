@@ -151,8 +151,8 @@ class SmartRetryEnqueuer
   def retry_landing
     return unless job.landing_failure_reason.present?
 
-    return retry_merge_train_landing if latest_workflow&.trigger_kind == "merge_train"
     return retry_epic_merge_train_landing if job.approved? && AppSetting.merge_train_enabled? && job.epic_id.present?
+    return retry_merge_train_landing if latest_workflow&.trigger_kind == "merge_train"
     return retry_approved_auto_merge_landing if job.approved?
     return retry_auto_merge_landing if job.may_approve?
 
@@ -180,10 +180,8 @@ class SmartRetryEnqueuer
   end
 
   def retry_epic_merge_train_landing
-    workflow = MergeTrainDispatcher.try_dispatch!(job.epic, bypass_cooldown: true)
-    return skipped(:not_retryable, "Epic is not ready for a merge-train retry: #{MergeTrainDispatcher.blocker_reason(job.epic, bypass_cooldown: true)}.") unless workflow
-
-    succeeded(:landing, workflow: workflow)
+    LandingQueueReentry.call(job)
+    succeeded(:landing, workflow: latest_workflow)
   end
 
   def approved_landing_skip

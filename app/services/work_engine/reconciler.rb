@@ -145,6 +145,7 @@ module WorkEngine
       issues.concat(classify_stale_auto_retry_workflows)
       issues.concat(classify_job_workflow_drift)
       issues.concat(classify_jobs_without_active_workflows)
+      issues.concat(classify_approved_jobs_with_landing_start_blockers)
       issues.concat(classify_unambiguous_job_state_drift)
       issues.concat(classify_completed_main_grader_jobs)
       issues.concat(classify_start_blocks)
@@ -544,6 +545,32 @@ module WorkEngine
             updated_at: job.updated_at&.iso8601
           },
           explanation: "Job ##{job.id} is #{job.state}, but has no active Workflow."
+        )
+      end
+    end
+
+    def classify_approved_jobs_with_landing_start_blockers
+      jobs.filter_map do |job|
+        next unless job.approved?
+        next unless LandingQueueReentry.landing_start_blocker?(job.landing_failure_reason)
+        next if job.any_active_run?
+
+        issue(
+          kind: :approved_job_landing_start_blocked,
+          severity: :warning,
+          affected_ids: ids_for(job).merge(workflow_ids: [ job.latest_workflow&.id ]),
+          safe_to_auto_repair: true,
+          recommended_repair_action: "clear_landing_start_blocker_and_wake_queue",
+          evidence: {
+            job_state: job.state,
+            epic_id: job.epic_id,
+            repository_id: job.repository_id,
+            landing_failure_reason: job.landing_failure_reason,
+            latest_workflow_id: job.latest_workflow&.id,
+            latest_workflow_state: job.latest_workflow&.state,
+            active_repository_landing_job_id: Job.landing.where(repository_id: job.repository_id).where.not(id: job.id).order(:id).pick(:id)
+          },
+          explanation: "Approved Job ##{job.id} has a transient landing-start blocker; it should re-enter the landing queue instead of requiring an immediate manual dispatch."
         )
       end
     end

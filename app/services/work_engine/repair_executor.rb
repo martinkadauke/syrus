@@ -411,6 +411,18 @@ module WorkEngine
         end
       end
 
+      class ClearLandingStartBlockerAndWakeQueue < Base
+        def perform
+          job = target_job
+          return skipped("Job no longer exists") unless job
+          return skipped("Job is #{job.state}, not approved") unless job.approved?
+          return skipped("Job no longer has a landing-start blocker") unless LandingQueueReentry.landing_start_blocker?(job.landing_failure_reason)
+
+          result = LandingQueueReentry.call(job)
+          success("cleared landing-start blocker for #{result.cleared_job_ids.size} Job(s) and woke the landing queue")
+        end
+      end
+
       class MarkWorkerDied < Base
         def perform = mark_worker_died!
       end
