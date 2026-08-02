@@ -1007,17 +1007,7 @@ module Api
         end
 
         def retryable_failed_jobs(repository)
-          open_job_ids = repository.jobs.open_threads.pluck(:id)
-          return [] if open_job_ids.empty?
-
-          active_job_ids = Run.active.where(job_id: open_job_ids).distinct.pluck(:job_id)
-          inactive_job_ids = open_job_ids - active_job_ids
-          return [] if inactive_job_ids.empty?
-
-          failed_job_ids = latest_runs_by_job_id(inactive_job_ids).values.select(&:failed?).map(&:job_id)
-          return [] if failed_job_ids.empty?
-
-          repository.jobs.where(id: failed_job_ids).to_a
+          retryable_failed_jobs_scope(repository).to_a
         end
 
         def retryable_failed_jobs_count(repository)
@@ -1028,7 +1018,21 @@ module Api
           inactive_job_ids = open_job_ids - active_job_ids
           return 0 if inactive_job_ids.empty?
 
-          latest_runs_by_job_id(inactive_job_ids).values.count(&:failed?)
+          retryable_failed_jobs_scope(repository, inactive_job_ids: inactive_job_ids).count
+        end
+
+        def retryable_failed_jobs_scope(repository, inactive_job_ids: nil)
+          open_job_ids = repository.jobs.open_threads.pluck(:id)
+          return repository.jobs.none if open_job_ids.empty?
+
+          inactive_job_ids ||= begin
+            active_job_ids = Run.active.where(job_id: open_job_ids).distinct.pluck(:job_id)
+            open_job_ids - active_job_ids
+          end
+          return repository.jobs.none if inactive_job_ids.empty?
+
+          base = repository.jobs.where(id: inactive_job_ids)
+          base.where(state: "failed").or(base.where.not(landing_failure_reason: nil))
         end
 
         def preload_repository_index_job_state(repositories)

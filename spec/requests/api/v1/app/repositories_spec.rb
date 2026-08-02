@@ -357,6 +357,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     )
     repository.update!(landing_paused: true)
     failed = Factories.job(repository: repository, issue_number: 1, issue_title: "Fix forum")
+    failed.update!(state: "failed")
     failed.current_run.update!(state: "failed", finished_at: Time.current)
     failed.latest_workflow.update!(
       state: "failed",
@@ -367,6 +368,9 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     running.current_run.update!(state: "running", started_at: Time.current)
     queued = Factories.job(repository: repository, issue_number: 3, issue_title: "Polish marble")
     queued.current_run.update!(state: "queued")
+    historical_failure = Factories.job(repository: repository, issue_number: 4, issue_title: "Finished after a failure")
+    historical_failure.update!(state: "implemented")
+    historical_failure.current_run.update!(state: "failed", finished_at: Time.current)
     other_repository = Factories.repository(user: user, owner: "acme", name: "other")
     Factories.job(repository: other_repository, issue_number: 99, issue_title: "Private")
 
@@ -397,7 +401,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       { "key" => "documents", "label" => "Documents", "path" => repository_documents_path(repository) },
       { "key" => "scheduled_tasks", "label" => "Scheduled Tasks", "path" => repository_scheduled_tasks_path(repository) }
     )
-    expect(body["counts"]).to include("running" => 1, "queued" => 1, "failed_7d" => 1)
+    expect(body["counts"]).to include("running" => 1, "queued" => 1, "failed_7d" => 2)
     expect(body["retry_failed_jobs"]).to include("count" => 1, "agent_provider_label" => "Codex")
     expect(body.dig("retry_failed_jobs", "provider_circuit")).to include("provider" => "codex", "open" => false)
     expect(body["credential_status"]).to include(
@@ -418,10 +422,11 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
         )
       ),
       include("id" => running.id, "issue_title" => "Survey aqueduct"),
-      include("id" => queued.id, "issue_title" => "Polish marble")
+      include("id" => queued.id, "issue_title" => "Polish marble"),
+      include("id" => historical_failure.id, "issue_title" => "Finished after a failure")
     )
     expect(body.to_s).not_to include("Private")
-    expect(body["pagination"]).to include("page" => 1, "total_jobs" => 3, "total_pages" => 1)
+    expect(body["pagination"]).to include("page" => 1, "total_jobs" => 4, "total_pages" => 1)
     expect(body["paths"]).to include(
       "new_job_path" => new_job_path(repository_id: repository.id),
       "edit_repository_path" => edit_repository_path(repository),
@@ -924,6 +929,8 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     failed_a = Factories.job(repository: repository, issue_number: 1)
     failed_b = Factories.job(repository: repository, issue_number: 2)
     succeeded = Factories.job(repository: repository, issue_number: 3)
+    failed_a.update!(state: "failed")
+    failed_b.update!(state: "failed")
     failed_a.current_run.update!(state: "failed", finished_at: Time.current)
     failed_b.current_run.update!(state: "failed", finished_at: Time.current)
     succeeded.current_run.update!(state: "succeeded", finished_at: Time.current)
@@ -1018,6 +1025,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     sign_in_as(user)
     repository = Factories.repository(user: user, owner: "acme", name: "widgets", agent_provider: "codex")
     failed = Factories.job(repository: repository, issue_number: 1, agent_provider: "codex")
+    failed.update!(state: "failed")
     failed.current_run.update!(state: "failed", finished_at: Time.current)
     5.times do |index|
       job = Factories.job(repository: repository, issue_number: index + 100, agent_provider: "codex")
