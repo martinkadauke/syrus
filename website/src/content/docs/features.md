@@ -543,9 +543,17 @@ recent per-pod inspection, so operators and agents can inspect pod pressure
 without an external metrics system. Run and Job detail payloads also include
 compact worker-health correlations, and insight agents can compare retained
 host pressure across Runs when filing suggestions about repeated grader or
-step behavior. The same worker health data is visible
-from the Workers tab as a per-host dashboard with current status and compact
-recent trends. State-changing admin tools, such as pausing runs, killing a
+step behavior. Grader and preflight grader Runs include command spans for
+common phases such as dependency checks, installs, database preparation, test
+suites, and frontend builds, so slow setup can be separated from slow tests.
+The same worker health data is visible
+from the Workers tab as a per-host chart dashboard with current status,
+quick/custom time ranges, and recent trends for CPU, load, memory, disk, CPU
+pressure, and IO pressure. Only fresh heartbeat rows appear in the primary
+current-worker tables; hosts that stopped heartbeating remain chartable while
+their samples are in the selected range and are labeled historical, and stale
+Solid Queue process rows are labeled stale in the process inventory.
+State-changing admin tools, such as pausing runs, killing a
 process, clearing the GitHub cache, or refreshing installations, create pending
 actions and wait for operator confirmation before applying. Non-admin chats do
 not advertise those tools, and each admin tool repeats the admin check when it

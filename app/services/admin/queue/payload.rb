@@ -2,6 +2,7 @@ module Admin
   module Queue
     class Payload
       PER_PAGE = 100
+      PROCESS_STALE_THRESHOLD = InstanceVersion::HEARTBEAT_STALE_THRESHOLD
 
       def initialize(params:, user:, per_page: PER_PAGE)
         @params = params
@@ -89,13 +90,13 @@ module Admin
 
       def workers
         PerformanceLogging.phase("admin_queue_payload", tab: "workers") do
-          workers = PerformanceLogging.phase("admin_queue.workers.query") { SolidQueue::Process.where(kind: "Worker").order(:hostname, :pid).to_a }
+          workers = PerformanceLogging.phase("admin_queue.workers.query") { fresh_processes(SolidQueue::Process.where(kind: "Worker")).order(:hostname, :pid).to_a }
           processes = PerformanceLogging.phase("admin_queue.processes.query") { SolidQueue::Process.order(:kind, :hostname, :pid).to_a }
 
           {
             workers: PerformanceLogging.phase("admin_queue.workers.serialize", count: workers.size) { workers.map { |worker| serialize_worker(worker) } },
             all_processes: PerformanceLogging.phase("admin_queue.processes.serialize", count: processes.size) { processes.map { |process| serialize_process(process) } },
-            worker_health: PerformanceLogging.phase("admin_queue.worker_health") { ::Admin::WorkerHealthPayload.new(since: 6.hours.ago, sample_limit_per_host: 8).as_json }
+            worker_health: PerformanceLogging.phase("admin_queue.worker_health") { ::Admin::WorkerHealthPayload.new(**worker_health_options).as_json }
           }
         end
       end
@@ -143,8 +144,42 @@ module Admin
         }
       end
 
+      def worker_health_options
+        until_time = params[:until].presence
+        since = params[:since].presence || default_worker_health_since(until_time)
+
+        {
+          since: since,
+          until_time: until_time,
+          sample_limit_per_host: 8,
+          minute_bucket_window_minutes: params[:minute_bucket_window_minutes].presence || params[:window_minutes].presence || default_worker_health_window_minutes(since, until_time)
+        }
+      end
+
+      def default_worker_health_since(until_time)
+        end_time = parse_time(until_time) || Time.current
+        (end_time - 2.hours).iso8601
+      end
+
+      def default_worker_health_window_minutes(since, until_time)
+        start_time = parse_time(since)
+        end_time = parse_time(until_time) || Time.current
+        return 120 if start_time.blank?
+
+        ((end_time - start_time) / 1.minute).ceil.clamp(1, (::Admin::WorkerHealthPayload::MAX_MINUTE_BUCKET_WINDOW / 1.minute).to_i)
+      end
+
       def failed_since
         params[:since].present? ? Time.iso8601(params[:since]) : 24.hours.ago
+      end
+
+      def parse_time(value)
+        return value if value.respond_to?(:iso8601)
+        return nil if value.blank?
+
+        Time.iso8601(value.to_s)
+      rescue ArgumentError
+        nil
       end
 
       def serialize_job(job, claimed_at: nil)
@@ -177,8 +212,21 @@ module Admin
           queues: worker_queues(worker),
           threads: worker.metadata&.dig("thread_pool_size"),
           last_heartbeat_at: worker.last_heartbeat_at,
-          stale: worker.last_heartbeat_at.nil? || worker.last_heartbeat_at < 2.minutes.ago
+          stale: process_stale?(worker),
+          status: process_status(worker)
         }
+      end
+
+      def fresh_processes(scope)
+        scope.where("last_heartbeat_at > ?", PROCESS_STALE_THRESHOLD.ago)
+      end
+
+      def process_stale?(process)
+        process.last_heartbeat_at.nil? || process.last_heartbeat_at < PROCESS_STALE_THRESHOLD.ago
+      end
+
+      def process_status(process)
+        process_stale?(process) ? "stale" : "current"
       end
 
       def worker_queues(worker)
@@ -201,7 +249,9 @@ module Admin
           kind: process.kind,
           pid: process.pid,
           hostname: process.hostname,
-          last_heartbeat_at: process.last_heartbeat_at
+          last_heartbeat_at: process.last_heartbeat_at,
+          stale: process_stale?(process),
+          status: process_status(process)
         }
       end
     end
