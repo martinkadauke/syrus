@@ -33,7 +33,6 @@ module Workflows
           repair: [ :landing_fix ],
           check: [ :grader_fanout, :grader_collect ]
         ),
-        coverage_analyze_for(job),
         "push",
         "auto_merge"
       ].compact

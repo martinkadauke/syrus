@@ -63,7 +63,6 @@ module Workflows
           repair: [ :landing_fix ],
           check: [ :grader_fanout, :grader_collect ]
         ),
-        coverage_analyze_for(job),
         Workflows::Try.new(:merge_train_land).on_failure(
           Steps::MergeTrainLand::BaseMoved::FAILURE_CODE,
           [

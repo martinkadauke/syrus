@@ -20,7 +20,7 @@ Jobs wait in `approved` when:
 
 ## auto_merge workflow
 
-**Step chain:** `mergeability_preflight → prepare → retry_until(graders, repair: landing_fix) → coverage_analyze? → push → auto_merge`
+**Step chain:** `mergeability_preflight → prepare → retry_until(graders, repair: landing_fix) → push → auto_merge`
 
 ### mergeability_preflight
 
@@ -28,7 +28,7 @@ Refreshes GitHub's mergeability status for the PR. If GitHub is still computing 
 
 ### Grader re-validation
 
-Before merging, Syrus re-runs the full required grader suite on the exact PR branch being landed. If graders fail, `landing_fix` (an agentic repair step) attempts a fix, and graders re-run. This loop repeats up to `grade_max_iterations` times.
+Before merging, Syrus re-runs the required grader suite on the exact PR branch being landed, using each grader's `fast` command when configured. Landing validation is pass/fail only and does not run `coverage_analyze`. If graders fail, `landing_fix` (an agentic repair step) attempts a fix, and graders re-run. This loop repeats up to `grade_max_iterations` times.
 
 ### push and auto_merge
 

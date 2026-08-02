@@ -21,11 +21,11 @@ RSpec.describe Workflows::AutoMerge do
     let(:coverage_plan) { instance_double(RepoCoveragePlan) }
     before { allow(RepoCoveragePlanReader).to receive(:for_job).and_return(coverage_plan) }
 
-    it "inserts coverage_analyze after grader_collect and before push" do
+    it "does not insert coverage_analyze because landing uses fast graders" do
       workflow = described_class.instantiate(job: job)
 
       expect(workflow.steps.order(:position).pluck(:kind)).to eq(
-        %w[ mergeability_preflight prepare grader_fanout grader_collect coverage_analyze push auto_merge ]
+        %w[ mergeability_preflight prepare grader_fanout grader_collect push auto_merge ]
       )
     end
   end

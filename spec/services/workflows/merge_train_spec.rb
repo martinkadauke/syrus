@@ -37,12 +37,12 @@ RSpec.describe Workflows::MergeTrain do
     let(:coverage_plan) { instance_double(RepoCoveragePlan) }
     before { allow(RepoCoveragePlanReader).to receive(:for_job).and_return(coverage_plan) }
 
-    it "inserts coverage_analyze after grader_collect and before merge_train_land" do
+    it "does not insert coverage_analyze because merge trains use fast graders" do
       train = MergeTrain.create!(epic: epic, repository: repository, base_branch: "master")
       workflow = described_class.instantiate(job: tip, artifacts: { "merge_train_id" => train.id })
 
       expect(workflow.steps.order(:position).pluck(:kind)).to eq(
-        %w[ merge_train_assemble merge_train_build merge_train_reconcile prepare grader_fanout grader_collect coverage_analyze merge_train_land ]
+        %w[ merge_train_assemble merge_train_build merge_train_reconcile prepare grader_fanout grader_collect merge_train_land ]
       )
     end
   end
