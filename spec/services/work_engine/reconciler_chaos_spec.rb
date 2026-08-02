@@ -48,6 +48,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       queued_with_healthy_queue_job_beside_dead_resume_job
       inline_successor_owned_by_live_root_job
       stale_auto_retry_workflow_with_queued_run
+      stale_auto_retry_after_branch_divergence_recovery
       stale_branch_diverged_workflow
       closed_job_with_active_workflow
       running_step_with_failed_terminal_run
@@ -705,6 +706,69 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       )
     end
 
+    def stale_auto_retry_after_branch_divergence_recovery
+      job, source, step, run = graph
+      branch = "syrus/issue-#{case_number}-#{job.id}"
+      remote_sha = "remote-#{case_number}"
+      local_sha = "local-#{case_number}"
+      job.update_columns(
+        state: "implemented",
+        pr_number: 10_000 + case_number,
+        branch_name: branch,
+        mergeability_head_sha: remote_sha
+      )
+      source.update_columns(state: "failed", trigger_kind: "retry", finished_at: 5.minutes.ago)
+      step.update_columns(kind: "pr_open", state: "failed", finished_at: 5.minutes.ago)
+      run.update_columns(state: "failed", finished_at: 5.minutes.ago)
+      source.set_artifact!("branch_divergence", {
+        "branch" => branch,
+        "remote_sha" => remote_sha,
+        "local_sha" => local_sha
+      })
+      source.set_artifact!("branch_divergence_recovery", {
+        "action" => "superseded_by_current_pr_branch",
+        "at" => 4.minutes.ago.iso8601
+      })
+      RunFailureClassification.create!(
+        run: run,
+        classification: "branch_diverged",
+        retryable: false,
+        confidence: 0.95,
+        reason: "chaos branch divergence",
+        classified_at: 5.minutes.ago
+      )
+      attempt = AutoRetryAttempt.create!(
+        job: job,
+        workflow: source,
+        run: run,
+        agent_provider: job.agent_provider,
+        failure_classification: "branch_diverged",
+        retry_kind: "retry_workflow",
+        attempt_number: 1,
+        scheduled_at: 2.minutes.ago,
+        performed_at: 2.minutes.ago
+      )
+      stale = Workflows::Retry.instantiate(
+        job: job,
+        artifacts: { "auto_retry_attempt_id" => attempt.id },
+        agent_provider: job.agent_provider
+      )
+      stale.update_columns(created_at: 2.minutes.ago, updated_at: 2.minutes.ago)
+      StepDispatcher.start_workflow(stale)
+      stale_run = stale.first_step.runs.first
+      stale_run.update_columns(created_at: old_active_age.ago, updated_at: old_active_age.ago)
+      trace << "workflow=#{stale.id}:stale_auto_retry_after_branch_recovery run=#{stale_run.id}:old_queued"
+
+      expectation(
+        "stale auto-retry after branch divergence recovery",
+        target: { workflow_id: stale.id },
+        expected_issue: :stale_auto_retry_workflow,
+        expected_action: :cancel_stale_auto_retry_workflow,
+        forbidden_issues: %i[queued_run_without_queue_claim nonretryable_semantic_git_failure retryable_run_failure],
+        forbidden_actions: %i[reenqueue_run operator_review_nonretryable_failure retry_workflow]
+      )
+    end
+
     def stale_branch_diverged_workflow
       job, workflow, step, run = graph
       branch = "syrus/issue-#{case_number}-#{job.id}"
@@ -1130,6 +1194,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
 
     assert_chaos_case!(simulation.empty_topology_case)
     assert_chaos_case!(simulation.send(:stale_auto_retry_workflow_with_queued_run))
+    assert_chaos_case!(simulation.send(:stale_auto_retry_after_branch_divergence_recovery))
     assert_chaos_case!(simulation.send(:stale_branch_diverged_workflow))
     assert_chaos_case!(simulation.send(:running_step_with_failed_terminal_run))
     assert_chaos_case!(simulation.send(:running_step_with_succeeded_terminal_run))

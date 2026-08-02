@@ -408,9 +408,10 @@ module WorkEngine
             auto_retry_attempt_id: attempt.id,
             source_workflow_id: source.id,
             source_workflow_state: source.state,
+            source_branch_divergence_recovery: source.artifact("branch_divergence_recovery"),
             job_state: workflow.job.state
           ),
-          explanation: "Workflow ##{workflow.id} is an auto-retry for Workflow ##{source.id}, but that source failure was already superseded by a successful Workflow."
+          explanation: "Workflow ##{workflow.id} is an auto-retry for Workflow ##{source.id}, but that source failure was already superseded."
         )
       end
     end
@@ -425,9 +426,17 @@ module WorkEngine
       attempt = AutoRetryAttempt.includes(:workflow).find_by(id: attempt_id) if attempt_id.present?
       source = attempt&.workflow
       @stale_auto_retry_attempts[workflow.id] =
-        if source && (source.succeeded? || newer_successful_workflow?(workflow.job, source))
+        if source_auto_retry_superseded?(workflow.job, source)
           attempt
         end
+    end
+
+    def source_auto_retry_superseded?(job, source)
+      return false unless job && source
+
+      source.succeeded? ||
+        newer_successful_workflow?(job, source) ||
+        branch_divergence_recovered_by_current_pr_branch?(source)
     end
 
     def classify_job_workflow_drift
@@ -751,6 +760,7 @@ module WorkEngine
         next if run.job&.closed?
         next if step_needs_terminal_run_reconciliation?(run.step)
         next if recoverable_branch_divergence?(run)
+        next if branch_divergence_recovered_by_current_pr_branch?(run.workflow)
 
         classification = run.run_failure_classification
         next if classification.nil?
@@ -828,6 +838,7 @@ module WorkEngine
         next if run.job&.closed?
         next if step_needs_terminal_run_reconciliation?(run.step)
         next if recoverable_branch_divergence?(run)
+        next if branch_divergence_recovered_by_current_pr_branch?(run.workflow)
 
         classification = run.run_failure_classification
         next if classification.nil?
@@ -1225,6 +1236,11 @@ module WorkEngine
       branch_diverged_pr_open_run?(run) &&
         run.workflow&.artifact("branch_divergence_recovery").blank? &&
         divergence_current_pr_head?(run.job, run.workflow&.artifact("branch_divergence"))
+    end
+
+    def branch_divergence_recovered_by_current_pr_branch?(workflow)
+      workflow&.artifact("branch_divergence_recovery").is_a?(Hash) &&
+        workflow.artifact("branch_divergence_recovery")["action"] == "superseded_by_current_pr_branch"
     end
 
     def branch_diverged_pr_open_run?(run)

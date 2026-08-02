@@ -267,7 +267,7 @@ module WorkEngine
             )
             workflow.cancel! if workflow.may_cancel?
             workflow.save!
-            attempt.update!(skipped_reason: "source workflow was already superseded by a successful workflow") if attempt.skipped_reason.blank?
+            attempt.update!(skipped_reason: "source workflow was already superseded") if attempt.skipped_reason.blank?
           end
           success("cancelled stale auto-retry Workflow ##{workflow.id}")
         end
@@ -276,6 +276,8 @@ module WorkEngine
 
         def source_superseded?(job, source)
           return false unless job && source
+          return true if source.succeeded?
+          return true if branch_divergence_recovered_by_current_pr_branch?(source)
 
           cutoff = source.finished_at || source.created_at
           return false unless cutoff
@@ -284,6 +286,11 @@ module WorkEngine
              .where(state: "succeeded")
              .where("created_at > ? OR (created_at = ? AND id > ?)", cutoff, cutoff, source.id)
              .exists?
+        end
+
+        def branch_divergence_recovered_by_current_pr_branch?(workflow)
+          workflow&.artifact("branch_divergence_recovery").is_a?(Hash) &&
+            workflow.artifact("branch_divergence_recovery")["action"] == "superseded_by_current_pr_branch"
         end
       end
 

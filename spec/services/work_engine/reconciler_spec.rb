@@ -286,7 +286,7 @@ RSpec.describe WorkEngine::Reconciler do
     expect(result.repair_executions.map(&:message)).to include("cancelled stale auto-retry Workflow ##{stale.id}")
     expect(stale.reload).to be_cancelled
     expect(stale.first_step.runs.first.reload).to be_cancelled
-    expect(attempt.reload.skipped_reason).to eq("source workflow was already superseded by a successful workflow")
+    expect(attempt.reload.skipped_reason).to eq("source workflow was already superseded")
   end
 
   it "cancels stale queued auto-retry workflows when the source workflow itself later succeeded" do
@@ -325,7 +325,68 @@ RSpec.describe WorkEngine::Reconciler do
     expect(plan(result, :cancel_stale_auto_retry_workflow)).to have_attributes(target_id: stale.id)
     expect(stale.reload).to be_cancelled
     expect(stale.first_step.runs.first.reload).to be_cancelled
-    expect(attempt.reload.skipped_reason).to eq("source workflow was already superseded by a successful workflow")
+    expect(attempt.reload.skipped_reason).to eq("source workflow was already superseded")
+  end
+
+  it "cancels stale queued auto-retry workflows after branch divergence recovery supersedes the source" do
+    source = workflow
+    job.update!(
+      state: "implemented",
+      pr_number: 77,
+      branch_name: "syrus/issue-42-#{job.id}",
+      mergeability_head_sha: "remote-head"
+    )
+    source.update_columns(state: "failed", trigger_kind: "retry", finished_at: 10.minutes.ago)
+    step.update_columns(kind: "pr_open", state: "failed", finished_at: 10.minutes.ago)
+    run.update_columns(state: "failed", finished_at: 10.minutes.ago)
+    run.create_run_failure_classification!(
+      classification: "branch_diverged",
+      retryable: false,
+      confidence: 0.95,
+      reason: "The PR branch changed before Syrus could push this workflow.",
+      classified_at: 10.minutes.ago
+    )
+    source.set_artifact!("branch_divergence", {
+      "branch" => job.branch_name,
+      "remote_sha" => "remote-head",
+      "local_sha" => "stale-local"
+    })
+    source.set_artifact!("branch_divergence_recovery", {
+      "action" => "superseded_by_current_pr_branch",
+      "at" => 9.minutes.ago.iso8601
+    })
+
+    attempt = AutoRetryAttempt.create!(
+      job: job,
+      workflow: source,
+      run: run,
+      agent_provider: "claude",
+      failure_classification: "branch_diverged",
+      retry_kind: "retry_workflow",
+      attempt_number: 1,
+      scheduled_at: 8.minutes.ago,
+      performed_at: 7.minutes.ago
+    )
+    stale = Workflows::Retry.instantiate(
+      job: job,
+      artifacts: { "auto_retry_attempt_id" => attempt.id },
+      agent_provider: "claude"
+    )
+    stale.update_columns(created_at: 7.minutes.ago)
+    StepDispatcher.start_workflow(stale)
+    stale.reload
+    stale.first_step.runs.first.update_columns(created_at: 7.minutes.ago, updated_at: 7.minutes.ago)
+
+    result = reconcile_and_execute(job_id: job.id)
+
+    expect(kind(result, :stale_auto_retry_workflow)).to be_present
+    expect(kind(result, :nonretryable_semantic_git_failure)).to be_nil
+    expect(kind(result, :queued_run_without_queue_claim)).to be_nil
+    expect(plan(result, :reenqueue_run)).to be_nil
+    expect(plan(result, :cancel_stale_auto_retry_workflow)).to have_attributes(target_id: stale.id)
+    expect(stale.reload).to be_cancelled
+    expect(stale.first_step.runs.first.reload).to be_cancelled
+    expect(attempt.reload.skipped_reason).to eq("source workflow was already superseded")
   end
 
   it "discards stale branch-diverged workflow output when the current PR head matches the protected remote SHA" do
