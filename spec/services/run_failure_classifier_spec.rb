@@ -113,6 +113,35 @@ RSpec.describe RunFailureClassifier do
     expect(classification.retryable).to eq(true)
   end
 
+  it "does not classify grader output mentioning rate-limit migration names as a rate limit" do
+    workflow = Workflow.create!(job: job, trigger_kind: "merge_train", agent_provider: "codex")
+    grader_step = Step.create!(workflow: workflow, kind: "grader", position: 0)
+    grader_run = Run.create!(
+      job: job,
+      user: job.user,
+      step: grader_step,
+      trigger_kind: "merge_train",
+      state: "failed",
+      agent_provider: "codex",
+      finished_at: Time.current
+    )
+    RunDiagnostic.create!(
+      run: grader_run,
+      error_class: "Steps::Base::StepFailed",
+      error_message: "grader rspec failed (exit 1)"
+    )
+    JobLog.append!(
+      run: grader_run,
+      chunk: "You have 282 pending migrations:\n  20260503100000 AddGhRateLimitToUsers\nRun `bin/rails db:migrate` to update your database then try again.",
+      kind: "grade_log"
+    )
+
+    result = described_class.persist!(grader_run)
+
+    expect(result.classification).not_to eq("rate_limited")
+    expect(result.classification).to eq("application_error")
+  end
+
   it "classifies provider usage-limit exhaustion separately from retryable rate limits" do
     run.update!(
       state: "failed",

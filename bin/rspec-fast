@@ -19,6 +19,7 @@ if [ "$COVERAGE" = "true" ]; then
   rm -f coverage/.resultset.json coverage/.resultset.json.lock coverage/lcov.info
 fi
 
+bin/rails db:test:prepare
 bundle exec rake parallel:prepare
 spec_file_count=""
 if [ "$#" -eq 0 ]; then

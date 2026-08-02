@@ -85,7 +85,7 @@ class RunFailureClassifier
 
   def rate_limited?
     recent_logs.any? { |log| log.kind == "rate_limited" } ||
-      text_match?(/rate[_ -]?limit|too many requests|quota exceeded|429/i)
+      rate_limit_searchable_text.match?(/rate[_ -]?limit|too many requests|quota exceeded|429/i)
   end
 
   def provider_usage_limit?
@@ -212,6 +212,21 @@ class RunFailureClassifier
       diagnostic&.repo_snapshot&.dig("run_outcome"),
       diagnostic&.repo_snapshot&.dig("workflow_failure_reason"),
       recent_logs.map(&:chunk)
+    ].flatten.compact.join("\n")
+  end
+
+  def rate_limit_searchable_text
+    @rate_limit_searchable_text ||= [
+      run.agent_outcome,
+      run.agent_summary,
+      run.agent_pr_title,
+      run.agent_pr_body,
+      diagnostic&.error_class,
+      diagnostic&.error_message,
+      diagnostic&.error_backtrace,
+      diagnostic&.repo_snapshot&.dig("run_outcome"),
+      diagnostic&.repo_snapshot&.dig("workflow_failure_reason"),
+      recent_logs.reject { |log| log.kind == "grade_log" }.map(&:chunk)
     ].flatten.compact.join("\n")
   end
 
