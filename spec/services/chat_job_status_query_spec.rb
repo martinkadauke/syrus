@@ -19,6 +19,19 @@ RSpec.describe ChatJobStatusQuery do
     [ proposal, job ]
   end
 
+  def count_sql
+    count = 0
+    callback = lambda do |_name, _started, _finished, _id, payload|
+      next if payload[:name] == "SCHEMA"
+      next if payload[:cached]
+
+      count += 1
+    end
+
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { yield }
+    count
+  end
+
   describe "#call" do
     it "returns an empty array when there are no proposals and no direct linked jobs" do
       expect(described_class.call(session)).to eq([])
@@ -138,6 +151,29 @@ RSpec.describe ChatJobStatusQuery do
       result = described_class.call(session)
 
       expect(result.first[:workflow_step]).to eq("implement")
+    end
+
+    it "preloads workflow state for many jobs without per-job workflow queries" do
+      12.times do |index|
+        _, job = confirmed_job_proposal(title: "Proposal Job #{index}", state: "running")
+        workflow = Workflow.create!(
+          job: job,
+          user: user,
+          trigger_kind: "initial",
+          agent_provider: "claude",
+          state: "running"
+        )
+        Step.create!(
+          workflow: workflow,
+          kind: "implement",
+          state: "running",
+          position: 1
+        )
+      end
+
+      sql_count = count_sql { described_class.call(session) }
+
+      expect(sql_count).to be <= 12
     end
   end
 end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_01_232000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_02_023000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -185,6 +185,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_232000) do
     t.string "tool_name"
     t.string "tool_use_id"
     t.datetime "updated_at", null: false
+    t.index ["chat_session_id", "created_at", "id"], name: "idx_chat_messages_session_created_id"
     t.index ["chat_session_id", "created_at"], name: "index_chat_messages_on_chat_session_id_and_created_at"
     t.index ["chat_session_id", "id"], name: "index_chat_messages_on_session_id_and_id"
     t.index ["chat_session_id"], name: "index_chat_messages_on_chat_session_id"
@@ -1317,6 +1318,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_01_232000) do
     t.index ["finished_at"], name: "index_spawned_processes_on_finished_at"
     t.index ["hostname"], name: "index_spawned_processes_on_hostname"
     t.index ["kill_requested_by_user_id"], name: "index_spawned_processes_on_kill_requested_by_user_id"
+    t.index ["kind", "workdir", "finished_at"], name: "idx_spawned_processes_kind_workdir_active"
     t.index ["kind"], name: "index_spawned_processes_on_kind"
     t.index ["run_id", "finished_at", "started_at", "id"], name: "idx_spawned_processes_run_active_started"
     t.index ["run_id"], name: "index_spawned_processes_on_run_id"

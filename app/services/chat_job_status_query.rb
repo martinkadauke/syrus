@@ -30,6 +30,14 @@ class ChatJobStatusQuery
       end
     end
 
+    proposal_job_ids = job_proposals.filter_map { |p| p.job&.id }.to_set
+    direct_jobs = Job.where(linked_chat_id: @chat_session.id, kind: "direct")
+       .includes(:repository)
+       .where.not(id: proposal_job_ids)
+       .to_a
+
+    preload_runtime_state!(job_proposals.filter_map(&:job) + direct_jobs)
+
     result = []
 
     epic_proposals.each do |epic_proposal|
@@ -59,16 +67,28 @@ class ChatJobStatusQuery
       result << item if item
     end
 
-    proposal_job_ids = job_proposals.filter_map { |p| p.job&.id }.to_set
-    Job.where(linked_chat_id: @chat_session.id, kind: "direct")
-       .includes(:repository)
-       .where.not(id: proposal_job_ids)
-       .each { |job| result << build_job_hash(job) }
+    direct_jobs.each { |job| result << build_job_hash(job) }
 
     result.sort_by { |item| item[:latest_updated_at] || item[:updated_at] || "" }.reverse
   end
 
   private
+
+  def preload_runtime_state!(jobs)
+    jobs = jobs.compact.uniq(&:id)
+    job_ids = jobs.map(&:id)
+
+    @running_workflows_by_job_id = latest_workflows_by_job_id(job_ids, state: "running")
+
+    workflow_ids = @running_workflows_by_job_id.values.map(&:id)
+    @current_steps_by_workflow_id = current_steps_by_workflow_id(workflow_ids)
+
+    landing_job_ids = jobs.select { |job| job.approved? || job.landing? }.map(&:id)
+    @latest_auto_merge_workflows_by_job_id = latest_workflows_by_job_id(landing_job_ids, trigger_kind: "auto_merge")
+
+    queued_job_ids = jobs.select(&:queued?).map(&:id)
+    @failed_dependency_by_job_id = failed_dependency_by_job_id(queued_job_ids)
+  end
 
   def build_job_item(proposal)
     job = proposal.job
@@ -93,10 +113,10 @@ class ChatJobStatusQuery
   end
 
   def current_workflow_step(job)
-    workflow = job.workflows.where(state: "running").order(:created_at).last
+    workflow = @running_workflows_by_job_id&.fetch(job.id, nil)
     return nil unless workflow
 
-    step = workflow.current_step
+    step = @current_steps_by_workflow_id&.fetch(workflow.id, nil)
     step ? step.kind : workflow.trigger_kind
   end
 
@@ -117,17 +137,60 @@ class ChatJobStatusQuery
   end
 
   def latest_auto_merge_failed?(job)
-    job.workflows.where(trigger_kind: "auto_merge").order(:created_at).last&.failed?
+    @latest_auto_merge_workflows_by_job_id&.fetch(job.id, nil)&.failed?
   end
 
   def dependency_failed?(job)
-    job.dependencies.includes(:depends_on_job).any? do |dep|
-      dep.depends_on_job&.closed? &&
-        !Job::SUCCESSFUL_CLOSURE_REASONS.include?(dep.depends_on_job.closure_reason)
-    end
+    @failed_dependency_by_job_id&.fetch(job.id, false)
   end
 
   def job_done?(job)
     job.closed? && Job::SUCCESSFUL_CLOSURE_REASONS.include?(job.closure_reason)
+  end
+
+  def latest_workflows_by_job_id(job_ids, state: nil, trigger_kind: nil)
+    return {} if job_ids.empty?
+
+    scope = Workflow.where(job_id: job_ids)
+    scope = scope.where(state: state) if state
+    scope = scope.where(trigger_kind: trigger_kind) if trigger_kind
+
+    scope.order(:job_id, :created_at, :id).to_a.each_with_object({}) do |workflow, result|
+      result[workflow.job_id] = workflow
+    end
+  end
+
+  def current_steps_by_workflow_id(workflow_ids)
+    return {} if workflow_ids.empty?
+
+    active_steps = Step
+      .where(workflow_id: workflow_ids, state: %w[ queued running ])
+      .order(:workflow_id, :position, :id)
+      .to_a
+      .each_with_object({}) { |step, result| result[step.workflow_id] ||= step }
+
+    missing_workflow_ids = workflow_ids - active_steps.keys
+    return active_steps if missing_workflow_ids.empty?
+
+    Step
+      .where(workflow_id: missing_workflow_ids)
+      .order(:workflow_id, :position, :id)
+      .to_a
+      .each_with_object(active_steps) { |step, result| result[step.workflow_id] = step }
+  end
+
+  def failed_dependency_by_job_id(job_ids)
+    return {} if job_ids.empty?
+
+    JobDependency
+      .where(job_id: job_ids)
+      .includes(:depends_on_job)
+      .each_with_object(Hash.new(false)) do |dependency, result|
+        depends_on_job = dependency.depends_on_job
+        next unless depends_on_job&.closed?
+        next if Job::SUCCESSFUL_CLOSURE_REASONS.include?(depends_on_job.closure_reason)
+
+        result[dependency.job_id] = true
+      end
   end
 end

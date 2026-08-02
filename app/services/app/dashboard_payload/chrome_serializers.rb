@@ -62,6 +62,26 @@ module App
       end
 
       def smart_folder_count(folder)
+        Rails.cache.fetch(smart_folder_count_cache_key(folder), expires_in: 30.seconds) do
+          smart_folder_count_uncached(folder)
+        end
+      end
+
+      def smart_folder_count_cache_key(folder)
+        [
+          "dashboard_smart_folder_count",
+          SyrusVersion.current,
+          user.id,
+          subject,
+          ownership_scope,
+          selected_owner_user&.id,
+          active_repo_ids,
+          folder.id,
+          folder.updated_at.to_i
+        ]
+      end
+
+      def smart_folder_count_uncached(folder)
         case subject
         when "job"
           Jobs::Filter.from_tree(folder.filter, user: user).apply(jobs_base_scope).count
