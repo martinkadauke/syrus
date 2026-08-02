@@ -1652,6 +1652,27 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(parse_body["affected_job_ids"]).to contain_exactly(first.id, second.id)
     end
 
+    it "retries approved jobs with landing failures through the landing path" do
+      job = Factories.job_record(
+        user: user,
+        repository: repo,
+        state: "approved",
+        pr_number: 10,
+        landing_failure_reason: "auto_merge: required grader failed"
+      )
+      allow(AppEvents).to receive(:broadcast)
+
+      expect {
+        post "/api/v1/app/dashboard/jobs/bulk",
+             params: { job_ids: [ job.id ], bulk_action: "retry" },
+             as: :json
+      }.to have_enqueued_job(LandingQueueProcessorJob)
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body["message"]).to eq("Retry enqueued for 1 job.")
+      expect(parse_body["affected_job_ids"]).to contain_exactly(job.id)
+    end
+
     it "closes selected open jobs without mutating another user's job" do
       mine = Factories.job(repository: repo, issue_number: 1)
       other_user = Factories.user

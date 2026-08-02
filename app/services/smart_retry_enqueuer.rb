@@ -71,12 +71,11 @@ class SmartRetryEnqueuer
 
   def call
     return skipped(:closed, "Thread is closed - use Start over to begin a new one.") if job.closed?
-    return skipped(:approved, "Job is already approved for landing.") if job.approved? || job.landing?
     return skipped(:no_change_needed, "Job has no changes to retry.") if job.no_change_needed?
     return skipped(:active_run, "A Run is already in progress - wait for it to finish.") if job.any_active_run?
     return provider_circuit_skip if automatic? && provider_circuit.open?
 
-    resume_failed_step || retry_diverged_pr_open_as_new_workflow || retry_failed_step_or_landing || retry_landing || retry_implementation
+    resume_failed_step || retry_diverged_pr_open_as_new_workflow || retry_failed_step_or_landing || retry_landing || approved_landing_skip || retry_implementation
   end
 
   private
@@ -153,6 +152,8 @@ class SmartRetryEnqueuer
     return unless job.landing_failure_reason.present?
 
     return retry_merge_train_landing if latest_workflow&.trigger_kind == "merge_train"
+    return retry_epic_merge_train_landing if job.approved? && AppSetting.merge_train_enabled? && job.epic_id.present?
+    return retry_approved_auto_merge_landing if job.approved?
     return retry_auto_merge_landing if job.may_approve?
 
     skipped(:not_retryable, "Landing failed - retry the failed landing workflow or reapprove the Job.")
@@ -171,6 +172,22 @@ class SmartRetryEnqueuer
     job.approve!(via: "bulk", by_user: by_user)
     LandingQueueProcessorJob.perform_later
     succeeded(:landing, workflow: latest_workflow)
+  end
+
+  def retry_approved_auto_merge_landing
+    LandingQueueProcessorJob.perform_later
+    succeeded(:landing, workflow: latest_workflow)
+  end
+
+  def retry_epic_merge_train_landing
+    workflow = MergeTrainDispatcher.try_dispatch!(job.epic, bypass_cooldown: true)
+    return skipped(:not_retryable, "Epic is not ready for a merge-train retry: #{MergeTrainDispatcher.blocker_reason(job.epic, bypass_cooldown: true)}.") unless workflow
+
+    succeeded(:landing, workflow: workflow)
+  end
+
+  def approved_landing_skip
+    skipped(:approved, "Job is already approved for landing.") if job.approved? || job.landing?
   end
 
   def retry_implementation

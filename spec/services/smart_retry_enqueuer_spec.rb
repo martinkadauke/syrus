@@ -92,6 +92,53 @@ RSpec.describe SmartRetryEnqueuer do
     expect(landing_job.landing_failure_reason).to be_nil
   end
 
+  it "wakes the landing queue for an approved job with a landing failure" do
+    job = Factories.job_record(
+      user: user,
+      repository: repository,
+      state: "approved",
+      pr_number: 10,
+      landing_failure_reason: "auto_merge: required grader failed"
+    )
+
+    expect {
+      result = described_class.call(job: job, automatic: true, by_user: user)
+
+      expect(result).to be_success
+      expect(result.action).to eq(:landing)
+    }.to have_enqueued_job(LandingQueueProcessorJob)
+  end
+
+  it "dispatches a fresh merge train for approved Epic children with a landing failure" do
+    AppSetting.current.update!(merge_train_enabled: true)
+    epic = Factories.epic(user: user, repository: repository, state: "in_progress")
+    jobs = 3.times.map do |index|
+      Factories.job_record(
+        user: user,
+        repository: repository,
+        epic: epic,
+        state: "approved",
+        issue_number: index + 1,
+        pr_number: index + 10,
+        branch_name: "syrus/issue-#{index + 1}",
+        landing_failure_reason: "landing start blocked: stack dependencies not ready"
+      )
+    end
+
+    expect {
+      result = described_class.call(job: jobs.first, automatic: true, by_user: user)
+
+      expect(result).to be_success
+      expect(result.action).to eq(:landing)
+      expect(result.workflow).to be_present
+      expect(result.workflow.trigger_kind).to eq("merge_train")
+    }.to change { Workflow.where(trigger_kind: "merge_train").count }.by(1)
+      .and change { MergeTrain.count }.by(1)
+
+    expect(jobs.map { |job| job.reload.landing_failure_reason }).to all(be_nil)
+    expect(jobs.map { |job| job.reload.state }).to all(eq("landing"))
+  end
+
   it "resumes a failed agentic step when a captured session exists" do
     job, workflow, step, run = failed_job(step_kind: "implement")
     ClaudeSession.create!(resumable: run, session_id: "session-123", provider: "claude")
