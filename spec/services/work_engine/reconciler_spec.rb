@@ -289,6 +289,45 @@ RSpec.describe WorkEngine::Reconciler do
     expect(attempt.reload.skipped_reason).to eq("source workflow was already superseded by a successful workflow")
   end
 
+  it "cancels stale queued auto-retry workflows when the source workflow itself later succeeded" do
+    source = workflow
+    source.update_columns(state: "succeeded", started_at: 20.minutes.ago, finished_at: 10.minutes.ago)
+    step.update_columns(state: "succeeded", started_at: 20.minutes.ago, finished_at: 10.minutes.ago)
+    run.update_columns(state: "succeeded", started_at: 20.minutes.ago, finished_at: 10.minutes.ago)
+    job.update!(state: "implemented")
+
+    attempt = AutoRetryAttempt.create!(
+      job: job,
+      workflow: source,
+      run: run,
+      agent_provider: "claude",
+      failure_classification: "worker_died",
+      retry_kind: "retry_workflow",
+      attempt_number: 1,
+      scheduled_at: 9.minutes.ago,
+      performed_at: 8.minutes.ago
+    )
+    stale = Workflows::Retry.instantiate(
+      job: job,
+      artifacts: { "auto_retry_attempt_id" => attempt.id },
+      agent_provider: "claude"
+    )
+    stale.update_columns(created_at: 8.minutes.ago)
+    StepDispatcher.start_workflow(stale)
+    stale.reload
+    stale.first_step.runs.first.update_columns(created_at: 8.minutes.ago, updated_at: 8.minutes.ago)
+
+    result = reconcile_and_execute(job_id: job.id)
+
+    expect(kind(result, :stale_auto_retry_workflow)).to be_present
+    expect(kind(result, :queued_run_without_queue_claim)).to be_nil
+    expect(plan(result, :reenqueue_run)).to be_nil
+    expect(plan(result, :cancel_stale_auto_retry_workflow)).to have_attributes(target_id: stale.id)
+    expect(stale.reload).to be_cancelled
+    expect(stale.first_step.runs.first.reload).to be_cancelled
+    expect(attempt.reload.skipped_reason).to eq("source workflow was already superseded by a successful workflow")
+  end
+
   it "does not re-enqueue a queued Run while a normal-queue RunJob is scheduled for retry" do
     run.update_columns(state: "queued", created_at: 5.minutes.ago, updated_at: 5.minutes.ago)
     workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_hostname: "syrus-worker-dead")

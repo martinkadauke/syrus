@@ -423,7 +423,7 @@ module WorkEngine
       attempt = AutoRetryAttempt.includes(:workflow).find_by(id: attempt_id) if attempt_id.present?
       source = attempt&.workflow
       @stale_auto_retry_attempts[workflow.id] =
-        if source && newer_successful_workflow?(workflow.job, source)
+        if source && (source.succeeded? || newer_successful_workflow?(workflow.job, source))
           attempt
         end
     end

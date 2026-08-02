@@ -323,6 +323,38 @@ RSpec.describe "API: /api/v1/app/admin/queue/*", type: :request do
     )
   end
 
+  it "runs the unified reconciler inline with repairs when enabled" do
+    sign_in_as(admin)
+    Feature.find_or_initialize_by(slug: "unified_work_engine_reconciler").tap do |feature|
+      feature.name = "Unified work-engine reconciler"
+      feature.category = "operations"
+      feature.default_enabled = false
+      feature.enabled = true
+      feature.save!
+    end
+    result = WorkEngine::Reconciler::Result.new(
+      "spec",
+      Time.current,
+      instance_double(WorkEngine::Reconciler::Snapshot, as_json: {}),
+      [ instance_double(WorkEngine::Reconciler::Issue) ],
+      [],
+      [ instance_double(WorkEngine::RepairExecutor::Execution) ]
+    )
+    expect(WorkEngine::Reconciler).to receive(:call)
+      .with(source: "Api::V1::App::Admin::QueueController", execute_repairs: true)
+      .and_return(result)
+
+    post "/api/v1/app/admin/queue/reap_stale_runs"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body).to include(
+      "ok" => true,
+      "message" => "WorkEngine reconciler ran inline.",
+      "issues_count" => 1,
+      "repairs_count" => 1
+    )
+  end
+
   def solid_queue_job(class_name:, queue_name:, arguments: { "arguments" => [] }, finished_at: nil)
     SolidQueue::Job.create!(
       class_name: class_name,

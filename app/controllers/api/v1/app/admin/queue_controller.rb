@@ -15,8 +15,13 @@ module Api
           end
 
           def reap_stale_runs
-            ReapStaleRunsJob.perform_now
-            render json: { ok: true, message: I18n.t("api.admin_queue.reap_ran") }
+            result = ::Admin::ReapStaleRuns.call(source: "Api::V1::App::Admin::QueueController")
+            render json: {
+              ok: true,
+              message: result.message,
+              issues_count: result.issues_count,
+              repairs_count: result.repairs_count
+            }
           end
 
           private

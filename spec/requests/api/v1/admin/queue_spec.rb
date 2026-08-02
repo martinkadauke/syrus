@@ -32,6 +32,37 @@ RSpec.describe "API: /api/v1/admin/queue/*", type: :request do
       expect(parse_body["ok"]).to be true
     end
 
+    it "runs the unified reconciler inline with repairs when enabled" do
+      Feature.find_or_initialize_by(slug: "unified_work_engine_reconciler").tap do |feature|
+        feature.name = "Unified work-engine reconciler"
+        feature.category = "operations"
+        feature.default_enabled = false
+        feature.enabled = true
+        feature.save!
+      end
+      result = WorkEngine::Reconciler::Result.new(
+        "spec",
+        Time.current,
+        instance_double(WorkEngine::Reconciler::Snapshot, as_json: {}),
+        [ instance_double(WorkEngine::Reconciler::Issue) ],
+        [],
+        [ instance_double(WorkEngine::RepairExecutor::Execution) ]
+      )
+      expect(WorkEngine::Reconciler).to receive(:call)
+        .with(source: "Api::V1::Admin::QueueController", execute_repairs: true)
+        .and_return(result)
+
+      post "/api/v1/admin/queue/reap_stale_runs", headers: auth
+
+      expect(response).to be_successful
+      expect(parse_body).to include(
+        "ok" => true,
+        "message" => "WorkEngine reconciler ran inline.",
+        "issues_count" => 1,
+        "repairs_count" => 1
+      )
+    end
+
     it "401s without a token" do
       post "/api/v1/admin/queue/reap_stale_runs"
       expect(response).to have_http_status(:unauthorized)
