@@ -10,6 +10,8 @@ class SmartRetryEnqueuer
     closed: "closed",
     approved: "approved",
     no_change_needed: "no change needed",
+    pr_ready: "PR ready",
+    duplicate_retry: "duplicate retry",
     active_run: "active run",
     provider_circuit: "provider circuit",
     not_retryable: "not retryable"
@@ -72,7 +74,9 @@ class SmartRetryEnqueuer
   def call
     return skipped(:closed, "Thread is closed - use Start over to begin a new one.") if job.closed?
     return skipped(:no_change_needed, "Job has no changes to retry.") if job.no_change_needed?
+    return skipped(:pr_ready, "PR is already current and checks are passing.") if pr_ready?
     return skipped(:active_run, "A Run is already in progress - wait for it to finish.") if job.any_active_run?
+    return skipped(:duplicate_retry, "A retry workflow is already queued or running for this Job.") if duplicate_active_retry_workflow?
     return provider_circuit_skip if automatic? && provider_circuit.open?
 
     resume_failed_step || retry_diverged_pr_open_as_new_workflow || retry_failed_step_or_landing || retry_landing || approved_landing_skip || retry_implementation
@@ -114,6 +118,17 @@ class SmartRetryEnqueuer
     label = App::Presentation.agent_provider_label(provider_circuit.provider)
     until_text = provider_circuit.retry_after ? " until #{provider_circuit.retry_after.to_fs(:db)}" : ""
     skipped(:provider_circuit, "#{label} appears degraded#{until_text}; automatic retries are paused.", circuit: provider_circuit)
+  end
+
+  def duplicate_active_retry_workflow?
+    job.workflows.active.where(trigger_kind: "retry").exists?
+  end
+
+  def pr_ready?
+    job.pr_number.present? &&
+      job.branch_name.present? &&
+      job.commits_behind_base.to_i.zero? &&
+      job.pr_checks_state == "passing"
   end
 
   def resume_failed_step
