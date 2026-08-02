@@ -13,7 +13,7 @@ import { Markdown } from "../lib/Markdown"
 import { translateBlockedReason } from "../lib/translateBlockedReason"
 import { workflowSlug } from "../lib/slugs"
 import { buttonClass } from "../lib/buttonClasses"
-import { applyPendingFeedback, createJobAttachments, deleteJobCommand, fetchJobDetail, fetchJobTestResults, fetchJobWorkflows, ignorePendingFeedback, replacePendingFeedback, retryPendingFeedback, submitJobFeedback, updateJobPriority, updateJobProviderSetting, type JobApprovalRecord, type JobApprovalStatus, type JobDeploymentStage, type JobDetailPayload, type JobTestCase, type JobTestPlan, type JobTestRun, type JobTestSuite, type JobWorkflow, type PendingFeedbackComment } from "../api/jobs"
+import { applyPendingFeedback, createJobAttachments, deleteJobCommand, fetchJobDependencyOptions, fetchJobDetail, fetchJobTestResults, fetchJobWorkflows, ignorePendingFeedback, replacePendingFeedback, retryPendingFeedback, submitJobFeedback, updateJobPriority, updateJobProviderSetting, type JobApprovalRecord, type JobApprovalStatus, type JobDeploymentStage, type JobDetailPayload, type JobTestCase, type JobTestPlan, type JobTestRun, type JobTestSuite, type JobWorkflow, type PendingFeedbackComment } from "../api/jobs"
 import { CoverageCard } from "../components/CoverageCard"
 import { ProviderAvailabilityWarning } from "../components/ProviderAvailabilityWarning"
 import { SyrusTour } from "../components/SyrusTour"
@@ -951,16 +951,24 @@ function DependenciesPanel({ payload, command }: { payload: JobDetailPayload; co
   const [addingDependency, setAddingDependency] = useState(false)
   const [epicQuery, setEpicQuery] = useState("")
   const [addingEpicDependency, setAddingEpicDependency] = useState(false)
+  const dependencyOptions = useQuery({
+    queryKey: ["job", payload.job.id, "dependency_options"],
+    queryFn: () => fetchJobDependencyOptions(payload.paths.app_dependency_options_path || `${payload.paths.app_dependencies_path.replace(/\/dependencies$/, "")}/dependency_options`),
+    enabled: addingDependency || addingEpicDependency,
+    staleTime: 30000
+  })
+  const jobDependencyOptions = dependencyOptions.data?.dependency_target_options ?? payload.dependency_target_options
+  const epicDependencyOptions = dependencyOptions.data?.epic_dependency_target_options ?? payload.epic_dependency_target_options
 
   const trimmedQuery = query.trim()
   const filteredOptions = trimmedQuery.length > 0
-    ? payload.dependency_target_options.filter((option) => option.label.toLowerCase().includes(trimmedQuery.toLowerCase()))
-    : payload.dependency_target_options
+    ? jobDependencyOptions.filter((option) => option.label.toLowerCase().includes(trimmedQuery.toLowerCase()))
+    : jobDependencyOptions
 
   const trimmedEpicQuery = epicQuery.trim()
   const filteredEpicOptions = trimmedEpicQuery.length > 0
-    ? payload.epic_dependency_target_options.filter((option) => option.label.toLowerCase().includes(trimmedEpicQuery.toLowerCase()))
-    : payload.epic_dependency_target_options
+    ? epicDependencyOptions.filter((option) => option.label.toLowerCase().includes(trimmedEpicQuery.toLowerCase()))
+    : epicDependencyOptions
 
   function choose(value: string) {
     command.mutate({ method: "post", path: payload.paths.app_dependencies_path, body: { dependency_target: value } }, { onSuccess: () => {
@@ -1084,7 +1092,7 @@ function DependenciesPanel({ payload, command }: { payload: JobDetailPayload; co
         ) : (
           <div className="mt-3 flex flex-wrap gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
             <button className="text-xs font-medium text-blue-600 hover:underline" onClick={() => setAddingDependency(true)} type="button">{t("add_dependency")}</button>
-            {payload.epic_dependency_target_options.length > 0 ? (
+            {epicDependencyOptions.length > 0 || !dependencyOptions.isSuccess ? (
               <button className="text-xs font-medium text-blue-600 hover:underline" onClick={() => setAddingEpicDependency(true)} type="button">{t("add_epic_dependency")}</button>
             ) : null}
           </div>

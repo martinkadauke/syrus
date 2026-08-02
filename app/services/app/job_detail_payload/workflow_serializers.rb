@@ -24,7 +24,7 @@ module App
             failure_count: workflow.failure_count,
             artifacts: workflow_artifacts_json(workflow),
             cleaned_up_at: iso8601(workflow.cleaned_up_at),
-            retry_available: workflow.retry_available?,
+            retry_available: workflow_retry_available?(workflow),
             started_at: iso8601(workflow.started_at),
             finished_at: iso8601(workflow.finished_at),
             created_at: iso8601(workflow.created_at),
@@ -163,7 +163,7 @@ module App
           rate_limited: rate_limited_run_ids.key?(run.id),
           failure_classification: failure_classification_json(run.run_failure_classification),
           run_diagnostic: run_diagnostic_json(run.run_diagnostic),
-          health_snapshots: run.run_health_snapshots.ordered.map { |snapshot| health_snapshot_json(snapshot) },
+          health_snapshots: ordered_health_snapshots_for(run).map { |snapshot| health_snapshot_json(snapshot) },
           active_process: active_process_json(run),
           worker_health_correlation: nil,
           agent_session: agent_session_json(session),
@@ -247,6 +247,18 @@ module App
         @visible_run_ids ||= paginated_workflows.flat_map do |workflow|
           ordered_steps_for(workflow).flat_map { |step| ordered_runs_for(step).map(&:id) }
         end.compact
+      end
+
+      def ordered_health_snapshots_for(run)
+        run.run_health_snapshots.to_a.sort_by { |snapshot| [ snapshot.created_at || Time.zone.at(0), snapshot.id || 0 ] }
+      end
+
+      def workflow_retry_available?(workflow)
+        workflow.failed? && workflow.cleaned_up_at.nil? && workflow.id == latest_workflow_id
+      end
+
+      def latest_workflow_id
+        @latest_workflow_id ||= @job.workflows.maximum(:id)
       end
 
       def job_log_counts

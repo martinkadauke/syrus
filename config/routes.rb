@@ -89,6 +89,7 @@ Rails.application.routes.draw do
         post "jobs/:job_id/claim", to: "job_claims#create", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         delete "jobs/:job_id/claim", to: "job_claims#destroy", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/dependencies", to: "job_metadata#add_dependency", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
+        get "jobs/:job_id/dependency_options", to: "job_metadata#dependency_options", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         delete "jobs/:job_id/dependencies/:dependency_id", to: "job_metadata#remove_dependency", constraints: { job_id: /[a-zA-Z0-9_-]+/, dependency_id: /\d+/ }
         post "jobs/:job_id/dependencies/override", to: "job_metadata#override_dependencies", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/epic_dependencies", to: "job_metadata#add_epic_dependency", constraints: { job_id: /[a-zA-Z0-9_-]+/ }

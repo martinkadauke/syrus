@@ -294,6 +294,11 @@ export type JobOption = {
   value: string
 }
 
+export type JobDependencyOptionsPayload = {
+  dependency_target_options: JobOption[]
+  epic_dependency_target_options: Array<{ label: string; value: number }>
+}
+
 export type JobAttachment = {
   id: number
   kind: string
@@ -585,6 +590,7 @@ export type JobPaths = {
   app_tags_path: string
   app_claim_path: string
   app_dependencies_path: string
+  app_dependency_options_path?: string
   app_dependency_override_path: string
   app_epic_dependencies_path: string
   app_stack_base_path: string
@@ -716,6 +722,10 @@ export function fetchJobDetail(id: string, search = "") {
 
 export function fetchJobWorkflows(id: string, search = "") {
   return getJson<JobWorkflowsPayload>(`/api/v1/app/jobs/${id}/workflows${search}`)
+}
+
+export function fetchJobDependencyOptions(path: string) {
+  return getJson<JobDependencyOptionsPayload>(path)
 }
 
 export function fetchJobTimeline(id: string) {

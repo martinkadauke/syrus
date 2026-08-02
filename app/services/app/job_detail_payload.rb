@@ -19,6 +19,10 @@ module App
       new(job: job, user: job.user).timeline_payload
     end
 
+    def self.build_dependency_options(job:, user:)
+      new(job: job, user: user).dependency_options_payload
+    end
+
     def initialize(job:, user:, params: {})
       @job = job
       @user = user
@@ -39,8 +43,8 @@ module App
           dependencies: PerformanceLogging.phase("job_detail.dependencies", job_id: @job.id) { @job.dependencies.includes(:created_by_user, depends_on_job: :repository, depends_on_epic: :repository).map { |dependency| dependency_json(dependency) } },
           dependents: PerformanceLogging.phase("job_detail.dependents", job_id: @job.id) { @job.dependent_links.includes(job: :repository).map { |dependency| dependent_json(dependency) } },
           unsatisfied_dependencies: PerformanceLogging.phase("job_detail.unsatisfied_dependencies", job_id: @job.id) { @job.unsatisfied_dependencies.map { |dependency| dependency_json(dependency) } },
-          dependency_target_options: PerformanceLogging.phase("job_detail.dependency_target_options", job_id: @job.id) { dependency_target_options },
-          epic_dependency_target_options: PerformanceLogging.phase("job_detail.epic_dependency_target_options", job_id: @job.id) { epic_dependency_target_options },
+          dependency_target_options: [],
+          epic_dependency_target_options: [],
           attachments: PerformanceLogging.phase("job_detail.attachments", job_id: @job.id) { @job.job_attachments.includes(file_attachment: :blob).map { |attachment| attachment_json(attachment) } },
           summary: PerformanceLogging.phase("job_detail.summary", job_id: @job.id) { summary_json },
           test_plan: PerformanceLogging.phase("job_detail.test_plan", job_id: @job.id) { test_plan_json },
@@ -78,6 +82,15 @@ module App
         {
           job_id: @job.id,
           events: PerformanceLogging.phase("job_timeline.events", job_id: @job.id) { Jobs::Timeline.for(@job).map { |event| timeline_event_json(event) } }
+        }
+      end
+    end
+
+    def dependency_options_payload
+      PerformanceLogging.phase("job_dependency_options_payload", job_id: @job.id) do
+        {
+          dependency_target_options: PerformanceLogging.phase("job_dependency_options.job_targets", job_id: @job.id) { dependency_target_options },
+          epic_dependency_target_options: PerformanceLogging.phase("job_dependency_options.epic_targets", job_id: @job.id) { epic_dependency_target_options }
         }
       end
     end
@@ -469,6 +482,7 @@ module App
         app_tags_path: "/api/v1/app/jobs/#{@job.id}/tags",
         app_claim_path: "/api/v1/app/jobs/#{@job.id}/claim",
         app_dependencies_path: "/api/v1/app/jobs/#{@job.id}/dependencies",
+        app_dependency_options_path: "/api/v1/app/jobs/#{@job.id}/dependency_options",
         app_dependency_override_path: "/api/v1/app/jobs/#{@job.id}/dependencies/override",
         app_epic_dependencies_path: "/api/v1/app/jobs/#{@job.id}/epic_dependencies",
         app_stack_base_path: "/api/v1/app/jobs/#{@job.id}/stack_base",

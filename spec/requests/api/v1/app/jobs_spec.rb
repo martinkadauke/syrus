@@ -607,8 +607,14 @@ RSpec.describe "App API job detail", type: :request do
     ))
     expect(body["dependents"]).to eq([])
 
-    option_values = body["dependency_target_options"].map { |option| option.fetch("value") }
-    option_labels = body["dependency_target_options"].map { |option| option.fetch("label") }.join("\n")
+    expect(body["dependency_target_options"]).to eq([])
+    expect(body["epic_dependency_target_options"]).to eq([])
+
+    get "/api/v1/app/jobs/#{target.id}/dependency_options"
+
+    options_body = parse_body
+    option_values = options_body["dependency_target_options"].map { |option| option.fetch("value") }
+    option_labels = options_body["dependency_target_options"].map { |option| option.fetch("label") }.join("\n")
     expect(option_values).to include("issue:#{repo.id}:41", "job:#{direct_job.id}")
     expect(option_values).not_to include("job:#{older_issue_job.id}", "issue:#{repo.id}:42")
     expect(option_labels.scan("#41").size).to eq(1)
