@@ -30,7 +30,7 @@ export function JobPreviewCard({ id, compact = false }: { id: number; compact?: 
         <CopyableSlug className="text-xs" slug={`JOB-${id}`} />
         <StatusPill state={job.state} />
         {job.state === "queued" && job.start_blocked_reason ? (
-          <StartBlockedReasonPill reason={job.start_blocked_reason} />
+          <StartBlockedReasonPill details={job.start_blocked_details} reason={job.start_blocked_reason} />
         ) : null}
       </div>
       {title && (

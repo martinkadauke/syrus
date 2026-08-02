@@ -1339,7 +1339,8 @@ function baseJob(): JobDetailPayload["job"] {
     started_at: null,
     finished_at: null,
     start_blocked_reason: null,
-    start_blocked_at: null
+    start_blocked_at: null,
+    start_blocked_details: null
   }
 }
 

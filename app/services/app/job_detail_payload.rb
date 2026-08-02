@@ -190,7 +190,8 @@ module App
         grace_period_expires_at: iso8601(@job.grace_period_expires_at),
         main_branch_repair: @job.main_branch_repair?,
         start_blocked_reason: job_start_blocked_reason,
-        start_blocked_at: job_start_blocked_at
+        start_blocked_at: job_start_blocked_at,
+        start_blocked_details: job_start_blocked_details
       }.merge(deployment_stages_json)
     end
 
@@ -548,6 +549,10 @@ module App
 
     def job_start_blocked_at
       queued_workflow_for_start_blocked&.artifact("start_blocked_at")
+    end
+
+    def job_start_blocked_details
+      queued_workflow_for_start_blocked&.artifact("start_blocked_details")
     end
 
     def queued_workflow_for_start_blocked

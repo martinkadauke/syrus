@@ -431,13 +431,25 @@ RSpec.describe App::DashboardPayload do
         job: job,
         trigger_kind: "initial",
         state: "queued",
-        artifacts: { "start_blocked_reason" => "stack_dependencies_not_ready" }
+        artifacts: {
+          "start_blocked_reason" => "stack_fan_in_base_unavailable",
+          "start_blocked_details" => {
+            "kind" => "fan_in_base_unavailable",
+            "dependencies" => [ { "slug" => "JOB-1574" } ]
+          }
+        }
       )
 
       result = call(subject: "job")
       item = result[:items].find { |i| i[:id] == job.id }
 
-      expect(item).to include(start_blocked_reason: "stack_dependencies_not_ready")
+      expect(item).to include(
+        start_blocked_reason: "stack_fan_in_base_unavailable",
+        start_blocked_details: include(
+          "kind" => "fan_in_base_unavailable",
+          "dependencies" => [ { "slug" => "JOB-1574" } ]
+        )
+      )
     end
 
     it "includes nil start_blocked_reason when no blocked workflow exists" do

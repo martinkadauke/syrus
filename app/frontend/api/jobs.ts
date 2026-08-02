@@ -2,6 +2,7 @@ import { deleteJson, getJson, patchJson, postForm, postJson } from "./client"
 import type { BlockedReason } from "../lib/translateBlockedReason"
 import type { MergeTrainStatus } from "./epics"
 import type { ProviderAvailability } from "./providerAvailability"
+import type { StartBlockedDetails } from "../types/startBlocked"
 
 export type JobRepository = {
   id: number
@@ -115,6 +116,7 @@ export type JobRecord = {
   main_branch_repair: boolean
   start_blocked_reason: string | null
   start_blocked_at: string | null
+  start_blocked_details: StartBlockedDetails | null
   deployment_stages?: JobDeploymentStage[]
 }
 

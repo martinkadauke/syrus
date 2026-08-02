@@ -936,6 +936,7 @@ RSpec.describe App::JobDetailPayload do
 
       expect(payload_for(job).dig(:job, :start_blocked_reason)).to be_nil
       expect(payload_for(job).dig(:job, :start_blocked_at)).to be_nil
+      expect(payload_for(job).dig(:job, :start_blocked_details)).to be_nil
     end
 
     it "returns the block reason from the queued workflow's artifacts" do
@@ -944,12 +945,25 @@ RSpec.describe App::JobDetailPayload do
         job: job,
         trigger_kind: "initial",
         state: "queued",
-        artifacts: { "start_blocked_reason" => "stack_dependencies_not_ready", "start_blocked_at" => "2026-07-01T12:00:00Z" }
+        artifacts: {
+          "start_blocked_reason" => "stack_fan_in_base_unavailable",
+          "start_blocked_at" => "2026-07-01T12:00:00Z",
+          "start_blocked_details" => {
+            "kind" => "fan_in_base_unavailable",
+            "message" => "multiple dependency branches are ready",
+            "dependencies" => [ { "slug" => "JOB-1574" } ]
+          }
+        }
       )
 
       result = payload_for(job)
-      expect(result.dig(:job, :start_blocked_reason)).to eq("stack_dependencies_not_ready")
+      expect(result.dig(:job, :start_blocked_reason)).to eq("stack_fan_in_base_unavailable")
       expect(result.dig(:job, :start_blocked_at)).to eq("2026-07-01T12:00:00Z")
+      expect(result.dig(:job, :start_blocked_details)).to include(
+        "kind" => "fan_in_base_unavailable",
+        "message" => "multiple dependency branches are ready",
+        "dependencies" => [ { "slug" => "JOB-1574" } ]
+      )
     end
   end
 

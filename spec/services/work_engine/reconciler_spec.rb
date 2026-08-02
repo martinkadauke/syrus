@@ -703,6 +703,29 @@ RSpec.describe WorkEngine::Reconciler do
     expect(plan(result, :wait_for_dependency_or_stack_readiness).auto_executable).to eq(false)
   end
 
+  it "rechecks expired dependency or stack start blocks by starting the workflow again" do
+    run.destroy!
+    workflow.update_columns(
+      state: "queued",
+      created_at: 5.minutes.ago,
+      updated_at: 5.minutes.ago,
+      artifacts: {
+        "start_blocked_reason" => StepDispatcher::STACK_BLOCK_REASON,
+        "start_blocked_next_check_at" => 1.minute.ago.iso8601
+      }
+    )
+    step.update_columns(state: "queued")
+
+    result = reconcile(workflow_id: workflow.id)
+
+    expect(kind(result, :dependency_stack_start_block)).to be_nil
+    expect(kind(result, :queued_workflow_without_first_run)).to have_attributes(
+      safe_to_auto_repair: true,
+      recommended_repair_action: "start_workflow"
+    )
+    expect(plan(result, :start_workflow)).to have_attributes(auto_executable: true, target_id: workflow.id)
+  end
+
   it "classifies main-health start blocks with the matching wait-only action" do
     run.destroy!
     job.repository.update!(ci_health: "broken", landing_paused: true)

@@ -2,6 +2,7 @@ import { getJson, patchJson, postJson } from "./client"
 import type { JobRetryState, LandingQueueBlockerJob, LandingQueueDependencyEdge } from "./jobs"
 import type { BlockedReason } from "../lib/translateBlockedReason"
 import type { ProviderAvailability } from "./providerAvailability"
+import type { StartBlockedDetails } from "../types/startBlocked"
 
 import type { SetupStatusPayload } from "./setup"
 
@@ -159,6 +160,7 @@ export type DashboardJobItem = {
   needs_attention_reason: string | null
   start_blocked_reason: string | null
   start_blocked_at: string | null
+  start_blocked_details: StartBlockedDetails | null
   paths: {
     job_path: string
     source_path: string

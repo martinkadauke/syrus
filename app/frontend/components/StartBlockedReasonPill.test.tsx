@@ -16,4 +16,27 @@ describe("StartBlockedReasonPill", () => {
 
     expect(screen.getByText("Urgent job in progress").closest("[data-status-pill]")).toHaveClass("bg-gray-100")
   })
+
+  it("includes structured start-block details in the tooltip", () => {
+    render(
+      <StartBlockedReasonPill
+        details={{
+          message: "multiple dependency branches are ready",
+          dependencies: [{ slug: "JOB-1574" }, { job_id: 1575 }],
+          action: "Land the sibling dependencies."
+        }}
+        reason="stack_fan_in_base_unavailable"
+      />
+    )
+
+    expect(screen.getByText("Fan-in base unavailable").closest("[data-status-pill]")).toHaveAttribute(
+      "title",
+      [
+        "Multiple dependency PR branches are ready, but Syrus could not prepare a combined execution base.",
+        "multiple dependency branches are ready",
+        "Dependencies: JOB-1574, JOB-1575",
+        "Land the sibling dependencies."
+      ].join("\n")
+    )
+  })
 })

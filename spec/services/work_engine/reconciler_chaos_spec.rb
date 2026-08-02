@@ -57,6 +57,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       stale_main_broken_artifact_after_recovery
       active_main_health_start_block
       recovered_main_health_start_block
+      expired_dependency_start_block
       running_workflow_without_active_descendants
       terminal_workflow_with_active_descendants
     ].freeze
@@ -803,6 +804,27 @@ RSpec.describe "Work engine reconciler chaos simulation" do
         expected_action: :start_workflow,
         forbidden_issues: %i[main_health_start_block],
         forbidden_actions: %i[wait_for_main_health]
+      )
+    end
+
+    def expired_dependency_start_block
+      _job, workflow, _step, run = graph
+      remove_first_run!(workflow, run)
+      workflow.update!(
+        artifacts: {
+          "start_blocked_reason" => StepDispatcher::STACK_BLOCK_REASON,
+          "start_blocked_next_check_at" => 1.minute.ago.iso8601
+        }
+      )
+      trace << "dependency_start_block=expired"
+
+      expectation(
+        "expired dependency start block",
+        target: { workflow_id: workflow.id },
+        expected_issue: :queued_workflow_without_first_run,
+        expected_action: :start_workflow,
+        forbidden_issues: %i[dependency_stack_start_block],
+        forbidden_actions: %i[wait_for_dependency_or_stack_readiness]
       )
     end
 

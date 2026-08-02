@@ -41,6 +41,7 @@ module App
           blocked_reason: blocked_reason_for(job),
           start_blocked_reason: job_start_blocked_reason(job),
           start_blocked_at: job_start_blocked_at(job),
+          start_blocked_details: job_start_blocked_details(job),
           retry_state: retry_state_for(job),
           created_at: job.created_at&.iso8601,
           updated_at: job.updated_at&.iso8601,
@@ -261,6 +262,10 @@ module App
         start_blocked_data_by_job_id.dig(job.id, :at)
       end
 
+      def job_start_blocked_details(job)
+        start_blocked_data_by_job_id.dig(job.id, :details)
+      end
+
       def start_blocked_data_by_job_id
         @start_blocked_data_by_job_id ||= begin
           queued_scope = jobs_base_scope.where(state: "queued").select(:id)
@@ -269,7 +274,11 @@ module App
                   .select(:job_id, :artifacts)
                   .each_with_object({}) do |wf, map|
             reason = wf.artifacts&.dig("start_blocked_reason")
-            map[wf.job_id] = { reason: reason, at: wf.artifacts&.dig("start_blocked_at") } if reason.present?
+            map[wf.job_id] = {
+              reason: reason,
+              at: wf.artifacts&.dig("start_blocked_at"),
+              details: wf.artifacts&.dig("start_blocked_details")
+            } if reason.present?
           end
         end
       end

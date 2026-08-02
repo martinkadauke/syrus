@@ -956,8 +956,14 @@ module WorkEngine
     def start_blocked?(workflow)
       reason = workflow.artifact("start_blocked_reason")
       return false if reason.blank?
+      return false if start_blocked_check_due?(workflow)
 
       current_start_block_active?(workflow, reason)
+    end
+
+    def start_blocked_check_due?(workflow)
+      next_check_at = parse_time(workflow.artifact("start_blocked_next_check_at"))
+      next_check_at.present? && next_check_at <= now
     end
 
     def dependency_block_reason?(reason)

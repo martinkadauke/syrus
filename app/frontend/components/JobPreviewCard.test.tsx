@@ -38,6 +38,29 @@ describe("JobPreviewCard", () => {
     expect(screen.getByText("open")).toBeInTheDocument()
   })
 
+  it("shows detailed start-block context in the queued-job pill tooltip", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({
+      job: {
+        id: 42,
+        state: "queued",
+        issue_title: "Add stack support",
+        issue_body: "",
+        start_blocked_reason: "stack_fan_in_base_unavailable",
+        start_blocked_details: {
+          message: "multiple dependency branches are ready",
+          dependencies: [{ slug: "JOB-1574" }, { slug: "JOB-1575" }]
+        }
+      }
+    }))
+    renderCard(42)
+
+    await waitFor(() => expect(screen.getByText("Fan-in base unavailable")).toBeInTheDocument())
+    expect(screen.getByText("Fan-in base unavailable").closest("[data-status-pill]")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Dependencies: JOB-1574, JOB-1575")
+    )
+  })
+
   it("renders the issue body", async () => {
     vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({
       job: { id: 1, state: "open", issue_title: "T", issue_body: "Some description here." }
