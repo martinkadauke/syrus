@@ -9,6 +9,13 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     JSON.parse(response.body)
   end
 
+  def set_supervisor_feature(enabled)
+    Feature.find_or_create_by!(slug: "admin_supervisor_chat") do |feature|
+      feature.category = "Operations"
+      feature.name = "Admin supervisor chat"
+    end.update!(enabled: enabled)
+  end
+
   it "401s with a JSON error when signed out" do
     get "/api/v1/app/chats"
 
@@ -258,6 +265,73 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body.to_s).not_to include("Foreign chat")
   end
 
+  it "exposes the enabled admin supervisor chat separately above ordinary groups" do
+    set_supervisor_feature(true)
+    admin = Factories.user(admin: true)
+    sign_in_as(admin)
+    ordinary = ChatSession.create!(user: admin, title: "Planning", pinned: true, last_message_at: 1.hour.ago)
+
+    get "/api/v1/app/chats"
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    supervisor = admin.chat_sessions.find_by!(system_kind: "supervisor")
+    expect(body["supervisor_chat"]).to include(
+      "id" => supervisor.id,
+      "title" => "Supervisor",
+      "system_kind" => "supervisor",
+      "pinned" => true,
+      "repository" => nil,
+      "unread" => false,
+      "supervisor_unread_count" => 0,
+      "supervisor_unread_severity" => nil
+    )
+    expect(body["groups"].flat_map { |group| group["chats"] }.map { |chat| chat["id"] }).to eq([ ordinary.id ])
+  end
+
+  it "includes supervisor unread count and strongest severity" do
+    set_supervisor_feature(true)
+    admin = Factories.user(admin: true)
+    chat = SupervisorChat.ensure_for!(admin)
+    chat.update!(last_read_at: 10.minutes.ago)
+    chat.messages.create!(role: "system", content: { "text" => "Warn", "supervisor_event" => { "severity" => "warning" } }, created_at: 5.minutes.ago)
+    chat.messages.create!(role: "system", content: { "text" => "Critical", "supervisor_event" => { "severity" => "critical" } }, created_at: 1.minute.ago)
+    sign_in_as(admin)
+
+    get "/api/v1/app/chats"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["supervisor_chat"]).to include(
+      "unread" => true,
+      "supervisor_unread_count" => 2,
+      "supervisor_unread_severity" => "critical"
+    )
+  end
+
+  it "hides supervisor payloads when the feature is off or the user is not an admin" do
+    set_supervisor_feature(false)
+    admin = Factories.user(admin: true)
+    ChatSession.create!(user: admin, system_kind: "supervisor", title: "Supervisor", pinned: true)
+    sign_in_as(admin)
+
+    get "/api/v1/app/chats"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["supervisor_chat"]).to be_nil
+    expect(parse_body.to_s).not_to include("Supervisor")
+
+    set_supervisor_feature(true)
+    non_admin = Factories.user(admin: false)
+    ChatSession.create!(user: non_admin, system_kind: "supervisor", title: "Supervisor", pinned: true)
+    sign_in_as(non_admin)
+
+    get "/api/v1/app/chats"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["supervisor_chat"]).to be_nil
+    expect(parse_body.to_s).not_to include("Supervisor")
+  end
+
   it "omits hidden chats from recent chat groups" do
     sign_in_as(user)
     visible_chat = ChatSession.create!(user: user, repository: repository, title: "Visible chat", last_message_at: 1.hour.ago)
@@ -352,6 +426,18 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
     expect(response).to have_http_status(:forbidden)
     expect(chat.reload.pinned?).to eq(false)
+  end
+
+  it "does not unpin an enabled supervisor chat" do
+    Feature.create!(slug: "admin_supervisor_chat", category: "Operations", name: "Admin supervisor chat", enabled: true)
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, system_kind: "supervisor", title: "Supervisor", pinned: true)
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { pinned: false }
+
+    expect(response).to have_http_status(:forbidden)
+    expect(parse_body.dig("error", "code")).to eq("forbidden")
+    expect(chat.reload).to be_pinned
   end
 
   it "does not load hidden chats when paginating one sidebar group" do
@@ -605,6 +691,18 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(chat.reload.hidden_at).to be_nil
   end
 
+  it "does not hide an enabled supervisor chat" do
+    Feature.create!(slug: "admin_supervisor_chat", category: "Operations", name: "Admin supervisor chat", enabled: true)
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, system_kind: "supervisor", title: "Supervisor", pinned: true)
+
+    patch "/api/v1/app/chats/#{chat.id}/hide"
+
+    expect(response).to have_http_status(:forbidden)
+    expect(parse_body.dig("error", "code")).to eq("forbidden")
+    expect(chat.reload.hidden_at).to be_nil
+  end
+
   it "lists hidden chats for recovery in hidden order" do
     sign_in_as(user)
     older = ChatSession.create!(user: user, repository: repository, title: "Older", hidden_at: 2.days.ago)
@@ -639,6 +737,18 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(chat.reload.title).to eq("Release planning")
     expect(parse_body["message"]).to eq("Chat renamed.")
     expect(parse_body.dig("chat", "title")).to eq("Release planning")
+  end
+
+  it "does not rename an enabled supervisor chat" do
+    Feature.create!(slug: "admin_supervisor_chat", category: "Operations", name: "Admin supervisor chat", enabled: true)
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, system_kind: "supervisor", title: "Supervisor", pinned: true)
+
+    post "/api/v1/app/chats/#{chat.id}/rename", params: { name: "Renamed" }
+
+    expect(response).to have_http_status(:forbidden)
+    expect(parse_body.dig("error", "code")).to eq("forbidden")
+    expect(chat.reload.title).to eq("Supervisor")
   end
 
   it "rejects invalid chat rename names" do
@@ -752,6 +862,18 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       expect(response).to have_http_status(:conflict)
       expect(parse_body.dig("error", "code")).to eq("turn_in_flight")
       expect(parse_body.dig("error", "message")).to include("while a turn is in progress")
+      expect(ChatSession.exists?(chat.id)).to be(true)
+    end
+
+    it "does not delete an enabled supervisor chat" do
+      Feature.create!(slug: "admin_supervisor_chat", category: "Operations", name: "Admin supervisor chat", enabled: true)
+      sign_in_as(user)
+      chat = ChatSession.create!(user: user, system_kind: "supervisor", title: "Supervisor", pinned: true)
+
+      delete "/api/v1/app/chats/#{chat.id}"
+
+      expect(response).to have_http_status(:forbidden)
+      expect(parse_body.dig("error", "code")).to eq("forbidden")
       expect(ChatSession.exists?(chat.id)).to be(true)
     end
 
