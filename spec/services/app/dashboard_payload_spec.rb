@@ -318,6 +318,32 @@ RSpec.describe App::DashboardPayload do
       expect(items.fetch(tip.id)[:landing_queue_blocked_reason]).to eq("Merge train queued: urgent job active")
     end
 
+    it "sorts blocked Epic merge-train units by their landing queue entry position" do
+      AppSetting.current.update!(merge_train_enabled: true)
+      repo.update!(auto_merge_enabled: true)
+
+      older = Factories.job_record(user: user, repository: repo, state: "implemented", pr_number: 101)
+      older.approve!(via: "github_review")
+      older.update!(approved_at: 30.minutes.ago)
+
+      epic = Factories.epic(user: user, repository: repo, state: "in_progress")
+      epic_child = Factories.job_record(user: user, repository: repo, epic: epic, state: "implemented", pr_number: 102)
+      epic_child.approve!(via: "github_review")
+      epic_child.update!(approved_at: 20.minutes.ago)
+
+      newer = Factories.job_record(user: user, repository: repo, state: "implemented", pr_number: 103)
+      newer.approve!(via: "github_review")
+      newer.update!(approved_at: 10.minutes.ago)
+
+      result = call(subject: "job", smart_folder_id: landing_queue_folder.id)
+
+      expect(result[:items].map { |item| item[:id] }).to eq([ older.id, epic_child.id, newer.id ])
+      expect(result[:items].map { |item| item[:landing_queue_position] }).to eq([ 1, 2, 3 ])
+      expect(result[:items].map { |item| item[:landing_queue_entry_key] }).to eq([ "job:#{older.id}", "epic:#{epic.id}", "job:#{newer.id}" ])
+      expect(epic_child.reload.landing_queue_position).to be_nil
+      expect(epic_child.landing_queue_entry_position).to eq(2)
+    end
+
     it "falls back to landing state drift when a landing row has no active workflow or train" do
       job = Factories.job_record(user: user, repository: repo, state: "landing", pr_number: 101)
       Workflow.create!(job: job, trigger_kind: "auto_merge", state: "failed")

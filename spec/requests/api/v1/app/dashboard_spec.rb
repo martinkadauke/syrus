@@ -471,7 +471,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(positions).to include(first.id => 1, second.id => 2)
     end
 
-    it "does not assign landing queue positions to blocked jobs" do
+    it "sorts blocked jobs by landing queue entry position" do
       repo.update!(auto_merge_enabled: true)
       blocked = Factories.job_record(
         repository: repo,
@@ -504,9 +504,9 @@ RSpec.describe "App API dashboard commands", type: :request do
 
       expect(response).to have_http_status(:ok)
       body = parse_body
-      expect(body.fetch("items").map { |item| item.fetch("id") }).to eq([ eligible.id, blocked.id ])
+      expect(body.fetch("items").map { |item| item.fetch("id") }).to eq([ blocked.id, eligible.id ])
       positions = body.fetch("items").index_by { |item| item.fetch("id") }.transform_values { |item| item.fetch("landing_queue_position") }
-      expect(positions).to include(eligible.id => 1, blocked.id => nil)
+      expect(positions).to include(blocked.id => 1, eligible.id => 2)
       blocked_reasons = body.fetch("items").index_by { |item| item.fetch("id") }.transform_values { |item| item.fetch("landing_queue_blocked_reason") }
       expect(blocked_reasons).to include(eligible.id => nil, blocked.id => { "key" => "missing_pull_request" })
     end
@@ -575,7 +575,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(response).to have_http_status(:ok)
       body = parse_body
       expect(body.fetch("items").find { |item| item.fetch("id") == approved.id }).to include(
-        "landing_queue_position" => nil,
+        "landing_queue_position" => 1,
         "landing_queue_entry_key" => "epic:#{epic.id}"
       )
       entry = body.fetch("landing_queue").fetch("entries").sole
@@ -710,9 +710,9 @@ RSpec.describe "App API dashboard commands", type: :request do
 
       expect(response).to have_http_status(:ok)
       body = parse_body
-      expect(body.fetch("items").map { |item| item.fetch("id") }).to eq([ epic_parent.id, loose.id, epic_child.id ])
+      expect(body.fetch("items").map { |item| item.fetch("id") }).to eq([ epic_parent.id, epic_child.id, loose.id ])
       positions = body.fetch("items").index_by { |item| item.fetch("id") }.transform_values { |item| item.fetch("landing_queue_position") }
-      expect(positions).to include(epic_parent.id => 1, loose.id => 2, epic_child.id => nil)
+      expect(positions).to include(epic_parent.id => 1, epic_child.id => 2, loose.id => 3)
     end
 
     it "sorts by landing queue position when the landing smart folder is active" do
