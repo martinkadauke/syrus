@@ -437,7 +437,6 @@ module Api
         def repository_detail_payload(repository, page:, message: nil)
           PerformanceLogging.phase("repository_detail_payload", repository_id: repository.id, page: page) do
             jobs_scope = repository.jobs
-              .with_latest_workflow_snapshot
               .includes(:repository, :scheduled_task)
               .order(updated_at: :desc)
             total_jobs = PerformanceLogging.phase("repository_detail.total_jobs", repository_id: repository.id) { repository.jobs.count }
@@ -1066,31 +1065,24 @@ module Api
         def latest_runs_by_job_id(job_ids)
           return {} if job_ids.empty?
 
-          ranked = Run.where(job_id: job_ids)
-            .select("runs.*, ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY created_at DESC, id DESC) AS syrus_row_number")
-          Run.from("(#{ranked.to_sql}) runs")
-            .where("syrus_row_number = 1")
-            .index_by(&:job_id)
+          latest_ids = Run.where(job_id: job_ids).group(:job_id).maximum(:id).values
+          latest_ids.empty? ? {} : Run.where(id: latest_ids).index_by(&:job_id)
         end
 
         def latest_workflows_by_job_id(job_ids)
           return {} if job_ids.empty?
 
-          ranked = Workflow.where(job_id: job_ids)
-            .select("workflows.*, ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY (finished_at IS NULL) DESC, finished_at DESC, id DESC) AS syrus_row_number")
-          Workflow.from("(#{ranked.to_sql}) workflows")
-            .where("syrus_row_number = 1")
-            .index_by(&:job_id)
+          latest_active_ids = Workflow.where(job_id: job_ids, state: %w[ queued running ]).group(:job_id).maximum(:id)
+          latest_ids = Workflow.where(job_id: job_ids).group(:job_id).maximum(:id)
+          selected_ids = latest_ids.merge(latest_active_ids).values
+          selected_ids.empty? ? {} : Workflow.where(id: selected_ids).index_by(&:job_id)
         end
 
         def current_running_workflows_by_job_id(job_ids)
           return {} if job_ids.empty?
 
-          ranked = Workflow.where(job_id: job_ids, state: "running")
-            .select("workflows.*, ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY created_at DESC, id DESC) AS syrus_row_number")
-          Workflow.from("(#{ranked.to_sql}) workflows")
-            .where("syrus_row_number = 1")
-            .index_by(&:job_id)
+          latest_ids = Workflow.where(job_id: job_ids, state: "running").group(:job_id).maximum(:id).values
+          latest_ids.empty? ? {} : Workflow.where(id: latest_ids).index_by(&:job_id)
         end
 
         def current_steps_by_workflow_id(workflow_ids)
