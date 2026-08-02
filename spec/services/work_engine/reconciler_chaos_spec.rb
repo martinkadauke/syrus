@@ -58,6 +58,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       active_main_health_start_block
       recovered_main_health_start_block
       expired_dependency_start_block
+      orphaned_landing_job
       running_workflow_without_active_descendants
       terminal_workflow_with_active_descendants
     ].freeze
@@ -825,6 +826,22 @@ RSpec.describe "Work engine reconciler chaos simulation" do
         expected_action: :start_workflow,
         forbidden_issues: %i[dependency_stack_start_block],
         forbidden_actions: %i[wait_for_dependency_or_stack_readiness]
+      )
+    end
+
+    def orphaned_landing_job
+      job, workflow, step, run = graph
+      workflow.update_columns(state: "succeeded", finished_at: 2.minutes.ago)
+      step.update_columns(state: "succeeded", finished_at: 2.minutes.ago)
+      run.update_columns(state: "succeeded", finished_at: 2.minutes.ago)
+      job.update_columns(state: "landing", approved_at: 3.minutes.ago, approved_via: "operator")
+      trace << "job=#{job.id}:orphaned_landing_slot"
+
+      expectation(
+        "orphaned landing job",
+        target: { job_id: job.id },
+        expected_issue: :landing_job_without_active_workflow,
+        expected_action: :defer_orphaned_landing_job
       )
     end
 

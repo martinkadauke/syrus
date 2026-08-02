@@ -505,7 +505,29 @@ module WorkEngine
     def classify_jobs_without_active_workflows
       jobs.filter_map do |job|
         next unless job.state.in?(%w[running landing])
-        next if workflows.any? { |workflow| workflow.job_id == job.id && %w[queued running].include?(workflow.state) }
+        active_workflows = workflows.select { |workflow| workflow.job_id == job.id && %w[queued running].include?(workflow.state) }
+        next if active_workflows.any?
+
+        if job.landing?
+          next unless landing_slot_orphaned?(job)
+
+          next issue(
+            kind: :landing_job_without_active_workflow,
+            severity: :critical,
+            affected_ids: ids_for(job).merge(workflow_ids: [ job.latest_workflow&.id ]),
+            safe_to_auto_repair: job.may_defer_landing?,
+            recommended_repair_action: "defer_orphaned_landing_job",
+            evidence: {
+              job_state: job.state,
+              latest_workflow_id: job.latest_workflow&.id,
+              latest_workflow_state: job.latest_workflow&.state,
+              latest_workflow_trigger_kind: job.latest_workflow&.trigger_kind,
+              updated_at: job.updated_at&.iso8601
+            },
+            explanation: "Job ##{job.id} is occupying the landing slot, but no active Workflow owns landing work for it."
+          )
+        end
+
         next unless older_than?(job.updated_at, RESOURCE_CONGESTION_CHECK_AFTER)
 
         issue(
@@ -523,6 +545,10 @@ module WorkEngine
           explanation: "Job ##{job.id} is #{job.state}, but has no active Workflow."
         )
       end
+    end
+
+    def landing_slot_orphaned?(job)
+      job.workflows.active.none?
     end
 
     def classify_completed_main_grader_jobs

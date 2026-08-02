@@ -604,6 +604,18 @@ module WorkEngine
         end
       end
 
+      class LandingJobWithoutActiveWorkflow < Base
+        def plan
+          automatic_plan(
+            "defer_orphaned_landing_job",
+            primary_job,
+            "The Job is occupying the repository landing slot without active landing work; deferring it releases the slot and lets the landing queue retry normally.",
+            execution_steps: [ "Job#defer_landing!" ],
+            preconditions: { job_state: "landing", active_workflows: false }
+          )
+        end
+      end
+
       class UnambiguousJobStateDrift < Base
         def plan
           automatic_plan(

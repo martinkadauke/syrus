@@ -793,6 +793,27 @@ RSpec.describe WorkEngine::Reconciler do
     expect(issue.affected_ids[:workflow_ids]).to include(workflow.id)
   end
 
+  it "auto-defers a landing Job that has no active Workflow" do
+    workflow.update_columns(state: "succeeded", finished_at: 1.minute.ago)
+    step.update_columns(state: "succeeded", finished_at: 1.minute.ago)
+    run.update_columns(state: "succeeded", finished_at: 1.minute.ago)
+    job.update!(state: "landing", approved_at: 2.minutes.ago, approved_via: "operator")
+
+    result = reconcile(job_id: job.id)
+    issue = kind(result, :landing_job_without_active_workflow)
+
+    expect(issue).to have_attributes(
+      safe_to_auto_repair: true,
+      recommended_repair_action: "defer_orphaned_landing_job"
+    )
+    expect(plan(result, :defer_orphaned_landing_job)).to have_attributes(auto_executable: true, target_id: job.id)
+
+    executed = reconcile_and_execute(job_id: job.id)
+
+    expect(plan(executed, :defer_orphaned_landing_job)).to be_present
+    expect(job.reload).to be_approved
+  end
+
   it "treats a failed Job with a newer queued retry workflow as auto-repairable state drift" do
     workflow.update_columns(
       trigger_kind: "rebase",

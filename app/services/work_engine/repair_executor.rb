@@ -394,6 +394,23 @@ module WorkEngine
         end
       end
 
+      class DeferOrphanedLandingJob < Base
+        def perform
+          job = target_job
+          return skipped("Job no longer exists") unless job
+          return skipped("Job is #{job.state}, not landing") unless job.landing?
+          return skipped("Job has active workflow") if job.workflows.active.exists?
+          return skipped("Job cannot transition to approved") unless job.may_defer_landing?
+
+          StateTransition.with_source("reconciler") do
+            job.defer_landing!
+            job.save!
+          end
+
+          success("deferred orphaned landing Job ##{job.id} back to approved")
+        end
+      end
+
       class MarkWorkerDied < Base
         def perform = mark_worker_died!
       end
