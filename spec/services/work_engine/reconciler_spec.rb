@@ -584,6 +584,32 @@ RSpec.describe WorkEngine::Reconciler do
     expect(result.repair_executions.map(&:message)).to include("reconciled Step ##{step.id} to failed from Run ##{run.id}")
   end
 
+  it "reconciles a running Step whose only Run already succeeded" do
+    next_step = Step.create!(workflow: workflow, kind: "grader_collect", position: 1)
+    step.update!(kind: "grader", next_step: next_step)
+    workflow.update_columns(state: "running", started_at: 10.minutes.ago)
+    step.update_columns(state: "running", started_at: 10.minutes.ago, finished_at: nil)
+    next_step.update_columns(state: "queued", started_at: nil, finished_at: nil)
+    run.update_columns(
+      state: "succeeded",
+      started_at: 10.minutes.ago,
+      last_heartbeat_at: 9.minutes.ago,
+      finished_at: 8.minutes.ago
+    )
+
+    result = reconcile_and_execute(workflow_id: workflow.id)
+
+    expect(kind(result, :running_step_with_terminal_runs)).to be_present
+    expect(plan(result, :reconcile_step_from_terminal_run)).to have_attributes(
+      auto_executable: true,
+      target_type: "Step",
+      target_id: step.id
+    )
+    expect(step.reload).to be_succeeded
+    expect(next_step.reload.runs.last).to have_attributes(state: "queued", job_id: job.id)
+    expect(result.repair_executions.map(&:message)).to include("reconciled Step ##{step.id} to succeeded from Run ##{run.id}")
+  end
+
   it "executes stale running agent session resume after marking worker_died" do
     agent_step = workflow.steps.find_by!(kind: "implement")
     agent_run = agent_step.runs.create!(

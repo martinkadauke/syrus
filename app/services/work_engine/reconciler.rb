@@ -336,7 +336,7 @@ module WorkEngine
 
     def classify_running_steps_with_terminal_runs
       steps.select(&:running?).filter_map do |step|
-        step_runs = runs.select { |run| run.step_id == step.id }
+        step_runs = runs_for_step_reconciliation(step)
         next if step_runs.empty?
         next if step_runs.any? { |run| run.queued? || run.running? }
         next unless step_runs.all?(&:terminal?)
@@ -966,6 +966,16 @@ module WorkEngine
 
     def workflow_has_active_descendants?(workflow)
       workflow.steps.active.exists? || workflow.runs.active.exists?
+    end
+
+    def runs_for_step_reconciliation(step)
+      scoped = runs.select { |run| run.step_id == step.id }
+      return scoped if scoped.any? { |run| run.queued? || run.running? || run.failed? || run.cancelled? }
+
+      # scoped_runs skips succeeded runs during broad scans. A worker can still
+      # die after a Run succeeds but before the Step transition is persisted, so
+      # fetch this running Step's complete run set for the narrow repair check.
+      step.runs.to_a
     end
 
     def step_needs_terminal_run_reconciliation?(step)
