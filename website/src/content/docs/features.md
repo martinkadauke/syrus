@@ -377,6 +377,12 @@ provider selector for future workflows: leave it on Default to resolve the
 current repository/user provider each time a new workflow is created, or choose
 a concrete provider such as Claude Code or Codex for later feedback, rebase, and
 retry workflows on that Job. Existing workflow pins are not rewritten.
+Dashboard and repository bulk retry choose a narrower recovery path first:
+resume a failed agentic step when possible, retry the failed step while its
+workspace remains available, retry or rebuild landing workflows for landing
+failures, and use a full implementation retry only as the fallback. Bulk retry
+responses include action and skipped-reason counts, including active Runs and
+open provider circuits.
 Proposal cards show dependency status before the title: either dependency
 proposal links with confirmed or pending badges, resolved Epic proposal links,
 or an explicit no-dependencies note.
