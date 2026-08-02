@@ -6739,6 +6739,14 @@ describe("App", () => {
         JSON.stringify({
           github_app_registered: true,
           github_app_slug: "operator-syrus",
+          latest_sync: {
+            last_attempted_at: null,
+            last_successful_at: null,
+            duration_ms: null,
+            records_seen: null,
+            error_class: null,
+            error_message: null
+          },
           pat_owner_groups: [
             {
               owner: "globex",
@@ -6758,6 +6766,8 @@ describe("App", () => {
                 admin: true
               },
               app_credential_active: false,
+              app_credential_inactive_reason: "owner_mismatch_or_not_installed",
+              recommended_next_action: "fallback_to_pat",
               credential_mode: "pat",
               account_login: "globex",
               installation_removed_at: null,
