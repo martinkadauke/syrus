@@ -176,7 +176,7 @@ module Api
             return
           end
 
-          chat_session = Current.user.chat_sessions.visible.find(params[:chat_session_id])
+          chat_session = Current.user.accessible_chat_sessions.visible.find(params[:chat_session_id])
           render json: {
             matches: chat_search_rows(query, chat_session_id: chat_session.id).map { |row| chat_search_match_json(row) }
           }
@@ -184,7 +184,7 @@ module Api
 
         def hidden
           page = [ Integer(params[:page], exception: false).to_i, 1 ].max
-          scope = Current.user.chat_sessions.hidden
+          scope = Current.user.accessible_chat_sessions.hidden
           total = scope.count
           chats = scope
             .preload(repository_attachments: :attachable)
@@ -416,7 +416,7 @@ module Api
           branched_chat = nil
           ApplicationRecord.transaction do
             branched_chat = ChatSession.create!(
-              user: source_chat.user,
+              user: Current.user,
               repository: source_chat.repository,
               title: branch_chat_title(source_chat),
               chat_provider: source_chat.chat_provider,
@@ -470,13 +470,13 @@ module Api
         end
 
         def mark_read
-          find_chat_session.update_columns(last_read_at: Time.current)
+          current_participant_for(find_chat_session)&.update_columns(last_read_at: Time.current)
 
           head :no_content
         end
 
         def mark_unread
-          find_chat_session.update_columns(last_read_at: nil)
+          current_participant_for(find_chat_session)&.update_columns(last_read_at: nil)
 
           head :no_content
         end
@@ -665,7 +665,7 @@ module Api
             return
           end
 
-          if question.answer_and_record!(answer)
+          if question.answer_and_record!(answer, sender_user: Current.user)
             render json: chat_payload(chat_session.reload, message: "Answer submitted.")
           else
             render_error("validation_failed", "Question is no longer active.", status: :unprocessable_content)
@@ -1091,7 +1091,7 @@ module Api
 
           total = grouped_matches.length
           paged_chat_ids = grouped_matches.slice(search_offset(page), SEARCH_PAGE_SIZE) || []
-          sessions_by_id = Current.user.chat_sessions
+          sessions_by_id = Current.user.accessible_chat_sessions
             .where(id: paged_chat_ids)
             .preload(repository_attachments: :attachable)
             .index_by(&:id)
@@ -1124,7 +1124,7 @@ module Api
         end
 
         def filtered_chat_search_scope
-          scope = ChatSession.where(user_id: Current.user.id).visible
+          scope = Current.user.accessible_chat_sessions.visible
           scope = apply_chat_attachment_filter(scope, "Repository", :repository_id)
           return scope if performed?
 
@@ -1414,16 +1414,18 @@ module Api
         end
 
         def recent_chats_json(current_chat_session)
-          chat_ids = Current.user.chat_sessions
+          chat_ids = Current.user.accessible_chat_sessions
             .visible
+            .ordinary_chats
             .order(Arel.sql("chat_sessions.pinned DESC, #{chat_activity_order_sql} DESC"), id: :desc)
             .limit(20)
             .pluck(:id)
 
           chat_ids = chat_ids.first(19) + [ current_chat_session.id ] if current_chat_session.hidden_at.blank? && !chat_ids.include?(current_chat_session.id)
 
-          Current.user.chat_sessions
+          Current.user.accessible_chat_sessions
             .visible
+            .ordinary_chats
             .where(id: chat_ids)
             .preload(repository_attachments: :attachable)
             .to_a
@@ -1508,8 +1510,9 @@ module Api
         end
 
         def chat_index_group_scope(repository_id)
-          scope = Current.user.chat_sessions
+          scope = Current.user.accessible_chat_sessions
             .visible
+            .ordinary_chats
             .left_outer_joins(:repository_attachments)
             .order(Arel.sql("chat_sessions.pinned DESC, #{chat_activity_order_sql} DESC, chat_sessions.id DESC"))
 
@@ -1521,8 +1524,9 @@ module Api
         end
 
         def chat_index_repositories
-          repository_ids = Current.user.chat_sessions
+          repository_ids = Current.user.accessible_chat_sessions
             .visible
+            .ordinary_chats
             .joins(:repository_attachments)
             .where(chat_attachments: { attachable_type: "Repository" })
             .distinct
@@ -1562,8 +1566,9 @@ module Api
         end
 
         def chat_unread?(chat_session)
+          last_read_at = current_participant_for(chat_session)&.last_read_at || chat_session.last_read_at
           chat_session.last_message_at.present? &&
-            (chat_session.last_read_at.blank? || chat_session.last_message_at > chat_session.last_read_at)
+            (last_read_at.blank? || chat_session.last_message_at > last_read_at)
         end
 
         def pending_actions_json(chat_session)
@@ -1783,9 +1788,7 @@ module Api
         end
 
         def find_chat_session
-          ChatSession.joins(:chat_participants)
-            .where(chat_participants: { user_id: Current.user.id })
-            .find(params[:id])
+          Current.user.accessible_chat_sessions.find(params[:id])
         end
 
         BRANCH_TITLE_SUFFIX = " (branch)".freeze
@@ -1804,8 +1807,8 @@ module Api
         end
 
         def find_branch_source_chat_session
-          chat_session = ChatSession.find(params[:id])
-          return chat_session if chat_session.user_id == Current.user.id
+          chat_session = Current.user.accessible_chat_sessions.find_by(id: params[:id])
+          return chat_session if chat_session
 
           render_error("forbidden", "You cannot branch this chat.", status: :forbidden)
           nil
@@ -1823,7 +1826,8 @@ module Api
             ).merge(
               "chat_session_id" => branched_chat.id,
               "proposal_id" => nil,
-              "pending_action_id" => nil
+              "pending_action_id" => nil,
+              "sender_user_id" => message.sender_user_id
             )
           end
           ChatMessage.insert_all!(rows) if rows.any?

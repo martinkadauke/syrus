@@ -11,7 +11,7 @@ module Api
         before_action :require_walkthrough_feature
 
         def create
-          chat = Current.user.chat_sessions.find(params[:chat_id])
+          chat = Current.user.accessible_chat_sessions.find(params[:chat_id])
 
           unless Current.user.gemini_configured?
             render_error("gemini_not_configured",
@@ -54,7 +54,8 @@ module Api
         # succeeded, the job skips Gemini and just re-delivers the turn.
         def retry
           walkthrough = ChatVideoWalkthrough.joins(:chat_session)
-                                            .where(chat_sessions: { user_id: Current.user.id })
+                                            .joins(chat_session: :chat_participants)
+                                            .where(chat_participants: { user_id: Current.user.id })
                                             .find(params[:id])
           unless walkthrough.failed?
             render_error("not_retryable", "Only failed analyses can be retried.", status: :unprocessable_content)

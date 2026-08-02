@@ -23,7 +23,7 @@ class ChatAgentQuestion < ApplicationRecord
     end
   end
 
-  def answer_and_record!(value)
+  def answer_and_record!(value, sender_user: nil)
     enqueue_turn = false
     user_message_id = nil
 
@@ -32,7 +32,11 @@ class ChatAgentQuestion < ApplicationRecord
 
       enqueue_turn = !chat_session.agent_busy?
       now = Time.current
-      user_message = chat_session.messages.create!(role: "user", content: { "text" => value.to_s })
+      user_message = chat_session.messages.create!(
+        role: "user",
+        content: { "text" => value.to_s },
+        sender_user: sender_user
+      )
       user_message_id = user_message.id
       chat_session.update!(last_message_at: now, title: chat_session.title.presence)
       chat_session.pin_chat_provider!

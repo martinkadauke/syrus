@@ -10,6 +10,21 @@ before title generation or turn execution. Later changes to the user's defaults
 do not move that existing conversation between providers. A data migration
 backfills older blank-provider chats and the column is non-null afterward.
 
+Chat access is participant-based. `chat_participants` records every human who
+can open and post to a session, with `role` currently either `owner` or
+`member`; the owner is the convenience `chat.user` for legacy call sites.
+Per-user read state lives on `chat_participants.last_read_at`, and user-role
+messages store `sender_user_id` so multi-human transcripts can attribute who
+spoke. When a session has more than one human participant, `ChatTurnJob`
+prefixes persisted user messages in fallback context with the sender's first
+name.
+
+Platform-origin chats use `chat_sessions.origin_platform` plus participant
+membership to find the durable conversation for a user's external account.
+`ChatSession.for_platform(user:, platform:)` creates that session when missing
+and sets `trigger_policy` to `speak_when_spoken_to`; that is the only trigger
+policy value today, but the string enum leaves room for future policies.
+
 Operators can intentionally switch an existing chat through the chat provider
 switch endpoint. That path enqueues `SwitchChatProviderJob`, rehydrates
 provider-specific session state, rewrites the stored session metadata, and

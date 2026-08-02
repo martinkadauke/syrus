@@ -35,7 +35,7 @@ module Api
         private
 
         def find_chat_session
-          Current.user.chat_sessions.find(params[:chat_id])
+          Current.user.accessible_chat_sessions.find(params[:chat_id])
         end
 
         def snapshot_payload(snapshot, include_scene: false)

@@ -14,7 +14,7 @@ module ChatIndexPayload
 
   def recent_chats_json(current_chat_session)
     chat_ids = PerformanceLogging.phase("chat_recent_chats.ids", chat_id: current_chat_session.id) do
-      Current.user.chat_sessions
+      Current.user.accessible_chat_sessions
         .visible
         .ordinary_chats
         .order(Arel.sql("chat_sessions.pinned DESC, #{chat_activity_order_sql} DESC"), id: :desc)
@@ -25,7 +25,7 @@ module ChatIndexPayload
     chat_ids = chat_ids.first(19) + [ current_chat_session.id ] if current_chat_session.hidden_at.blank? && !chat_ids.include?(current_chat_session.id)
 
     PerformanceLogging.phase("chat_recent_chats.serialize", chat_id: current_chat_session.id, count: chat_ids.size) do
-      Current.user.chat_sessions
+      Current.user.accessible_chat_sessions
         .visible
         .ordinary_chats
         .where(id: chat_ids)
@@ -126,7 +126,7 @@ module ChatIndexPayload
   end
 
   def chat_index_group_scope(repository_id)
-    scope = Current.user.chat_sessions
+    scope = Current.user.accessible_chat_sessions
       .visible
       .ordinary_chats
       .left_outer_joins(:repository_attachments)
@@ -140,7 +140,7 @@ module ChatIndexPayload
   end
 
   def chat_index_repositories
-    repository_ids = Current.user.chat_sessions
+    repository_ids = Current.user.accessible_chat_sessions
       .visible
       .ordinary_chats
       .joins(:repository_attachments)
@@ -175,11 +175,13 @@ module ChatIndexPayload
   end
 
   def supervisor_unread_summary(chat_session)
+    last_read_at = current_participant_for(chat_session)&.last_read_at || chat_session.last_read_at
+
     unread_events = chat_session.scoped_events
-    unread_events = unread_events.where("created_at > ?", chat_session.last_read_at) if chat_session.last_read_at.present?
+    unread_events = unread_events.where("created_at > ?", last_read_at) if last_read_at.present?
 
     legacy_unread_messages = chat_session.messages.where(role: "system")
-    legacy_unread_messages = legacy_unread_messages.where("created_at > ?", chat_session.last_read_at) if chat_session.last_read_at.present?
+    legacy_unread_messages = legacy_unread_messages.where("created_at > ?", last_read_at) if last_read_at.present?
 
     severity_rank = { "info" => 0, "warning" => 1, "critical" => 2 }
     event_severities = unread_events.limit(200).filter_map do |event|

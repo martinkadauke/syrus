@@ -17,7 +17,7 @@ module ChatAttachableResolution
   }.freeze
 
   def most_recent_chat_repository
-    recent_repo_id = Current.user.chat_sessions
+    recent_repo_id = Current.user.accessible_chat_sessions
       .joins(:repository_attachments)
       .order("chat_sessions.created_at DESC")
       .limit(1)

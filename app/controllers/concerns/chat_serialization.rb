@@ -133,8 +133,14 @@ module ChatSerialization
   end
 
   def chat_unread?(chat_session)
+    last_read_at = current_participant_for(chat_session)&.last_read_at || chat_session.last_read_at
     chat_session.last_message_at.present? &&
-      (chat_session.last_read_at.blank? || chat_session.last_message_at > chat_session.last_read_at)
+      (last_read_at.blank? || chat_session.last_message_at > last_read_at)
+  end
+
+  def current_participant_for(chat_session)
+    chat_session.chat_participants.detect { |participant| participant.user_id == Current.user.id } ||
+      chat_session.chat_participants.find_by(user_id: Current.user.id)
   end
 
   def pending_actions_json(chat_session)

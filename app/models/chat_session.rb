@@ -13,6 +13,10 @@ class ChatSession < ApplicationRecord
 
   has_many :chat_participants, dependent: :destroy
   has_many :participants, through: :chat_participants, source: :user
+  has_one :owner_participant,
+          -> { where(role: "owner") },
+          class_name: "ChatParticipant",
+          inverse_of: :chat_session
 
   has_many :chat_attachments, dependent: :destroy
   has_many :repository_attachments,
@@ -103,7 +107,7 @@ class ChatSession < ApplicationRecord
   validates :share_token, uniqueness: true, allow_nil: true
   validates :system_kind, uniqueness: { scope: :user_id }, allow_nil: true
   validate :enabled_supervisor_affordance_is_preserved, if: :enabled_supervisor_chat?
-  validates :trigger_policy, inclusion: { in: TRIGGER_POLICIES }
+  enum :trigger_policy, { speak_when_spoken_to: "speak_when_spoken_to" }, validate: true
 
   normalizes :chat_provider, with: ->(value) { value.to_s.strip.presence }
   normalizes :chat_model, with: ->(value) { value.to_s.strip.presence }
@@ -138,6 +142,10 @@ class ChatSession < ApplicationRecord
       )
       session
     end
+  end
+
+  def user
+    owner_participant&.user || super
   end
 
   def title_pending?
@@ -369,8 +377,7 @@ class ChatSession < ApplicationRecord
       daemon_repo: repo || daemon_repo,
       daemon_branch: branch || daemon_branch
     }
-    AppEvents.broadcast(
-      user: user,
+    broadcast_to_participants(
       type: "updated",
       resource: "chat",
       id: id,
@@ -384,8 +391,7 @@ class ChatSession < ApplicationRecord
   end
 
   def broadcast_app_suggestion_update
-    AppEvents.broadcast(
-      user: user,
+    broadcast_to_participants(
       type: "updated",
       resource: "chat",
       id: id,

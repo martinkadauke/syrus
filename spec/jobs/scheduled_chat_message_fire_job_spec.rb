@@ -26,7 +26,7 @@ RSpec.describe ScheduledChatMessageFireJob do
     described_class.perform_now(scheduled_message.id)
 
     message = chat_session.messages.last
-    expect(message).to have_attributes(role: "user")
+    expect(message).to have_attributes(role: "user", sender_user_id: user.id)
     expect(message.content).to include(
       "text" => "Check JOB-123 and report back.",
       "requested_by" => "scheduled_message",

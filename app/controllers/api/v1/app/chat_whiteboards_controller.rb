@@ -45,7 +45,7 @@ module Api
         private
 
         def find_chat_session
-          Current.user.chat_sessions.find(params[:id])
+          Current.user.accessible_chat_sessions.find(params[:id])
         end
 
         def whiteboard_payload(whiteboard)

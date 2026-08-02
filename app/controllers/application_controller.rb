@@ -35,7 +35,7 @@ class ApplicationController < ActionController::Base
   def default_chat_path
     return new_session_path unless Current.user
 
-    chat_session = Current.user.chat_sessions
+    chat_session = Current.user.accessible_chat_sessions
       .order(Arel.sql("last_message_at IS NULL ASC"), last_message_at: :desc, created_at: :desc, id: :desc)
       .first
 

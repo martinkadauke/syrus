@@ -72,9 +72,7 @@ class ChatMessage < ApplicationRecord
       }
     }
 
-    (chat.participants.to_a.presence || [ chat.user ]).each do |p|
-      AppEvents.broadcast(user: p, **event_args)
-    end
+    chat.send(:broadcast_to_participants, **event_args)
   end
 
   def record_chat_turn_state

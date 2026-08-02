@@ -638,9 +638,9 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     patch "/api/v1/app/chats/#{chat.id}/mark_read"
 
     expect(response).to have_http_status(:no_content)
-    expect(chat.reload.last_read_at).to be_present
+    expect(chat.reload.chat_participants.find_by(user: user).last_read_at).to be_present
     expect(chat.updated_at.to_i).to eq(original_updated_at.to_i)
-    expect(foreign_chat.reload.last_read_at).to be_nil
+    expect(foreign_chat.reload.chat_participants.first.last_read_at).to be_nil
 
     get "/api/v1/app/chats"
 
@@ -657,13 +657,15 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       last_message_at: 1.hour.ago,
       last_read_at: Time.current
     )
+    chat.chat_participants.find_by(user: user).update!(last_read_at: Time.current)
     foreign_chat = ChatSession.create!(user: Factories.user, last_message_at: Time.current, last_read_at: Time.current)
+    foreign_chat.chat_participants.first.update!(last_read_at: Time.current)
 
     patch "/api/v1/app/chats/#{chat.id}/mark_unread"
 
     expect(response).to have_http_status(:no_content)
-    expect(chat.reload.last_read_at).to be_nil
-    expect(foreign_chat.reload.last_read_at).to be_present
+    expect(chat.reload.chat_participants.find_by(user: user).last_read_at).to be_nil
+    expect(foreign_chat.reload.chat_participants.first.last_read_at).to be_present
   end
 
   it "rejects unauthenticated mark_unread requests" do
@@ -1998,7 +2000,8 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(question.answered_at).to be_present
     expect(chat.messages.order(:created_at, :id).last).to have_attributes(
       role: "user",
-      content: { "text" => "release" }
+      content: { "text" => "release" },
+      sender_user_id: user.id
     )
     expect(parse_body["agent_questions"]).to eq([])
     expect(parse_body["messages"]).to include(include(
