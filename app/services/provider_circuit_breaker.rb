@@ -11,7 +11,6 @@ class ProviderCircuitBreaker
     provider_transient
     rate_limited
     rate_limit
-    worker_died
   ].freeze
 
   TRANSIENT_PATTERNS = [

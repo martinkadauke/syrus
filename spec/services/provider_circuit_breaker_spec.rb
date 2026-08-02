@@ -146,6 +146,21 @@ RSpec.describe ProviderCircuitBreaker do
     expect(decision.failure_count).to eq(1)
   end
 
+  it "does not treat worker deaths as provider degradation" do
+    5.times do |index|
+      failed_agent_run(
+        job: Factories.job(repository: Factories.repository(user: user), issue_number: index + 1),
+        outcome: "worker_died",
+        message: "worker or agent process disappeared during deploy"
+      )
+    end
+
+    decision = described_class.call("codex", now: now)
+
+    expect(decision).not_to be_open
+    expect(decision.failure_count).to eq(0)
+  end
+
   it "ignores old transient failures outside the rolling window" do
     5.times do |index|
       run = failed_agent_run(job: Factories.job(repository: Factories.repository(user: user), issue_number: index + 1))
