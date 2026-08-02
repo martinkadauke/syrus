@@ -60,23 +60,52 @@ module App
       end
 
       def dependency_target_options
-        jobs = @user.jobs
-                    .includes(:repository)
+        rows = @user.jobs
+                    .joins(:repository)
                     .where.not(id: @job.id)
-                    .order(created_at: :desc, id: :desc)
+                    .order("jobs.created_at DESC", "jobs.id DESC")
+                    .pluck(
+                      "jobs.id",
+                      "jobs.kind",
+                      "jobs.repository_id",
+                      "jobs.issue_number",
+                      "jobs.issue_title",
+                      "repositories.owner",
+                      "repositories.name"
+                    )
 
         seen_issues = {}
         current_issue_key = @job.issue? && @job.issue_number.present? ? [ @job.repository_id, @job.issue_number ] : nil
-        jobs.each_with_object([]) do |job, options|
-          if job.issue? && job.issue_number.present?
-            issue_key = [ job.repository_id, job.issue_number ]
+        rows.each_with_object([]) do |(id, kind, repository_id, issue_number, issue_title, owner, name), options|
+          repository_slug = "#{owner}/#{name}"
+
+          if kind == "issue" && issue_number.present?
+            issue_key = [ repository_id, issue_number ]
             next if issue_key == current_issue_key
             next if seen_issues[issue_key]
 
             seen_issues[issue_key] = true
-            options << { label: dependency_target_label(job), value: "issue:#{job.repository_id}:#{job.issue_number}" }
+            options << {
+              label: dependency_target_label_from_row(
+                id: id,
+                kind: kind,
+                repository_slug: repository_slug,
+                issue_number: issue_number,
+                issue_title: issue_title
+              ),
+              value: "issue:#{repository_id}:#{issue_number}"
+            }
           else
-            options << { label: dependency_target_label(job), value: "job:#{job.id}" }
+            options << {
+              label: dependency_target_label_from_row(
+                id: id,
+                kind: kind,
+                repository_slug: repository_slug,
+                issue_number: issue_number,
+                issue_title: issue_title
+              ),
+              value: "job:#{id}"
+            }
           end
         end
       end
@@ -89,6 +118,17 @@ module App
         else
           title = job.issue_title.to_s.strip.presence || job.kind.titleize
           "#{job.repository.slug} #{job.slug} - #{title}"
+        end
+      end
+
+      def dependency_target_label_from_row(id:, kind:, repository_slug:, issue_number:, issue_title:)
+        if kind == "issue" && issue_number.present?
+          title = issue_title.to_s.strip
+          title = " - #{title}" if title.present?
+          "#{repository_slug} ##{issue_number}#{title} (#{App::Presentation.job_slug(id)})"
+        else
+          title = issue_title.to_s.strip.presence || kind.to_s.titleize
+          "#{repository_slug} #{App::Presentation.job_slug(id)} - #{title}"
         end
       end
 

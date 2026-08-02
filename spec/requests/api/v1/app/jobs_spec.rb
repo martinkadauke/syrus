@@ -264,6 +264,7 @@ RSpec.describe "App API job detail", type: :request do
     run.save!
     run.job_logs.create!(sequence: 0, kind: "stdout", chunk: "digging trench")
     run.job_logs.create!(sequence: 1, kind: "rate_limited", chunk: "[rate-limited] core quota exhausted")
+    run.run_health_snapshots.create!(run_state: "running", health_status: "stale", log_count: 0, created_at: 1.minute.ago, updated_at: 1.minute.ago)
     run.run_health_snapshots.create!(run_state: "running", health_status: "healthy", log_count: 1)
     run.create_run_diagnostic!(error_class: "Timeout::Error", error_message: "too much marble")
     run.create_run_failure_classification!(

@@ -64,7 +64,7 @@ module App
 
       def workflows_scope
         @job.workflows
-            .includes(steps: { runs: [ :claude_session, :run_diagnostic, :run_failure_classification, :run_health_snapshots, :spawned_processes ] })
+            .includes(steps: { runs: [ :claude_session, :run_diagnostic, :run_failure_classification ] })
             .reorder(created_at: :desc, id: :desc)
       end
 
@@ -163,7 +163,7 @@ module App
           rate_limited: rate_limited_run_ids.key?(run.id),
           failure_classification: failure_classification_json(run.run_failure_classification),
           run_diagnostic: run_diagnostic_json(run.run_diagnostic),
-          health_snapshots: ordered_health_snapshots_for(run).map { |snapshot| health_snapshot_json(snapshot) },
+          health_snapshots: latest_health_snapshot_for(run).then { |snapshot| snapshot ? [ health_snapshot_json(snapshot) ] : [] },
           active_process: active_process_json(run),
           worker_health_correlation: nil,
           agent_session: agent_session_json(session),
@@ -179,9 +179,7 @@ module App
       end
 
       def active_process_json(run)
-        process = run.spawned_processes
-                     .select { |candidate| candidate.finished_at.nil? }
-                     .max_by { |candidate| candidate.started_at || candidate.created_at }
+        process = active_processes_by_run_id[run.id]
         return unless process
 
         {
@@ -249,8 +247,33 @@ module App
         end.compact
       end
 
-      def ordered_health_snapshots_for(run)
-        run.run_health_snapshots.to_a.sort_by { |snapshot| [ snapshot.created_at || Time.zone.at(0), snapshot.id || 0 ] }
+      def latest_health_snapshot_for(run)
+        latest_health_snapshots_by_run_id[run.id]
+      end
+
+      def latest_health_snapshots_by_run_id
+        @latest_health_snapshots_by_run_id ||= begin
+          ids = visible_run_ids
+          if ids.empty?
+            {}
+          else
+            latest_ids = RunHealthSnapshot.where(run_id: ids).group(:run_id).maximum(:id).values
+            latest_ids.empty? ? {} : RunHealthSnapshot.where(id: latest_ids).index_by(&:run_id)
+          end
+        end
+      end
+
+      def active_processes_by_run_id
+        @active_processes_by_run_id ||= begin
+          ids = visible_run_ids
+          if ids.empty?
+            {}
+          else
+            SpawnedProcess.where(run_id: ids, finished_at: nil)
+                          .order(:run_id, started_at: :asc, id: :asc)
+                          .each_with_object({}) { |process, memo| memo[process.run_id] = process }
+          end
+        end
       end
 
       def workflow_retry_available?(workflow)
