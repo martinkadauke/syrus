@@ -121,6 +121,23 @@ RSpec.describe App::DashboardPayload do
       # active_smart_folder should be nil (no inbox fallback).
       expect(result[:active_smart_folder_id]).to be_nil
     end
+
+    it "includes folder-specific chrome fields in rows payloads" do
+      user.update_dashboard_folder_preferences!(
+        subject: "job",
+        smart_folder_id: inbox_folder.id,
+        sort_column: "started_at",
+        sort_direction: "asc"
+      )
+
+      result = call(subject: "job", view: "list", section: "rows")
+
+      expect(result[:active_smart_folder_id]).to eq(inbox_folder.id)
+      expect(result[:filter]).to be_present
+      expect(result[:preferences][:sort]).to include(column: "started_at", direction: "asc")
+      expect(result.dig(:controls, :columns, :required)).to be_present
+      expect(result).not_to have_key(:smart_folders)
+    end
   end
 
   describe "priority sort" do

@@ -110,8 +110,9 @@ module App
         when "rows"
           PerformanceLogging.phase("dashboard_payload.rows", subject: subject, view: view, ownership_scope: ownership_scope) { rows_payload }
         else
-          PerformanceLogging.phase("dashboard_payload.chrome", subject: subject, view: view, ownership_scope: ownership_scope) { chrome_payload }
-            .merge(PerformanceLogging.phase("dashboard_payload.rows", subject: subject, view: view, ownership_scope: ownership_scope) { rows_payload })
+          chrome = PerformanceLogging.phase("dashboard_payload.chrome", subject: subject, view: view, ownership_scope: ownership_scope) { chrome_payload }
+          rows = PerformanceLogging.phase("dashboard_payload.rows", subject: subject, view: view, ownership_scope: ownership_scope) { rows_payload }
+          merge_chrome_and_rows_payload(chrome, rows)
         end
       end
     end
@@ -152,6 +153,10 @@ module App
         per_page: PER_PAGE,
         total: result.fetch(:total),
         total_pages: total_pages(result.fetch(:total)),
+        active_smart_folder_id: active_smart_folder&.id,
+        filter: current_filter.to_h,
+        preferences: PerformanceLogging.phase("dashboard_rows.preferences", subject: subject) { preferences_json },
+        controls: PerformanceLogging.phase("dashboard_rows.controls", subject: subject) { rows_controls_json },
         landing_queue: PerformanceLogging.phase("dashboard_rows.landing_queue", subject: subject, view: view) { landing_queue_json },
         items: result.fetch(:items),
         lanes: PerformanceLogging.phase("dashboard_rows.lanes", subject: subject, view: view) { lanes_json },
@@ -459,6 +464,23 @@ module App
         epics: epics_base_scope.where.not(state: Epic::ARCHIVED_STATE).count,
         workflows: workflows_base_scope.count
       }
+    end
+
+    def rows_controls_json
+      {
+        columns: column_options_json
+      }
+    end
+
+    def merge_chrome_and_rows_payload(chrome, rows)
+      controls = chrome.fetch(:controls).merge(rows[:controls].to_h) do |key, chrome_value, rows_value|
+        key == :columns ? rows_value : chrome_value
+      end
+
+      chrome.merge(rows).merge(
+        controls: controls,
+        smart_folders: chrome[:smart_folders]
+      )
     end
 
     def apply_sort(scope, subject_name)

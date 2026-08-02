@@ -20,7 +20,7 @@ import { FilterBar } from "../components/FilterBar"
 import { SyrusTour } from "../components/SyrusTour"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { useTour } from "../hooks/useTour"
-import { dashboardApiSearch, fetchDashboardChrome, fetchDashboardRows, fetchEpicsGraph, fetchJobsGraph, mergeDashboardPayload, recordDashboardFilterUsage, requestDashboardMainBranchRepair, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardEpicItem, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { dashboardApiSearch, dashboardChromeSearch, fetchDashboardChrome, fetchDashboardRows, fetchEpicsGraph, fetchJobsGraph, mergeDashboardPayload, recordDashboardFilterUsage, requestDashboardMainBranchRepair, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardEpicItem, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 import { TopoDepGraph } from "../components/TopoDepGraph"
 import { errorMessage } from "../lib/errorMessage"
 
@@ -29,9 +29,10 @@ export function DashboardRoute() {
   usePageTitle(t("title"))
   const location = useLocation()
   const search = dashboardApiSearch(location.pathname, location.search)
+  const chromeSearch = dashboardChromeSearch(location.pathname, location.search)
   const dashboardChrome = useQuery({
-    queryKey: ["dashboard", "chrome", search],
-    queryFn: ({ signal }) => fetchDashboardChrome(search, { signal }),
+    queryKey: ["dashboard", "chrome", chromeSearch],
+    queryFn: ({ signal }) => fetchDashboardChrome(chromeSearch, { signal }),
     placeholderData: (previousData) => previousData
   })
   const dashboardRows = useQuery({

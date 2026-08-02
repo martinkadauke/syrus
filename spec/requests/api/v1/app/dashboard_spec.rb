@@ -184,8 +184,15 @@ RSpec.describe "App API dashboard commands", type: :request do
         "items" => contain_exactly(include("title" => "Build aqueduct")),
         "lanes" => []
       )
+      expect(rows).to include(
+        "active_smart_folder_id" => nil,
+        "filter" => include("and" => []),
+        "preferences" => include("sort" => include("column" => "created_at", "direction" => "desc")),
+        "controls" => include("columns" => include("required" => be_an(Array), "optional" => be_an(Array)))
+      )
       expect(rows).not_to have_key("counts")
-      expect(rows).not_to have_key("controls")
+      expect(rows.dig("controls")).not_to have_key("views")
+      expect(rows.dig("controls")).not_to have_key("filter_schema")
       expect(rows).not_to have_key("smart_folders")
     end
 

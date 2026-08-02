@@ -10,7 +10,7 @@ import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-d
 import { fetchBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { createEmptyChat, fetchNewChat, type ChatMessageItem, type ChatsIndexPayload } from "../api/chats"
 import { patchJson } from "../api/client"
-import { dashboardApiSearch, fetchDashboardChrome, type DashboardChromePayload, type DashboardSubject } from "../api/dashboard"
+import { dashboardChromeSearch, fetchDashboardChrome, type DashboardChromePayload, type DashboardSubject } from "../api/dashboard"
 import { fetchTerminalSessions } from "../api/terminal"
 import { BugReportButton, type BugReportButtonHandle } from "../components/BugReportButton"
 import { BugReportContext } from "../lib/bugReportContext"
@@ -603,7 +603,7 @@ function searchQueryFromLocation(search: string, pathname: string) {
 function SidebarDashboardNav({ expanded, onCloseDrawer, prefix, showSubjects }: { expanded: boolean; onCloseDrawer: () => void; prefix: string; showSubjects: boolean }) {
   const location = useLocation()
   const isDashboard = location.pathname.includes("/dashboard")
-  const search = dashboardApiSearch(location.pathname, location.search)
+  const search = dashboardChromeSearch(location.pathname, location.search)
   const [renderedPayload, setRenderedPayload] = useState<DashboardChromePayload | null>(null)
   const dashboard = useQuery({
     queryKey: ["dashboard", "chrome", search],
