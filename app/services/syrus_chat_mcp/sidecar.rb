@@ -269,6 +269,8 @@ module SyrusChatMcp
       ResumeScheduledTaskTool,
       DeleteScheduledTaskTool,
       FireScheduledTaskNowTool,
+      SyrusMcp::ListInsightsTool,
+      SyrusMcp::ReadInsightTool,
       PauseLandingQueueTool,
       ResumeLandingQueueTool,
       ReadQueueTool,
