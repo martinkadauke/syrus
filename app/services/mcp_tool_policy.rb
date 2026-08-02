@@ -46,6 +46,13 @@ class McpToolPolicy
     permitted_roles.include?(context.role)
   end
 
+  def self.syrus_repository?(repository)
+    return false unless repository
+
+    repository.slug.casecmp?("tkadauke/syrus") ||
+      repository.upstream_slug.to_s.casecmp?("tkadauke/syrus")
+  end
+
   def initialize(context)
     @context = context
   end
@@ -84,6 +91,9 @@ class McpToolPolicy
       SyrusMcp::GetCoverageReportTool,
       SyrusMcp::ReadRunWorkerHealthTool
     ]
+    if @context.role == AgentRole::WORKFLOW_IMPLEMENT && self.class.syrus_repository?(@context.repository)
+      base << SyrusMcp::ReadPerformanceDiagnosticsTool
+    end
 
     if @context.role == AgentRole::WORKFLOW_ADVERSARIAL_REVIEWER
       base + [ SyrusMcp::SubmitAdversarialReviewTool ]
