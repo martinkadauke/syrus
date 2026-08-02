@@ -73,7 +73,7 @@ class SupervisorEvents
           dedupe_key: event["dedupe_key"]
         )
         created = scoped_event.previously_new_record?
-        chat.update!(last_message_at: now, last_read_at: nil) if created
+        chat.update!(last_message_at: now, last_read_at: nil) if created && chat.system_kind_supervisor?
       end
       return unless created
 
@@ -83,7 +83,7 @@ class SupervisorEvents
         resource: "chat",
         id: chat.id,
         changed: [ "last_message_at", "last_read_at", changed_marker ]
-      )
+      ) if chat.system_kind_supervisor?
       ChatScopedEventEvaluatorJob.perform_later(scoped_event.id, chat.id)
 
       scoped_event

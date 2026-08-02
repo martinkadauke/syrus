@@ -194,6 +194,43 @@ RSpec.describe SupervisorEvents, type: :service do
     expect(ChatScopedEventEvaluatorJob).to have_been_enqueued.with(scoped_event.id, chat.id)
   end
 
+  it "does not mark ordinary scoped-event recipients active before evaluator wakeup" do
+    enable_supervisor_chat!
+    chat = ChatSession.create!(
+      user: admin,
+      repository: repository,
+      last_message_at: 1.hour.ago,
+      last_read_at: Time.current
+    )
+    original_last_message_at = chat.last_message_at
+    original_last_read_at = chat.last_read_at
+    job = Factories.job_record(user: admin, repository: repository, issue_number: 45, pr_number: 17)
+    chat_proposal(chat_session: chat, slug: "merge-job", title: "Merge job", job: job)
+
+    described_class.publish!(
+      kind: "pr_merged",
+      severity: "info",
+      subject: "PR merged",
+      repository: repository,
+      summary: "PR #17 merged.",
+      details: { "pr_number" => 17 },
+      dedupe_key: "pr_merged:#{repository.id}:17"
+    )
+
+    expect(chat.scoped_events.find_by!(source_kind: "pr_merged")).to be_pending
+    expect(chat.reload).to have_attributes(
+      last_message_at: original_last_message_at,
+      last_read_at: original_last_read_at
+    )
+    expect(AppEvents).not_to have_received(:broadcast).with(
+      user: chat.user,
+      type: "updated",
+      resource: "chat",
+      id: chat.id,
+      changed: [ "last_message_at", "last_read_at", "scoped_event" ]
+    )
+  end
+
   it "delivers Job failure events from related Runs to the originating ordinary chat" do
     enable_supervisor_chat!
     chat = ChatSession.create!(user: admin, repository: repository)
