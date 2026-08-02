@@ -94,7 +94,7 @@ class JobStackPreparedBaseBuilder
         env: @env
       )
       fetched_sha = @git.run("rev-parse", ref, chdir: clone_path.to_s).strip
-      expected_sha = dependency.head_sha.to_s
+      expected_sha = expected_head_sha_for(dependency)
       next if expected_sha.blank? || fetched_sha == expected_sha
 
       raise "dependency #{dependency.slug} branch #{dependency.branch_name} moved from #{expected_sha} to #{fetched_sha}"
@@ -164,9 +164,13 @@ class JobStackPreparedBaseBuilder
         "job_id" => dependency.id,
         "slug" => dependency.slug,
         "branch_name" => dependency.branch_name,
-        "head_sha" => dependency.head_sha
+        "head_sha" => expected_head_sha_for(dependency)
       }
     end
+  end
+
+  def expected_head_sha_for(dependency)
+    dependency.mergeability_head_sha.presence || dependency.head_sha.to_s.presence
   end
 
   def failure(reason, message)

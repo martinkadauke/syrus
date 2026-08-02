@@ -41,6 +41,25 @@ RSpec.describe JobStackPreparedBaseBuilder do
     expect(git.pushed_refs).to include("HEAD:refs/heads/syrus/prepared-base-#{job.id}-#{workflow.id}")
   end
 
+  it "validates dependency branches against the current polled PR head when run head is stale" do
+    old_head = "a" * 40
+    current_head = "d" * 40
+    dependency = approved_dependency(1574, "syrus/issue-1574", old_head)
+    dependency.update!(mergeability_head_sha: current_head)
+    git.branch_shas[dependency.branch_name] = current_head
+
+    result = described_class.new(job, workflow, git: git).call([ dependency ])
+
+    expect(result).to be_succeeded
+    expect(result.dependencies).to contain_exactly(
+      hash_including(
+        "slug" => dependency.slug,
+        "branch_name" => dependency.branch_name,
+        "head_sha" => current_head
+      )
+    )
+  end
+
   def approved_dependency(issue_number, branch_name, head_sha)
     dependency = Factories.job_record(
       user: user,
