@@ -464,9 +464,9 @@ RSpec.describe "Work engine resilience regression matrix" do
       }
     },
     "closed Job with active workflow/run" => {
-      issue_kind: :job_workflow_state_drift,
-      action: :operator_review_state_transition,
-      auto_executable: false,
+      issue_kind: :closed_job_active_workflow,
+      action: :cancel_workflow_for_closed_job,
+      auto_executable: true,
       setup: lambda {
         job, workflow, step, run = matrix_graph
         workflow.update_columns(state: "running", started_at: 5.minutes.ago)

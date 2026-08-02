@@ -48,6 +48,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       queued_with_healthy_queue_job_beside_dead_resume_job
       inline_successor_owned_by_live_root_job
       stale_auto_retry_workflow_with_queued_run
+      closed_job_with_active_workflow
       running_step_with_failed_terminal_run
       stale_running_run_without_worker_evidence
       fresh_running_run
@@ -64,6 +65,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       topology_queued_without_queue_claim
       topology_queued_failed_solid_queue_execution
       topology_queued_dead_resume_queue
+      topology_closed_job_with_active_workflow
       topology_running_step_with_failed_terminal_run
       topology_stale_running_run_without_worker_evidence
       topology_missing_local_workspace
@@ -411,6 +413,20 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       )
     end
 
+    def topology_closed_job_with_active_workflow(workflow, step)
+      running_run_on_step!(workflow, step, heartbeat_age: stale_heartbeat_age)
+      workflow.job.update_columns(state: "closed", finished_at: 10.minutes.ago, closure_reason: "operator_cancelled")
+      expectation(
+        "topology closed job with active workflow",
+        target: { workflow_id: workflow.id },
+        expected_issue: :closed_job_active_workflow,
+        expected_action: :cancel_workflow_for_closed_job,
+        required_plans: [ [ :cancel_workflow_for_closed_job, workflow ] ],
+        forbidden_issues: %i[running_run_without_live_worker_evidence queued_run_without_queue_claim retryable_run_failure],
+        forbidden_actions: %i[reenqueue_run mark_worker_died mark_worker_died_and_retry_failed_step mark_worker_died_and_retry_workflow]
+      )
+    end
+
     def topology_running_step_with_failed_terminal_run(workflow, step)
       run = failed_terminal_run_on_running_step!(workflow, step)
       expectation(
@@ -661,6 +677,22 @@ RSpec.describe "Work engine reconciler chaos simulation" do
         required_plans: [ [ :reconcile_step_from_terminal_run, step ] ],
         forbidden_issues: %i[retryable_run_failure nonretryable_semantic_git_failure],
         forbidden_plans: [ [ :retry_failed_step, run ], [ :retry_workflow, workflow ] ]
+      )
+    end
+
+    def closed_job_with_active_workflow
+      job, workflow, step, run = graph
+      running_run!(workflow, step, run, heartbeat_age: stale_heartbeat_age)
+      job.update_columns(state: "closed", finished_at: 10.minutes.ago, closure_reason: "operator_cancelled")
+
+      expectation(
+        "closed job with active workflow",
+        target: { workflow_id: workflow.id },
+        expected_issue: :closed_job_active_workflow,
+        expected_action: :cancel_workflow_for_closed_job,
+        required_plans: [ [ :cancel_workflow_for_closed_job, workflow ] ],
+        forbidden_issues: %i[running_run_without_live_worker_evidence queued_run_without_queue_claim retryable_run_failure],
+        forbidden_actions: %i[reenqueue_run mark_worker_died mark_worker_died_and_retry_failed_step mark_worker_died_and_retry_workflow]
       )
     end
 
@@ -968,6 +1000,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
     assert_chaos_case!(simulation.empty_topology_case)
     assert_chaos_case!(simulation.send(:stale_auto_retry_workflow_with_queued_run))
     assert_chaos_case!(simulation.send(:running_step_with_failed_terminal_run))
+    assert_chaos_case!(simulation.send(:closed_job_with_active_workflow))
   end
 
   it "reconciles one random degradation on a fully materialized random workflow topology" do

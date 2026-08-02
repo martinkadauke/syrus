@@ -907,9 +907,7 @@ RSpec.describe MainHealthChangedService do
         issue_title: "landed repair",
         issue_body: "fixing main",
         agent_provider: "claude",
-        priority: "high",
-        state: "closed",
-        closure_reason: "pr_merged"
+        priority: "high"
       )
       workflow = Workflow.create!(
         job: repair,
@@ -918,6 +916,7 @@ RSpec.describe MainHealthChangedService do
         agent_provider: "claude",
         state: "succeeded"
       )
+      repair.update_columns(state: "closed", closure_reason: "pr_merged", finished_at: Time.current)
 
       described_class.repair_landed!(repository, job: repair)
 

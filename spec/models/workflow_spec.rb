@@ -24,6 +24,15 @@ RSpec.describe Workflow do
       expect(build_wf(job: nil)).not_to be_valid
     end
 
+    it "rejects new workflows for closed jobs" do
+      job.update_columns(state: "closed", finished_at: Time.current, closure_reason: "operator_cancelled")
+
+      workflow = build_wf
+
+      expect(workflow).not_to be_valid
+      expect(workflow.errors[:job]).to include("is closed")
+    end
+
     it "defaults the execution owner from the job" do
       workflow = described_class.create!(job: job, trigger_kind: "initial")
 

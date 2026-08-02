@@ -581,8 +581,9 @@ RSpec.describe ReapStaleRunsJob do
       before { ActiveJob::Base.queue_adapter.enqueued_jobs.clear }
 
       def queued_workflow_without_runs(job_state: "queued", age: ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds)
-        orphan_job = Factories.job_record(state: job_state)
+        orphan_job = Factories.job_record(state: "queued")
         workflow = Workflows::Initial.instantiate(job: orphan_job)
+        orphan_job.update_columns(state: job_state, finished_at: Time.current) if job_state == "closed"
         workflow.update_columns(created_at: age.ago, updated_at: age.ago)
         workflow.steps.update_all(created_at: age.ago, updated_at: age.ago)
         [ orphan_job, workflow, workflow.first_step ]

@@ -176,11 +176,9 @@ RSpec.describe RepositoryThroughputMetricContract do
     job = Factories.job_record(
       user: user,
       repository: repository,
-      state: "closed",
       pr_number: 124,
       approved_at: approved_at,
-      finished_at: closed_at,
-      closure_reason: "pr_merged"
+      state: "implemented"
     )
     workflow_for(job, trigger_kind: "auto_merge", started_at: landing_started_at, finished_at: closed_at)
     workflow_for(
@@ -197,6 +195,7 @@ RSpec.describe RepositoryThroughputMetricContract do
       started_at: now - 34.minutes,
       finished_at: now - 30.minutes
     )
+    job.update_columns(state: "closed", finished_at: closed_at, closure_reason: "pr_merged")
 
     epic = Factories.epic(user: user, repository: repository)
     train = MergeTrain.create!(
@@ -237,8 +236,9 @@ RSpec.describe RepositoryThroughputMetricContract do
   end
 
   it "measures landing grader phase duration from landing workflow step timings" do
-    job = Factories.job_record(user: user, repository: repository, state: "closed", pr_number: 124, finished_at: now - 5.minutes, closure_reason: "pr_merged")
+    job = Factories.job_record(user: user, repository: repository, state: "implemented", pr_number: 124)
     workflow = workflow_for(job, trigger_kind: "auto_merge", started_at: now - 30.minutes, finished_at: now - 5.minutes)
+    job.update_columns(state: "closed", finished_at: now - 5.minutes, closure_reason: "pr_merged")
     step_for(workflow, kind: "mergeability_preflight", started_at: now - 30.minutes, finished_at: now - 28.minutes, position: 0)
     step_for(workflow, kind: "grader_fanout", started_at: now - 22.minutes, finished_at: now - 21.minutes, position: 1)
     step_for(workflow, kind: "grader", started_at: now - 21.minutes, finished_at: now - 11.minutes, position: 2)

@@ -51,6 +51,7 @@ RSpec.describe Workflows::AgentInsight do
     end
 
     it "is idempotent when the job is already closed" do
+      workflow
       job.close_with_reason!("agent_insight")
 
       expect { described_class.after_success(workflow) }.not_to raise_error

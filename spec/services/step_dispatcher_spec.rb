@@ -43,6 +43,20 @@ RSpec.describe StepDispatcher do
       expect(run.prompt).to eq("carry-over")
     end
 
+    it "cancels an unstarted workflow when the job closed after workflow creation" do
+      job.update_columns(state: "closed", finished_at: Time.current, closure_reason: "operator_cancelled")
+
+      expect {
+        described_class.start_workflow(workflow)
+      }.not_to change { Run.count }
+
+      expect(workflow.reload).to be_cancelled
+      expect(s1.reload).to be_cancelled
+      expect(s2.reload).to be_cancelled
+      expect(s3.reload).to be_cancelled
+      expect(workflow.artifact("start_cancelled_reason")).to eq("job_closed")
+    end
+
     it "does not create a Run while dependencies are unsatisfied" do
       prerequisite = Factories.job(repository: job.repository, issue_number: 99)
       JobDependency.create!(job: job, depends_on_job: prerequisite, source: "manual")

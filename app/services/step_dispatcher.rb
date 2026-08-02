@@ -22,6 +22,11 @@ class StepDispatcher
     return unless first
     return if first.runs.any?
 
+    if workflow.job.closed?
+      cancel_unstartable_closed_job_workflow!(workflow)
+      return
+    end
+
     if Feature.coding_mode_enabled? && workflow.job.coding?
       Rails.logger.info(
         "[StepDispatcher] workflow #{workflow.id} (#{workflow.trigger_kind}) held: " \
@@ -149,6 +154,16 @@ class StepDispatcher
         "start_blocked_next_check_at" => (now + backoff).iso8601
       )
     )
+  end
+
+  def self.cancel_unstartable_closed_job_workflow!(workflow)
+    workflow.artifacts = (workflow.artifacts || {}).merge(
+      "start_cancelled_reason" => "job_closed",
+      "start_cancelled_at" => Time.current.iso8601
+    )
+    workflow.cancel! if workflow.may_cancel?
+    workflow.save!
+    Rails.logger.info("[StepDispatcher] workflow #{workflow.id} (#{workflow.trigger_kind}) cancelled: job #{workflow.job_id} is closed")
   end
 
   def self.clear_start_blocked!(workflow, reason)

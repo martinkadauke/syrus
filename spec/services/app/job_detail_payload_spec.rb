@@ -839,12 +839,10 @@ RSpec.describe App::JobDetailPayload do
         owner_user: user,
         repository: repo,
         kind: "main_grader",
-        issue_title: "main_grader:abc123",
-        state: "closed",
-        finished_at: Time.current,
-        closure_reason: "pr_merged"
+        issue_title: "main_grader:abc123"
       )
       create_failed_workflow(infra_job, trigger_kind: "main_grader", failed_step_kind: "grader")
+      infra_job.update_columns(state: "closed", finished_at: Time.current, closure_reason: "pr_merged")
 
       actions = payload_for(infra_job).fetch(:actions)
 
@@ -873,12 +871,10 @@ RSpec.describe App::JobDetailPayload do
         owner_user: user,
         repository: repo,
         kind: "main_grader",
-        issue_title: "main_grader:abc123",
-        state: "closed",
-        finished_at: Time.current,
-        closure_reason: "pr_merged"
+        issue_title: "main_grader:abc123"
       )
       Workflow.create!(job: infra_job, trigger_kind: "main_grader", user: user, state: "succeeded")
+      infra_job.update_columns(state: "closed", finished_at: Time.current, closure_reason: "pr_merged")
 
       expect(payload_for(infra_job).dig(:actions, :can_reopen)).to be(false)
     end

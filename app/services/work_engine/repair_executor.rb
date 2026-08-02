@@ -373,6 +373,27 @@ module WorkEngine
         end
       end
 
+      class CancelWorkflowForClosedJob < Base
+        def perform
+          workflow = target_workflow
+          return skipped("Workflow no longer exists") unless workflow
+          return skipped("Workflow is #{workflow.state}, not active") unless workflow.queued? || workflow.running?
+          return skipped("Job is not closed") unless workflow.job&.closed?
+          return skipped("Workflow cannot transition to cancelled") unless workflow.may_cancel?
+
+          StateTransition.with_source("reconciler") do
+            workflow.artifacts = (workflow.artifacts || {}).merge(
+              "cancelled_reason" => "job_closed",
+              "cancelled_by_reconciler_at" => Time.current.iso8601
+            )
+            workflow.cancel!
+            workflow.save!
+          end
+
+          success("cancelled Workflow ##{workflow.id} because Job ##{workflow.job_id} is closed")
+        end
+      end
+
       class MarkWorkerDied < Base
         def perform = mark_worker_died!
       end

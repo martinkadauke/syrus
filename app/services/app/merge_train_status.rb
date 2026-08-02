@@ -57,7 +57,13 @@ module App
       MergeTrain.where(epic_id: @epic.id)
                 .where.not(state: "succeeded")
                 .order(id: :desc)
-                .first
+                .detect { |train| visible_train?(train) }
+    end
+
+    def visible_train?(train)
+      return false if %w[failed cancelled].include?(train.state) && @epic.all_jobs_closed?
+
+      true
     end
 
     def workflow_for(train)

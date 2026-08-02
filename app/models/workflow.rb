@@ -15,6 +15,7 @@ class Workflow < ApplicationRecord
   validates :trigger_kind, presence: true, inclusion: { in: TRIGGER_KINDS }
   validates :agent_provider, presence: true, inclusion: { in: User::AGENT_PROVIDERS }
   validate :user_matches_job
+  validate :job_must_be_open_on_create, on: :create
   before_validation :default_user_from_job, on: :create
 
   # Free-form bag of artifacts produced during this workflow. The
@@ -124,6 +125,12 @@ class Workflow < ApplicationRecord
 
   def saved_change_to_state_to_failed?
     saved_change_to_state? && state == "failed"
+  end
+
+  def job_must_be_open_on_create
+    return unless job&.closed?
+
+    errors.add(:job, "is closed")
   end
 
   # Best-effort workspace teardown. Errors are swallowed (logged at

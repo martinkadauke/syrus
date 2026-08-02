@@ -290,12 +290,10 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
       repository: repository,
       epic: epic,
       issue_number: 12,
-      issue_title: "Save settings",
-      state: "closed",
-      closure_reason: "pr_merged",
-      finished_at: 1.minute.ago
+      issue_title: "Save settings"
     )
     Workflow.create!(job: job, trigger_kind: "initial", state: "succeeded", artifacts: { "summary" => "Settings now save correctly." }, finished_at: Time.current)
+    job.update_columns(state: "closed", closure_reason: "pr_merged", finished_at: 1.minute.ago)
 
     get "/api/v1/app/epics/#{epic.id}"
 
@@ -1303,6 +1301,35 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["merge_train_branch"]).to be_nil
+  end
+
+  it "omits stale failed merge-train status when every Epic work job is closed" do
+    sign_in_as(user)
+    epic = Factories.epic(user: user, repository: repository, title: "Raise the forum")
+    job = Factories.job_record(user: user, repository: repository, epic: epic, issue_number: 12, pr_number: 412)
+    train = MergeTrain.create!(
+      epic: epic,
+      repository: repository,
+      base_branch: "main",
+      state: "failed",
+      failure_reason: "merge train failed",
+      integration_branch: "syrus/merge-train-epic-#{epic.id}-1"
+    )
+    MergeTrainMember.create!(merge_train: train, job: job, position: 0, state: "failed")
+    workflow = Workflow.create!(
+      job: job,
+      trigger_kind: "merge_train",
+      state: "failed",
+      artifacts: { "merge_train_id" => train.id },
+      failure_reason: "merge train failed"
+    )
+    Step.create!(workflow: workflow, kind: "merge_train_land", position: 0, state: "failed")
+    job.update_columns(state: "closed", closure_reason: "pr_merged", finished_at: Time.current)
+
+    get "/api/v1/app/epics/#{epic.id}"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["merge_train_status"]).to be_nil
   end
 
   it "includes origin_chat in the detail payload when the Epic has a chat proposal with a message" do

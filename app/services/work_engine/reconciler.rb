@@ -136,6 +136,7 @@ module WorkEngine
       @solid_queue = capture_solid_queue
 
       issues = []
+      issues.concat(classify_closed_jobs_with_active_workflows)
       issues.concat(classify_queued_runs)
       issues.concat(classify_paused_queues)
       issues.concat(classify_running_runs)
@@ -186,7 +187,8 @@ module WorkEngine
       elsif run_id.present?
         Job.where(id: Run.where(id: run_id).select(:job_id))
       else
-        Job.open_threads
+        Job.where(id: Job.open_threads.select(:id))
+           .or(Job.where(id: Workflow.active.select(:job_id)))
       end
     end
 
@@ -213,6 +215,7 @@ module WorkEngine
       return [] unless solid_queue[:available]
 
       runs.select(&:queued?).filter_map do |run|
+        next if run.job&.closed?
         next unless older_than?(run.created_at, ORPHAN_RUN_GRACE_PERIOD)
 
         sqs = solid_queue_jobs_for_run(run)
@@ -270,7 +273,7 @@ module WorkEngine
       paused_queue_names = solid_queue[:pauses].map { |pause| pause[:queue_name] }.compact.uniq
       return [] if paused_queue_names.empty?
 
-      affected_runs = runs.select(&:queued?).select do |run|
+      affected_runs = runs.select(&:queued?).reject { |run| run.job&.closed? }.select do |run|
         sq = solid_queue_for_run(run)
         paused_queue_names.include?(sq&.dig(:queue_name)) || sq.nil? && paused_queue_names.include?("runs")
       end
@@ -296,6 +299,7 @@ module WorkEngine
 
     def classify_running_runs
       runs.select(&:running?).filter_map do |run|
+        next if run.job&.closed?
         next unless older_than?(run.started_at, ORPHAN_RUN_GRACE_PERIOD)
 
         sq = solid_queue_for_run(run)
@@ -427,7 +431,7 @@ module WorkEngine
     def classify_job_workflow_drift
       jobs.filter_map do |job|
         active = workflows.select { |workflow| workflow.job_id == job.id && %w[queued running].include?(workflow.state) }
-        next if active.empty? || %w[queued running landing coding approved].include?(job.state)
+        next if active.empty? || job.closed? || %w[queued running landing coding approved].include?(job.state)
 
         issue(
           kind: :job_workflow_state_drift,
@@ -438,6 +442,28 @@ module WorkEngine
           evidence: { job_state: job.state, active_workflow_states: active.map { |workflow| [ workflow.id, workflow.state ] } },
           explanation: "Job ##{job.id} is #{job.state} while it still has active Workflows."
         )
+      end
+    end
+
+    def classify_closed_jobs_with_active_workflows
+      jobs.select(&:closed?).flat_map do |job|
+        workflows
+          .select { |workflow| workflow.job_id == job.id && %w[queued running].include?(workflow.state) }
+          .map do |workflow|
+            issue(
+              kind: :closed_job_active_workflow,
+              severity: :critical,
+              affected_ids: ids_for(workflow).merge(job_ids: [ job.id ]),
+              safe_to_auto_repair: workflow.may_cancel?,
+              recommended_repair_action: "cancel_workflow_for_closed_job",
+              evidence: workflow_evidence(workflow).merge(
+                job_finished_at: job.finished_at&.iso8601,
+                job_closure_reason: job.closure_reason,
+                active_step_states: workflow.steps.where(state: %w[queued running]).pluck(:id, :kind, :state)
+              ),
+              explanation: "Closed Job ##{job.id} still has active Workflow ##{workflow.id}; that work should be cancelled."
+            )
+          end
       end
     end
 
@@ -567,11 +593,12 @@ module WorkEngine
       issues = []
       max = AppSetting.max_concurrent_agent_runs
       running_count = Run.running_agent_runs.count
-      if max.positive? && running_count >= max && runs.any?(&:queued?)
+      open_queued_runs = runs.select { |run| run.queued? && !run.job&.closed? }
+      if max.positive? && running_count >= max && open_queued_runs.any?
         issues << issue(
           kind: :resource_congestion,
           severity: :info,
-          affected_ids: { run_ids: runs.select(&:queued?).map(&:id) },
+          affected_ids: { run_ids: open_queued_runs.map(&:id) },
           safe_to_auto_repair: false,
           recommended_repair_action: "wait_for_agent_capacity",
           check_after: now + RESOURCE_CONGESTION_CHECK_AFTER,
@@ -611,6 +638,7 @@ module WorkEngine
 
     def classify_workspace_availability
       workflows.select { |workflow| workflow.running? || workflow.retry_available? }.filter_map do |workflow|
+        next if workflow.job&.closed?
         next if remote_live_worker_workspace?(workflow)
         next if workflow.worker_hostname.present? && !InstanceVersion.worker_live?(workflow.worker_hostname)
 
@@ -632,6 +660,7 @@ module WorkEngine
 
     def classify_resumable_sessions
       runs.select { |run| run.failed? && run.step&.agentic? }.filter_map do |run|
+        next if run.job&.closed?
         next if step_needs_terminal_run_reconciliation?(run.step)
 
         retryable_worker_failure = run.agent_outcome == AutoRetryScheduler::WORKER_DIED_CLASSIFICATION ||
@@ -664,6 +693,7 @@ module WorkEngine
 
     def classify_retryable_failures
       runs.select(&:failed?).filter_map do |run|
+        next if run.job&.closed?
         next if step_needs_terminal_run_reconciliation?(run.step)
 
         classification = run.run_failure_classification
@@ -693,6 +723,7 @@ module WorkEngine
 
     def classify_nonretryable_failures
       runs.select(&:failed?).filter_map do |run|
+        next if run.job&.closed?
         next if step_needs_terminal_run_reconciliation?(run.step)
 
         classification = run.run_failure_classification

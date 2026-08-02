@@ -431,6 +431,22 @@ module WorkEngine
         end
       end
 
+      class ClosedJobActiveWorkflow < Base
+        def plan
+          automatic_plan(
+            "cancel_workflow_for_closed_job",
+            primary_workflow,
+            "The parent Job is closed, so any queued or running Workflow under it should be cancelled instead of continuing work.",
+            execution_steps: [ "Workflow#cancel!" ],
+            preconditions: {
+              job_state: "closed",
+              workflow_state: %w[queued running],
+              job_closure_reason: issue.evidence["job_closure_reason"]
+            }
+          )
+        end
+      end
+
       class RetryableRunFailure < Base
         def plan
           if delayed_provider_retry?

@@ -208,6 +208,33 @@ RSpec.describe WorkEngine::Reconciler do
     expect(result.repair_plans.select { |repair_plan| repair_plan.action == "reenqueue_run" }).to be_empty
   end
 
+  it "cancels active workflows on closed jobs in the global reconciliation scope" do
+    ensure_solid_queue_test_tables!
+    workflow.update_columns(state: "running", started_at: 45.minutes.ago)
+    step.update_columns(state: "running", started_at: 45.minutes.ago)
+    run.update_columns(state: "running", started_at: 45.minutes.ago, last_heartbeat_at: 40.minutes.ago)
+    job.update_columns(state: "closed", finished_at: 30.minutes.ago, closure_reason: "operator_cancelled")
+    solid_queue_run_job(run, claimed: true, created_at: 45.minutes.ago)
+
+    result = reconcile_and_execute
+
+    expect(kind(result, :closed_job_active_workflow)).to have_attributes(
+      severity: "critical",
+      safe_to_auto_repair: true,
+      recommended_repair_action: "cancel_workflow_for_closed_job"
+    )
+    expect(kind(result, :running_run_without_live_worker_evidence)).to be_nil
+    expect(plan(result, :cancel_workflow_for_closed_job)).to have_attributes(
+      auto_executable: true,
+      target_type: "Workflow",
+      target_id: workflow.id
+    )
+    expect(result.repair_executions.map(&:message)).to include("cancelled Workflow ##{workflow.id} because Job ##{job.id} is closed")
+    expect(workflow.reload).to be_cancelled
+    expect(step.reload).to be_cancelled
+    expect(run.reload).to be_cancelled
+  end
+
   it "cancels stale queued auto-retry workflows after a newer workflow succeeds" do
     source = workflow
     run.update_columns(state: "failed", agent_outcome: "worker_died", finished_at: 30.minutes.ago)

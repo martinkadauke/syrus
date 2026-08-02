@@ -89,4 +89,16 @@ RSpec.describe App::MergeTrainStatus do
     expect(payload).to include(phase: "failed", failure_reason: "merge_train_reconcile: working tree is not clean")
     expect(payload[:reconciliation]).to include(step_id: step.id, state: "failed", result: "failed")
   end
+
+  it "hides stale failed trains once every work job in the Epic is closed" do
+    train_with_workflow(step_kind: "merge_train_reconcile", step_state: "failed").then do |train, workflow, _step|
+      train.update!(state: "failed", failure_reason: "merge_train_reconcile: working tree is not clean")
+      workflow.update!(state: "failed")
+      epic.work_jobs.find_each do |job|
+        job.update_columns(state: "closed", closure_reason: "pr_merged", finished_at: Time.current)
+      end
+    end
+
+    expect(described_class.for_epic(epic)).to be_nil
+  end
 end

@@ -299,8 +299,8 @@ RSpec.describe WorkflowWorkspacePruneJob do
       branch_name: branch_name,
       branch_deleted_at: branch_deleted_at
     )
-    job.update_columns(state: job_state, finished_at: 1.hour.ago)
     wf = Workflow.create!(job: job, trigger_kind: "initial", user: user)
+    job.update_columns(state: job_state, finished_at: 1.hour.ago)
     wf.update_columns(
       state: "failed",
       finished_at: (described_class::RETAIN_AFTER_FAILURE + 1.day).ago
