@@ -40,6 +40,7 @@ export const slashCommands = [
   { name: "/report", kind: "system", args: [], description: "File a GitHub issue about Syrus" },
   { name: "/scratch", kind: "system", args: [{ name: "text", required: false }], description: "Stash text to the scratch pad, or open the scratch pad panel." },
   { name: "/share", kind: "system", args: [], description: "Copy a shareable link to this chat" },
+  { name: "/schedule", kind: "system", args: [{ name: "time", required: false }, { name: "message", required: false }], description: "Schedule a chat message to send later." },
   {
     name: "/jobs",
     kind: "system",
@@ -49,13 +50,13 @@ export const slashCommands = [
   {
     name: "/job",
     kind: "system",
-    args: [{ name: "id", required: true }],
+    args: [{ name: "id", required: false }],
     description: "Open a Job."
   },
   {
     name: "/epic",
     kind: "system",
-    args: [{ name: "id", required: true }],
+    args: [{ name: "id", required: false }],
     description: "Open an Epic."
   },
   {
@@ -69,6 +70,18 @@ export const slashCommands = [
     kind: "system",
     args: [],
     description: "Open GitHub issues for the current repository."
+  },
+  {
+    name: "/queue",
+    kind: "system",
+    args: [],
+    description: "Open the landing queue."
+  },
+  {
+    name: "/spend",
+    kind: "system",
+    args: [],
+    description: "Open spending insights."
   },
   {
     name: "/proposals",
@@ -90,9 +103,11 @@ export const slashCommands = [
     description: "Bookmark this chat topic."
   },
   { name: "/discard", kind: "system", args: [{ name: "slug", required: true }], description: "Discard proposed work.", requiresConfirmation: true },
-  { name: "/cancel", kind: "system", args: [{ name: "id", required: true }], description: "Cancel work.", requiresConfirmation: true },
-  { name: "/retry", kind: "system", args: [{ name: "id", required: true }], description: "Retry failed work.", requiresConfirmation: true },
-  { name: "/feedback", kind: "skill", args: [{ name: "id", required: true }], description: "Send feedback for the agent to address.", requiresConfirmation: true },
+  { name: "/cancel", kind: "system", args: [{ name: "id", required: false }], description: "Cancel work.", requiresConfirmation: true },
+  { name: "/retry", kind: "system", args: [{ name: "id", required: false }], description: "Retry failed work.", requiresConfirmation: true },
+  { name: "/review", kind: "system", args: [{ name: "id", required: false }], description: "Open a Job's pull request in a new tab." },
+  { name: "/approve", kind: "system", args: [{ name: "id", required: false }], description: "Approve a Job for landing.", requiresConfirmation: true },
+  { name: "/feedback", kind: "skill", args: [{ name: "id", required: false }], description: "Send feedback for the agent to address.", requiresConfirmation: true },
   { name: "/clear-canvas", kind: "system", args: [], description: "Clear the whiteboard.", requiresConfirmation: true },
   {
     name: "/propose",
@@ -100,6 +115,25 @@ export const slashCommands = [
     args: [],
     description: "Start a guided Job proposal wizard",
     toPrompt: proposeWizardPrompt
+  },
+  {
+    name: "/diff",
+    kind: "skill",
+    args: [{ name: "id", required: false }],
+    description: "Show the diff for a Job's PR inline.",
+    toPrompt: (args) => {
+      const id = args.trim()
+      return id
+        ? `Call the get_job_diff MCP tool for job ${id} and display the diff in a readable summary. Highlight notable changes and call out any concerns.`
+        : `Ask the operator which job they want to diff, then call get_job_diff and display a readable summary.`
+    }
+  },
+  {
+    name: "/remind",
+    kind: "skill",
+    args: [{ name: "message", required: false }],
+    description: "Ask the agent to set a reminder.",
+    toPrompt: (args) => `The operator wants to set a reminder${args.trim() ? `: ${args.trim()}` : "."} Use the schedule_wakeup MCP tool to schedule a wakeup at the time they specify. If no time is specified, ask for one before calling the tool. Confirm the wakeup time back to the operator after scheduling.`
   }
 ] as const satisfies readonly SlashCommand[]
 

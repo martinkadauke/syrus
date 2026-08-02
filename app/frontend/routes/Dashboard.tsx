@@ -547,7 +547,8 @@ function ColumnsIcon() {
 }
 
 function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
-  const activeFolder = payload.smart_folders.find((folder) => folder.id === payload.active_smart_folder_id)
+  const activeSmartFolderId = smartFolderIdFromSearch(search) ?? payload.active_smart_folder_id
+  const activeFolder = payload.smart_folders.find((folder) => folder.id === activeSmartFolderId)
   const keepSmartFolderOnFilter = activeFolder?.kind === "user_defined"
 
   return (
@@ -573,6 +574,14 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
 }
 
 const legacyFilterKeys = ["state", "repository_id", "kind", "trigger_kind", "job_id", "attention", "start_blocked", "tag_ids", "pr", "age"]
+
+function smartFolderIdFromSearch(search: string) {
+  const value = new URLSearchParams(search).get("smart_folder_id")
+  if (!value) return null
+
+  const id = Number(value)
+  return Number.isInteger(id) ? id : null
+}
 
 export function DashboardTable({ payload, prefix, setupStatus }: { payload: DashboardPayload; prefix: string; setupStatus: ReturnType<typeof useSetupStatus> }) {
   const { t } = useT("dashboard")

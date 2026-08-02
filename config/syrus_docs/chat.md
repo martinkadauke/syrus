@@ -24,3 +24,23 @@ payloads and show a red triangle warning in the sidebar, header, and provider
 settings. Switching the chat to another configured provider clears the warning
 for that chat immediately. Transient provider circuits are not treated as usage
 exhaustion and keep their existing non-red UI.
+
+The chat composer recognizes leading slash commands. Typing `/` opens the
+command palette.
+
+System commands run in the browser without sending a message to the agent.
+Navigation commands include `/jobs [filter]`, `/job [id]`, `/epic [id]`,
+`/prs`, `/issues`, `/proposals`, and `/review [id]`. ID commands without an ID
+open the shared Job/Epic picker, scoped to the attached repository when
+possible. `/review` opens the selected Job's pull request. `/bookmark <label>`
+stores a chat bookmark, and `/schedule [time] [message]` stores a one-shot
+operator message for later.
+
+Mutating commands show an inline confirmation before running. `/approve [id]`
+approves an implemented Job for landing through `POST /api/v1/app/jobs/:id/approve`.
+It accepts `JOB-123`, `job-123`, or `123`; without an ID it opens the Job picker
+filtered to `implemented` Jobs.
+
+Skill commands, such as `/canvas`, `/feedback`, and `/propose`, are sent through
+the normal chat message path so the agent can interpret them and call the
+matching MCP tools.

@@ -495,6 +495,7 @@ export type ChatPayload = {
     app_branch_path: string
     app_share_path: string
     app_enqueue_message_path: string
+    app_scheduled_messages_path: string
     app_stop_path: string
     app_daemon_connection_path: string
     app_bookmarks_path: string
@@ -723,6 +724,15 @@ export function shareChat(path: string) {
 
 export function enqueueChatMessage(path: string, text: string, attachments: ChatMessageAttachmentInput[] = []) {
   return postJson<ChatPayload>(path, chatMessagePayload(text, attachments))
+}
+
+export function scheduleChatMessage(path: string, input: { body: string; fireAt: string }) {
+  return postJson<{ id: number; body: string; fire_at: string; message: string }>(path, {
+    scheduled_message: {
+      body: input.body,
+      fire_at: input.fireAt
+    }
+  })
 }
 
 export function updateQueuedChatMessage(path: string, text: string) {

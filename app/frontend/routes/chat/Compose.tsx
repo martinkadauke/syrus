@@ -8,14 +8,15 @@ import { GeminiSetupSheet } from "../../components/GeminiSetupSheet"
 import { AnalyzingHint, annotationHoldLabel, annotationIdleHintKind, annotationShortcutLabel, formatClock, RECORDER_WARNING_SECONDS, shouldShowAnnotationSurfaceNote, useNativeRecorderHud, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../../components/WalkthroughRecorder"
 import { isWalkthroughVideoFile, MAX_WALKTHROUGH_BYTES, MAX_WALKTHROUGH_DURATION_SECONDS, measureVideoDuration, retryVideoWalkthrough, uploadVideoWalkthrough } from "../../api/videoWalkthroughs"
 import { refreshRecentChats, updateRecentChatCache } from "../../lib/chatCache"
-import { attachChatRepository, branchChat, clearChatHistory, createChat, createChatTopicBookmark, createScratchpadItem, deleteQueuedChatMessage, deleteChatAttachment, enqueueChatMessage, fetchChatWhiteboard, patchChatWhiteboard, rejectChatProposal, renameChat, sendChatMessage, shareChat, stopChat, updateChatEffort, updateChatMode, updateChatModel, updateChatPinned, updateQueuedChatMessage, type ChatBranchPayload, type ChatCreatedPayload, type ChatMode, type ChatPayload, type ChatProposal, type ChatQueuedMessage, type ShareChatPayload } from "../../api/chats"
-import { postJobCommand } from "../../api/jobs"
+import { attachChatRepository, branchChat, clearChatHistory, createChat, createChatTopicBookmark, createScratchpadItem, deleteQueuedChatMessage, deleteChatAttachment, enqueueChatMessage, fetchChatWhiteboard, patchChatWhiteboard, rejectChatProposal, renameChat, scheduleChatMessage, sendChatMessage, shareChat, stopChat, updateChatEffort, updateChatMode, updateChatModel, updateChatPinned, updateQueuedChatMessage, type ChatBranchPayload, type ChatCreatedPayload, type ChatMode, type ChatPayload, type ChatProposal, type ChatQueuedMessage, type ShareChatPayload } from "../../api/chats"
+import { fetchJobDetail, postJobCommand } from "../../api/jobs"
 import { CloseIcon } from "../../components/CloseIcon"
 import { EnqueueIcon } from "../../components/EnqueueIcon"
 import { ImageAnnotationModal } from "../../components/ImageAnnotationModal"
 import { SendIcon } from "../../components/SendIcon"
 import { StopIcon } from "../../components/StopIcon"
 import { filterSlashCommands, findSlashCommand, slashCommandDescription, slashCommandPrompt, slashCommandQuery, slashCommandSignature, type SlashCommand, type SlashCommandMatch } from "../../lib/slashCommands"
+import { formatScheduledTime, parseScheduleCommandArgs } from "../../lib/scheduleTime"
 import { useBugReportTrigger } from "../../lib/bugReportContext"
 import { useT } from "../../hooks/useT"
 import { errorMessage } from "../../lib/errorMessage"
@@ -27,6 +28,8 @@ import { lastAssistantRenderedMessage } from "./streamBuilders"
 import { PencilIcon, UploadIcon } from "./icons"
 import { isAgentActive } from "./messageDisplay"
 import { storeWorkspacePreference } from "./workspaceTabs"
+import { JobEpicPickerPopup } from "./JobEpicPickerPopup"
+import { ScheduleMessageModal } from "./ScheduleMessageModal"
 
 
 
@@ -55,6 +58,7 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingSlashCommandConfirmation | null>(null)
   const [activeCommandIndex, setActiveCommandIndex] = useState(0)
   const [clearConfirmationOpen, setClearConfirmationOpen] = useState(false)
+  const [scheduleModal, setScheduleModal] = useState<{ time: string; body: string } | null>(null)
   const bugReportTrigger = useBugReportTrigger()
   const [attachmentPopoverOpen, setAttachmentPopoverOpen] = useState(false)
   // One walkthrough video per message (v1). The chip above the composer
@@ -79,6 +83,7 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
   const pendingVideoRef = useRef<File | null>(null)
   const walkthroughKeyRef = useRef(0)
   const [scratchpadOpen, setScratchpadOpen] = useState(false)
+  const [pickerMode, setPickerMode] = useState<{ kind: "job" | "epic"; filterByPr?: boolean; jobState?: string; onSelect: (id: string) => void } | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const attachmentPopoverRef = useRef<HTMLDivElement | null>(null)
@@ -201,12 +206,14 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
       }
 
       if (action.kind === "job") {
-        const path = `/api/v1/app/jobs/${encodeURIComponent(action.jobId)}/${action.action === "cancel" ? "cancel" : "run_again"}`
+        let endpoint: string
+        let notice: string
+        if (action.action === "cancel") { endpoint = "cancel"; notice = "Job cancelled" }
+        else if (action.action === "retry") { endpoint = "run_again"; notice = "Job queued for retry" }
+        else { endpoint = "approve"; notice = "Job approved" }
+        const path = `/api/v1/app/jobs/${encodeURIComponent(action.jobId)}/${endpoint}`
         await postJobCommand(path)
-        return {
-          jobId: action.jobId,
-          notice: action.action === "cancel" ? "Job cancelled" : "Job queued for retry"
-        }
+        return { jobId: action.jobId, notice }
       }
 
       const current = await fetchChatWhiteboard(appendSearch(payload.paths.app_whiteboard_path, search))
@@ -253,6 +260,26 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
     },
     onError: (error) => {
       onNotice(errorMessage(error, "Command failed."))
+    }
+  })
+  const scheduleMessage = useMutation({
+    mutationFn: (input: { fireAt: Date; body: string }) => scheduleChatMessage(payload.paths.app_scheduled_messages_path, {
+      body: input.body,
+      fireAt: input.fireAt.toISOString()
+    }),
+    onSuccess: (result) => {
+      setText("")
+      setPendingConfirmation(null)
+      setScheduleModal(null)
+      try {
+        window.localStorage.removeItem(CHAT_DRAFT_KEY_PREFIX + chatId)
+      } catch (_error) {
+        // Local storage can be unavailable in hardened browser modes.
+      }
+      onNotice(`Message scheduled for ${formatScheduledTime(new Date(result.fire_at))}.`)
+    },
+    onError: (error) => {
+      onNotice(errorMessage(error, "Could not schedule message."))
     }
   })
   const detachRepository = useMutation({
@@ -305,9 +332,27 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
       return
     }
     const commandMatch = findSlashCommand(text)
+
+    // If the command takes a job/epic ID but none was provided, open the picker.
+    const pickerKind = commandMatch ? pickerKindForCommand(commandMatch.command.name) : null
+    if (pickerKind && !commandMatch!.argsText.trim()) {
+      const capturedMatch = commandMatch!
+      setPickerMode({
+        kind: pickerKind,
+        filterByPr: capturedMatch.command.name === "/review",
+        jobState: capturedMatch.command.name === "/approve" ? "implemented" : undefined,
+        onSelect: (id) => {
+          setPickerMode(null)
+          handleCommandWithId(capturedMatch.command, id)
+          textareaRef.current?.focus()
+        }
+      })
+      return
+    }
+
     if (commandMatch?.command.requiresConfirmation) {
       onNotice(null)
-      setPendingConfirmation({ commandName: commandMatch.command.name, text: text.trim() })
+      setPendingConfirmation(confirmationForSlashCommand(commandMatch.command.name, text.trim()))
       return
     }
 
@@ -321,6 +366,64 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
     onNotice(null)
     setPendingConfirmation(null)
     send.mutate(slashCommandPrompt(text))
+  }
+
+  function pickerKindForCommand(commandName: SlashCommand["name"]): "job" | "epic" | null {
+    if (commandName === "/epic") return "epic"
+    if (commandName === "/job" || commandName === "/cancel" || commandName === "/retry" || commandName === "/feedback" || commandName === "/review" || commandName === "/approve" || commandName === "/diff") return "job"
+    return null
+  }
+
+  function jobIdArg(value: string): string | null {
+    const match = value.trim().match(/^(?:JOB-)?(\d+)$/i)
+    return match ? match[1] : null
+  }
+
+  function handleReviewWithId(jobId: string) {
+    fetchJobDetail(jobId).then((detail) => {
+      const prUrl = detail.job.pr_url
+      if (!prUrl) {
+        onNotice("This job doesn't have a pull request yet.")
+        return
+      }
+      window.open(prUrl, "_blank", "noopener,noreferrer")
+      setText("")
+      onNotice(null)
+    }).catch(() => {
+      onNotice("Could not load job.")
+    })
+  }
+
+  function handleCommandWithId(command: SlashCommand, id: string) {
+    if (command.name === "/job") {
+      navigate(withRoutePrefix(`/jobs/${id}`, prefix))
+      setText("")
+      return
+    }
+    if (command.name === "/epic") {
+      navigate(withRoutePrefix(`/epics/${id}`, prefix))
+      setText("")
+      return
+    }
+    // /cancel, /retry, and /approve require confirmation — show the confirmation dialog.
+    if (command.name === "/cancel" || command.name === "/retry" || command.name === "/approve") {
+      onNotice(null)
+      setPendingConfirmation(confirmationForSlashCommand(command.name, `${command.name} ${id}`))
+      return
+    }
+    // /feedback is a skill command that also requires confirmation.
+    if (command.name === "/feedback") {
+      onNotice(null)
+      setPendingConfirmation({ commandName: "/feedback", text: `/feedback ${id}` })
+      return
+    }
+    if (command.name === "/review") {
+      handleReviewWithId(id)
+      return
+    }
+    if (command.name === "/diff") {
+      send.mutate(slashCommandPrompt(`/diff ${id}`))
+    }
   }
 
   function jumpToPending() {
@@ -447,6 +550,18 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
       return
     }
 
+    if (command.name === "/queue") {
+      navigate(withRoutePrefix("/admin/queue", prefix))
+      setText("")
+      return
+    }
+
+    if (command.name === "/spend") {
+      navigate(withRoutePrefix("/insights/spending", prefix))
+      setText("")
+      return
+    }
+
     if (command.name === "/proposals") {
       if (!scrollToLastProposalCard()) onNotice("No proposal cards found.")
       setText("")
@@ -474,14 +589,29 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
       return
     }
 
-    if (command.name === "/cancel" || command.name === "/retry") {
+    if (command.name === "/cancel" || command.name === "/retry" || command.name === "/approve") {
       const id = numericArg(argsText)
       if (!id) {
         onNotice(`Usage: ${command.name} <id>`)
         return
       }
 
-      systemCommandAction.mutate({ kind: "job", action: command.name === "/cancel" ? "cancel" : "retry", jobId: id })
+      let action: "cancel" | "retry" | "approve"
+      if (command.name === "/cancel") action = "cancel"
+      else if (command.name === "/retry") action = "retry"
+      else action = "approve"
+      systemCommandAction.mutate({ kind: "job", action, jobId: id })
+      return
+    }
+
+    if (command.name === "/review") {
+      const id = jobIdArg(argsText)
+      if (!id) {
+        onNotice("Usage: /review <id>")
+        return
+      }
+
+      handleReviewWithId(id)
       return
     }
 
@@ -525,6 +655,18 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
 
     if (command.name === "/share") {
       systemAction.mutate({ kind: "share" })
+      return
+    }
+
+    if (command.name === "/schedule") {
+      const parsed = parseScheduleCommandArgs(argsText)
+      if (parsed) {
+        scheduleMessage.mutate(parsed)
+      } else {
+        setScheduleModal(prefillScheduleModal(argsText))
+        setText("")
+        onNotice(null)
+      }
       return
     }
 
@@ -1149,6 +1291,18 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
           }}
         />
       ) : null}
+      {scheduleModal ? (
+        <ScheduleMessageModal
+          initialBody={scheduleModal.body}
+          initialTime={scheduleModal.time}
+          submitting={scheduleMessage.isPending}
+          onCancel={() => {
+            setScheduleModal(null)
+            textareaRef.current?.focus()
+          }}
+          onSchedule={(input) => scheduleMessage.mutate(input)}
+        />
+      ) : null}
       <form
         className={`relative transition-shadow ${isDragOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""}`}
         data-tour="chat-compose"
@@ -1186,6 +1340,7 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
           <SlashCommandConfirmation
             commandName={pendingConfirmation.commandName}
             disabled={send.isPending || systemCommandAction.isPending}
+            prompt={pendingConfirmation.prompt}
             text={pendingConfirmation.text}
             onCancel={cancelPendingSlashCommand}
             onConfirm={confirmPendingSlashCommand}
@@ -1198,6 +1353,19 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
             context={{ chat: { pinned: payload.chat.pinned } }}
             query={commandQuery}
             onSelect={(command) => completeSlashCommand(command)}
+          />
+        ) : null}
+        {pickerMode ? (
+          <JobEpicPickerPopup
+            kind={pickerMode.kind}
+            jobState={pickerMode.jobState}
+            repositorySlug={payload.chat.repository?.slug ?? null}
+            filterByPr={pickerMode.filterByPr}
+            onCancel={() => {
+              setPickerMode(null)
+              textareaRef.current?.focus()
+            }}
+            onSelect={pickerMode.onSelect}
           />
         ) : null}
         {attachments.length > 0 ? (
@@ -1350,7 +1518,7 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
           <button
             aria-label={agentActive ? t("enqueue_message") : t("send_message")}
             className="flex h-8 min-h-11 w-8 min-w-11 items-center justify-center rounded text-blue-600 hover:bg-gray-100 disabled:opacity-40 sm:min-h-0 sm:min-w-0 dark:text-blue-400 dark:hover:bg-gray-800"
-            disabled={send.isPending || systemAction.isPending || systemCommandAction.isPending || (text.trim().length === 0 && walkthrough?.status !== "ready" && attachments.length === 0) || pendingConfirmation != null || attachmentError != null}
+            disabled={send.isPending || systemAction.isPending || systemCommandAction.isPending || scheduleMessage.isPending || (text.trim().length === 0 && walkthrough?.status !== "ready" && attachments.length === 0) || pendingConfirmation != null || attachmentError != null}
             type="submit"
           >
             {agentActive ? <EnqueueIcon className="h-5 w-5" /> : <SendIcon className="h-5 w-5" />}
@@ -1731,14 +1899,41 @@ function readAttachmentFile(file: File): Promise<ChatComposeAttachment> {
   })
 }
 
-function SlashCommandConfirmation({ commandName, disabled, text, onCancel, onConfirm }: { commandName: SlashCommand["name"]; disabled: boolean; text: string; onCancel: () => void; onConfirm: () => void }) {
+function prefillScheduleModal(argsText: string) {
+  const trimmed = argsText.trim()
+  if (!trimmed) return { time: "", body: "" }
+
+  const firstSpace = trimmed.search(/\s/)
+  if (firstSpace === -1) return { time: trimmed, body: "" }
+
+  return {
+    time: trimmed.slice(0, firstSpace),
+    body: trimmed.slice(firstSpace + 1).trim()
+  }
+}
+
+function confirmationForSlashCommand(commandName: SlashCommand["name"], text: string): PendingSlashCommandConfirmation {
+  if (commandName === "/approve") {
+    const match = findSlashCommand(text)
+    const id = match ? numericArg(match.argsText) : null
+    if (id) return { commandName, text: `/approve ${id}`, prompt: `Approve JOB-${id} for landing?` }
+  }
+
+  return { commandName, text }
+}
+
+function SlashCommandConfirmation({ commandName, disabled, prompt, text, onCancel, onConfirm }: { commandName: SlashCommand["name"]; disabled: boolean; prompt?: string; text: string; onCancel: () => void; onConfirm: () => void }) {
   const { t } = useT("chat")
   return (
     <div className="mb-3 rounded border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Confirm {commandName}</div>
-          <div className="mt-1 break-words font-mono text-sm text-gray-900 dark:text-gray-100">{text}</div>
+          {prompt ? (
+            <div className="mt-1 break-words text-sm text-gray-900 dark:text-gray-100">{prompt}</div>
+          ) : (
+            <div className="mt-1 break-words font-mono text-sm text-gray-900 dark:text-gray-100">{text}</div>
+          )}
         </div>
         <div className="flex shrink-0 gap-2">
           <button className={secondaryButton()} disabled={disabled} onClick={onCancel} type="button">{t("cancel")}</button>
