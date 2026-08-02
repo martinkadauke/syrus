@@ -236,6 +236,10 @@ export type DashboardLane = {
   key: string
   title: string
   count: number
+  total_count?: number
+  loaded_count?: number
+  has_more?: boolean
+  next_offset?: number
   items: DashboardItem[]
 }
 
