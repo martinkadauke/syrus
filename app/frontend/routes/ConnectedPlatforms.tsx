@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useEffect, useRef, useState } from "react"
 import { NoticeToast } from "../components/NoticeToast"
+import { useT } from "../hooks/useT"
 import {
   createLinkingToken,
   deletePlatformIdentity,
@@ -16,19 +17,15 @@ import { ApiError } from "../api/client"
 
 const queryKey = ["platform_identities"] as const
 
-const PLATFORM_LABELS: Record<string, string> = {
-  telegram: "Telegram",
-  slack: "Slack"
-}
-
 export function ConnectedPlatformsRoute() {
+  const { t } = useT("settings")
   const [notice, setNotice] = useState<string | null>(null)
 
   return (
-    <main aria-label="Connected Platforms" className="mx-auto max-w-4xl space-y-6 p-6">
+    <main aria-label={t("connected_platforms.aria")} className="mx-auto max-w-4xl space-y-6 p-6">
       <header>
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Connected Platforms</h1>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Link your Syrus account to external messaging platforms.</p>
+        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t("connected_platforms.heading")}</h1>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{t("connected_platforms.description")}</p>
       </header>
 
       <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
@@ -38,25 +35,27 @@ export function ConnectedPlatformsRoute() {
 }
 
 function ConnectedPlatformsPanel({ onNotice }: { onNotice: (message: string | null) => void }) {
+  const { t } = useT("settings")
   const result = useQuery({
     queryKey,
     queryFn: fetchPlatformIdentities
   })
 
-  if (result.isPending) return <PanelMessage>Loading connected platforms...</PanelMessage>
-  if (result.isError) return <PanelMessage tone="error">{errorMessage(result.error, "Unable to load connected platforms.")}</PanelMessage>
+  if (result.isPending) return <PanelMessage>{t("connected_platforms.loading")}</PanelMessage>
+  if (result.isError) return <PanelMessage tone="error">{errorMessage(result.error, t("connected_platforms.load_error"))}</PanelMessage>
 
   return <PlatformsView onNotice={onNotice} payload={result.data} />
 }
 
 function PlatformsView({ payload, onNotice }: { payload: PlatformIdentitiesPayload; onNotice: (message: string | null) => void }) {
+  const { t } = useT("settings")
   const queryClient = useQueryClient()
 
   const disconnect = useMutation({
     mutationFn: (id: number) => deletePlatformIdentity(id),
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
-      onNotice(updated.message || "Platform account disconnected.")
+      onNotice(updated.message || t("connected_platforms.disconnected_notice"))
     }
   })
 
@@ -97,7 +96,8 @@ function PlatformRow({
   onDisconnect: () => void
   onNotice: (message: string | null) => void
 }) {
-  const label = PLATFORM_LABELS[availablePlatform.platform] ?? availablePlatform.platform
+  const { t } = useT("settings")
+  const label = platformLabel(availablePlatform.platform, t)
   const [linkingToken, setLinkingToken] = useState<LinkingTokenPayload | null>(null)
   const [linkError, setLinkError] = useState<string | null>(null)
 
@@ -109,12 +109,12 @@ function PlatformRow({
       onNotice(null)
     },
     onError: (err) => {
-      setLinkError(errorMessage(err, `Unable to start ${label} linking.`))
+      setLinkError(errorMessage(err, t("connected_platforms.connect_error", { platform: label })))
     }
   })
 
   function handleDisconnect() {
-    if (window.confirm(`Disconnect your ${label} account?`)) {
+    if (window.confirm(t("connected_platforms.disconnect_confirm", { platform: label }))) {
       setLinkingToken(null)
       setLinkError(null)
       onDisconnect()
@@ -128,10 +128,12 @@ function PlatformRow({
           <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{label}</div>
           {identity ? (
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              Connected{identity.external_handle ? ` as ${identity.external_handle}` : ""} since {new Date(identity.linked_at).toLocaleDateString()}
+              {identity.external_handle
+                ? t("connected_platforms.connected_as", { handle: identity.external_handle, date: new Date(identity.linked_at).toLocaleDateString() })
+                : t("connected_platforms.connected_since", { date: new Date(identity.linked_at).toLocaleDateString() })}
             </p>
           ) : (
-            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Not connected</p>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{t("connected_platforms.not_connected")}</p>
           )}
         </div>
 
@@ -143,7 +145,7 @@ function PlatformRow({
               onClick={handleDisconnect}
               type="button"
             >
-              {disconnectPending ? "Disconnecting..." : "Disconnect"}
+              {disconnectPending ? t("connected_platforms.disconnecting") : t("connected_platforms.disconnect")}
             </button>
           ) : availablePlatform.configured ? (
             <button
@@ -152,16 +154,20 @@ function PlatformRow({
               onClick={() => connect.mutate()}
               type="button"
             >
-              {connect.isPending ? "Generating link..." : linkingToken ? "Regenerate link" : "Connect"}
+              {connect.isPending
+                ? t("connected_platforms.generating_link")
+                : linkingToken
+                  ? t("connected_platforms.regenerate_link")
+                  : t("connected_platforms.connect")}
             </button>
           ) : (
             <button
               className="rounded border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-400 dark:text-gray-500 cursor-not-allowed"
               disabled
-              title="This platform integration is not yet available on this instance"
+              title={t("connected_platforms.not_available_title")}
               type="button"
             >
-              Not yet available
+              {t("connected_platforms.not_available")}
             </button>
           )}
         </div>
@@ -194,6 +200,7 @@ function LinkingInstructions({
   onLinked: (payload: PlatformIdentitiesPayload) => void
   onNotice: (message: string | null) => void
 }) {
+  const { t } = useT("settings")
   const [copied, setCopied] = useState(false)
   const onLinkedRef = useRef(onLinked)
   onLinkedRef.current = onLinked
@@ -207,7 +214,7 @@ function LinkingInstructions({
           const event = data as { type?: string; payload?: PlatformIdentitiesPayload }
           if (event.type === "platform_identity_linked" && event.payload) {
             onLinkedRef.current(event.payload)
-            onNotice(`${PLATFORM_LABELS[platform] ?? platform} account connected.`)
+            onNotice(t("connected_platforms.connected_notice", { platform: platformLabel(platform, t) }))
           }
         }
       }
@@ -228,7 +235,7 @@ function LinkingInstructions({
 
   return (
     <div className="mt-3 rounded border border-blue-100 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/40 p-3 text-sm text-blue-950 dark:text-blue-100">
-      <p className="font-medium">How to connect</p>
+      <p className="font-medium">{t("connected_platforms.instructions_heading")}</p>
       <p className="mt-1 text-xs">{tokenPayload.instructions.text}</p>
       {tokenPayload.instructions.bot_handle ? (
         <div className="mt-2 flex items-center gap-2">
@@ -240,11 +247,11 @@ function LinkingInstructions({
             onClick={copyToken}
             type="button"
           >
-            {copied ? "Copied!" : "Copy"}
+            {copied ? t("connected_platforms.copied") : t("connected_platforms.copy")}
           </button>
         </div>
       ) : null}
-      <p className="mt-2 text-xs text-blue-700 dark:text-blue-300">This link expires in 15 minutes. Waiting for you to send the message…</p>
+      <p className="mt-2 text-xs text-blue-700 dark:text-blue-300">{t("connected_platforms.expires")}</p>
     </div>
   )
 }
@@ -259,4 +266,8 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
 
 function errorMessage(error: Error, fallback: string) {
   return error instanceof ApiError ? error.message : fallback
+}
+
+function platformLabel(platform: string, t: (key: string, options?: Record<string, unknown>) => string) {
+  return t(`connected_platforms.platforms.${platform}`, { defaultValue: platform })
 }

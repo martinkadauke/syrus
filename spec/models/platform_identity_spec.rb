@@ -69,4 +69,28 @@ RSpec.describe PlatformIdentity, type: :model do
     expect { owner.destroy! }.to change { PlatformIdentity.count }.by(-1)
     expect { pi.reload }.to raise_error(ActiveRecord::RecordNotFound)
   end
+
+  it "broadcasts the refreshed platform identities payload when linked" do
+    allow(AppUserChannel).to receive(:broadcast_to)
+
+    identity = Factories.platform_identity(user: owner, platform: "telegram", external_handle: "@alice")
+
+    expect(AppUserChannel).to have_received(:broadcast_to).with(
+      owner,
+      hash_including(
+        "type" => "platform_identity_linked",
+        "resource" => "platform_identity",
+        "id" => identity.id,
+        "changed" => [ "platform_identities" ],
+        "payload" => hash_including(
+          "platform_identities" => include(hash_including(
+            "id" => identity.id,
+            "platform" => "telegram",
+            "external_handle" => "@alice"
+          )),
+          "available_platforms" => include(hash_including("platform" => "telegram"))
+        )
+      )
+    )
+  end
 end

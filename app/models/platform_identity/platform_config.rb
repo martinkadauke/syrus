@@ -1,0 +1,2 @@
+module PlatformIdentity::PlatformConfig
+end
