@@ -565,6 +565,38 @@ describe("chat slash commands", () => {
       )
     })
   })
+
+  it("opens the job picker for /diff without an ID and sends the selected job prompt", async () => {
+    const fetchMock = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/mark_read" && init?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      if (path === "/api/v1/app/jobs?repo=acme%2Fwidgets&limit=50") {
+        return Promise.resolve(jsonResponse({
+          count: 1,
+          jobs: [
+            { id: 2204, title: "Diff slash command", issue_title: "Diff slash command", state: "implemented", repository_slug: "acme/widgets", pr_url: null }
+          ]
+        }))
+      }
+
+      return Promise.resolve(jsonResponse(chatPayload()))
+    })
+    renderRoute()
+
+    await submitSlashCommand("/diff")
+    fireEvent.click(await screen.findByText("Diff slash command"))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/app/chats/8/message",
+        expect.objectContaining({ method: "POST" })
+      )
+    })
+    const messageCall = fetchMock.mock.calls.find(([input]) => String(input) === "/api/v1/app/chats/8/message")
+    expect(JSON.parse(messageCall?.[1]?.body as string).chat_message.text).toContain("get_job_diff MCP tool for job 2204")
+  })
 })
 
 describe("chat temporal markers", () => {

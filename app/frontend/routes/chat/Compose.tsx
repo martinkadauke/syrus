@@ -370,7 +370,7 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
 
   function pickerKindForCommand(commandName: SlashCommand["name"]): "job" | "epic" | null {
     if (commandName === "/epic") return "epic"
-    if (commandName === "/job" || commandName === "/cancel" || commandName === "/retry" || commandName === "/feedback" || commandName === "/review" || commandName === "/approve") return "job"
+    if (commandName === "/job" || commandName === "/cancel" || commandName === "/retry" || commandName === "/feedback" || commandName === "/review" || commandName === "/approve" || commandName === "/diff") return "job"
     return null
   }
 
@@ -419,6 +419,10 @@ export function Compose({ autoFocus = false, canLoadEarlierMessages = false, cha
     }
     if (command.name === "/review") {
       handleReviewWithId(id)
+      return
+    }
+    if (command.name === "/diff") {
+      send.mutate(slashCommandPrompt(`/diff ${id}`))
     }
   }
 
