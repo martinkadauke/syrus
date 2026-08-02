@@ -462,6 +462,16 @@ module WorkEngine
         end
       end
 
+      class DiscardSupersededBranchOutput < Base
+        def perform
+          workflow = target_workflow
+          return skipped("Workflow no longer exists") unless workflow
+
+          result = BranchDivergenceRecovery.discard_superseded!(workflow: workflow)
+          result.success? ? success("discarded superseded branch output for Workflow ##{workflow.id}") : skipped(result.error)
+        end
+      end
+
       class ScheduleRetryAfterRateLimit < Base
         def perform
           schedule_auto_retry!(

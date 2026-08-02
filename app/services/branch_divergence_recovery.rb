@@ -7,6 +7,7 @@ class BranchDivergenceRecovery
   def self.mark_force_push_pending!(...) = new(...).mark_force_push_pending!
   def self.record_failure!(workflow:, user:, message:) = new(workflow: workflow, user: user).record_failure!(message: message)
   def self.discard!(...) = new(...).discard!
+  def self.discard_superseded!(workflow:) = new(workflow: workflow, user: nil).discard_superseded!
 
   def initialize(workflow:, user:)
     @workflow = workflow
@@ -74,6 +75,15 @@ class BranchDivergenceRecovery
     Result.new(error: nil)
   end
 
+  def discard_superseded!
+    return failure("No branch divergence was recorded for this workflow.") unless divergence
+    return failure("Current PR head no longer matches the recorded remote SHA.") unless current_pr_head_matches_recorded_remote?
+
+    record_recovery!("superseded_by_current_pr_branch")
+    restore_job_to_implemented_if_possible!
+    Result.new(error: nil)
+  end
+
   private
 
   attr_reader :workflow, :job, :user
@@ -90,6 +100,16 @@ class BranchDivergenceRecovery
     divergence["remote_sha"].presence
   end
 
+  def current_pr_head_matches_recorded_remote?
+    current_pr_head_sha.present? && current_pr_head_sha == remote_sha
+  end
+
+  def current_pr_head_sha
+    return job[:head_sha].presence if job.has_attribute?(:head_sha)
+
+    job.mergeability_head_sha.presence || job.pr_checks_sha.presence
+  end
+
   def workspace_path
     WorkflowWorkspace.path_for(workflow)
   end
@@ -104,12 +124,14 @@ class BranchDivergenceRecovery
   end
 
   def record_recovery!(action)
+    payload = {
+      "action" => action,
+      "at" => Time.current.iso8601
+    }
+    payload["user_id"] = user.id if user
+
     write_artifacts!(
-      "branch_divergence_recovery" => {
-        "action" => action,
-        "user_id" => user.id,
-        "at" => Time.current.iso8601
-      },
+      "branch_divergence_recovery" => payload,
       "branch_divergence_recovery_pending" => nil,
       "branch_divergence_recovery_error" => nil
     )

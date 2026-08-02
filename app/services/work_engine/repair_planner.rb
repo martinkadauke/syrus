@@ -555,6 +555,39 @@ module WorkEngine
         end
       end
 
+      class BranchDivergedPrOpen < Base
+        def plan
+          return retry_budget_exhausted_plan unless retry_budget_available?
+
+          automatic_plan(
+            "retry_workflow",
+            primary_workflow,
+            "The PR branch moved before pr_open could push; retrying from the current PR branch preserves the protected remote head.",
+            execution_steps: [ "RetryWorkflowEnqueuer.call" ],
+            preconditions: {
+              classification: classification&.classification,
+              current_pr_head_matches_divergence: true,
+              retry_budget_available: true
+            }
+          )
+        end
+      end
+
+      class StaleBranchDivergedWorkflow < Base
+        def plan
+          automatic_plan(
+            "discard_superseded_branch_output",
+            primary_workflow,
+            "The failed workflow output is stale because the current PR branch is already at the recorded remote head.",
+            execution_steps: [ "BranchDivergenceRecovery.discard_superseded!" ],
+            preconditions: {
+              classification: classification&.classification,
+              current_pr_head_matches_divergence: true
+            }
+          )
+        end
+      end
+
       class QueuedWorkflowWithoutFirstRun < Base
         def plan
           unless issue.safe_to_auto_repair

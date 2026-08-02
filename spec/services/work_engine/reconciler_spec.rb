@@ -328,6 +328,97 @@ RSpec.describe WorkEngine::Reconciler do
     expect(attempt.reload.skipped_reason).to eq("source workflow was already superseded by a successful workflow")
   end
 
+  it "discards stale branch-diverged workflow output when the current PR head matches the protected remote SHA" do
+    job.update!(
+      state: "queued",
+      pr_number: 77,
+      branch_name: "syrus/issue-42-#{job.id}",
+      mergeability_head_sha: "remote-head"
+    )
+    workflow.update_columns(state: "failed", trigger_kind: "retry", finished_at: 10.minutes.ago)
+    step.update_columns(kind: "pr_open", state: "failed", finished_at: 10.minutes.ago)
+    run.update_columns(state: "failed", finished_at: 10.minutes.ago)
+    run.create_run_failure_classification!(
+      classification: "branch_diverged",
+      retryable: false,
+      confidence: 0.95,
+      reason: "The PR branch changed before Syrus could push this workflow.",
+      classified_at: 10.minutes.ago
+    )
+    workflow.set_artifact!("branch_divergence", {
+      "branch" => job.branch_name,
+      "remote_sha" => "remote-head",
+      "local_sha" => "stale-local"
+    })
+    newer = Workflow.create!(
+      job: job,
+      trigger_kind: "retry",
+      state: "cancelled",
+      created_at: 1.minute.ago,
+      finished_at: 1.minute.ago
+    )
+
+    result = reconcile_and_execute(workflow_id: workflow.id)
+
+    expect(kind(result, :stale_branch_diverged_workflow)).to have_attributes(
+      severity: "info",
+      safe_to_auto_repair: true,
+      recommended_repair_action: "discard_superseded_branch_output"
+    )
+    expect(kind(result, :nonretryable_semantic_git_failure)).to be_nil
+    expect(plan(result, :discard_superseded_branch_output)).to have_attributes(
+      auto_executable: true,
+      target_type: "Workflow",
+      target_id: workflow.id
+    )
+    expect(result.repair_executions.map(&:message)).to include("discarded superseded branch output for Workflow ##{workflow.id}")
+    expect(workflow.reload.artifact("branch_divergence_recovery")).to include(
+      "action" => "superseded_by_current_pr_branch"
+    )
+    expect(job.reload).to be_queued
+    expect(newer.reload).to be_cancelled
+  end
+
+  it "plans a fresh retry from the current PR branch for the latest failed branch divergence" do
+    job.update!(
+      state: "failed",
+      pr_number: 77,
+      branch_name: "syrus/issue-42-#{job.id}",
+      mergeability_head_sha: "remote-head"
+    )
+    workflow.update_columns(state: "failed", trigger_kind: "retry", finished_at: 10.minutes.ago)
+    step.update_columns(kind: "pr_open", state: "failed", finished_at: 10.minutes.ago)
+    run.update_columns(state: "failed", finished_at: 10.minutes.ago, agent_provider: "claude")
+    run.create_run_failure_classification!(
+      classification: "branch_diverged",
+      retryable: false,
+      confidence: 0.95,
+      reason: "The PR branch changed before Syrus could push this workflow.",
+      classified_at: 10.minutes.ago
+    )
+    workflow.set_artifact!("branch_divergence", {
+      "branch" => job.branch_name,
+      "remote_sha" => "remote-head",
+      "local_sha" => "stale-local"
+    })
+
+    result = reconcile_and_execute(workflow_id: workflow.id)
+
+    expect(kind(result, :branch_diverged_pr_open)).to have_attributes(
+      severity: "warning",
+      safe_to_auto_repair: true,
+      recommended_repair_action: "retry_workflow"
+    )
+    expect(kind(result, :nonretryable_semantic_git_failure)).to be_nil
+    expect(plan(result, :retry_workflow)).to have_attributes(
+      auto_executable: true,
+      target_type: "Workflow",
+      target_id: workflow.id
+    )
+    expect(AutoRetryAttempt.where(job: job, workflow: workflow, run: run, retry_kind: "retry_workflow")).to exist
+    expect(enqueued_jobs.map { |entry| entry[:job] }).to include(AutoRetryJob)
+  end
+
   it "does not re-enqueue a queued Run while a normal-queue RunJob is scheduled for retry" do
     run.update_columns(state: "queued", created_at: 5.minutes.ago, updated_at: 5.minutes.ago)
     workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_hostname: "syrus-worker-dead")

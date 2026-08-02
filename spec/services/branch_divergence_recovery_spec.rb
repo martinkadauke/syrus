@@ -25,6 +25,29 @@ RSpec.describe BranchDivergenceRecovery do
     expect(job.reload).to be_implemented
   end
 
+  it "auto-discards superseded output only when the current PR head matches the recorded remote SHA" do
+    job.update!(mergeability_head_sha: "remote-sha")
+
+    result = described_class.discard_superseded!(workflow: workflow)
+
+    expect(result).to be_success
+    expect(workflow.reload.artifact("branch_divergence_recovery")).to include(
+      "action" => "superseded_by_current_pr_branch"
+    )
+    expect(workflow.artifact("branch_divergence_recovery")).not_to have_key("user_id")
+    expect(job.reload).to be_implemented
+  end
+
+  it "does not auto-discard superseded output when the current PR head no longer matches" do
+    job.update!(mergeability_head_sha: "newer-remote-sha")
+
+    result = described_class.discard_superseded!(workflow: workflow)
+
+    expect(result).not_to be_success
+    expect(result.error).to eq("Current PR head no longer matches the recorded remote SHA.")
+    expect(workflow.reload.artifact("branch_divergence_recovery")).to be_nil
+  end
+
   it "force-pushes with a lease against the observed remote SHA" do
     Dir.mktmpdir("syrus-branch-divergence-recovery") do |dir|
       git = instance_double(GitRunner)

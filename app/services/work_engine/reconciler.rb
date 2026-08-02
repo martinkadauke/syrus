@@ -153,6 +153,7 @@ module WorkEngine
       issues.concat(classify_rate_limits)
       issues.concat(classify_workspace_availability)
       issues.concat(classify_resumable_sessions)
+      issues.concat(classify_branch_divergence)
       issues.concat(classify_retryable_failures)
       issues.concat(classify_nonretryable_failures)
       issues.concat(classify_cleanup_blockers)
@@ -722,6 +723,7 @@ module WorkEngine
       runs.select(&:failed?).filter_map do |run|
         next if run.job&.closed?
         next if step_needs_terminal_run_reconciliation?(run.step)
+        next if recoverable_branch_divergence?(run)
 
         classification = run.run_failure_classification
         next if classification.nil?
@@ -748,10 +750,57 @@ module WorkEngine
       end
     end
 
+    def classify_branch_divergence
+      runs.select(&:failed?).filter_map do |run|
+        next if run.job&.closed?
+        next if step_needs_terminal_run_reconciliation?(run.step)
+        next unless branch_diverged_pr_open_run?(run)
+
+        workflow = run.workflow
+        job = run.job
+        divergence = workflow&.artifact("branch_divergence").presence
+        next if workflow&.artifact("branch_divergence_recovery").present?
+        next unless divergence_current_pr_head?(job, divergence)
+
+        if workflow == job.latest_workflow && job.failed? && !job.any_active_run?
+          issue(
+            kind: :branch_diverged_pr_open,
+            severity: :warning,
+            affected_ids: ids_for(run),
+            safe_to_auto_repair: true,
+            recommended_repair_action: "retry_workflow",
+            evidence: run_evidence(run).merge(
+              classification: run.run_failure_classification&.classification,
+              branch_divergence: divergence,
+              current_pr_head_sha: current_pr_head_sha(job)
+            ),
+            explanation: "Run ##{run.id} failed because the PR branch changed; retrying as a new workflow preserves the current PR branch."
+          )
+        else
+          issue(
+            kind: :stale_branch_diverged_workflow,
+            severity: :info,
+            affected_ids: ids_for(run),
+            safe_to_auto_repair: true,
+            recommended_repair_action: "discard_superseded_branch_output",
+            evidence: run_evidence(run).merge(
+              classification: run.run_failure_classification&.classification,
+              branch_divergence: divergence,
+              current_pr_head_sha: current_pr_head_sha(job),
+              latest_workflow_id: job.latest_workflow&.id,
+              latest_workflow_state: job.latest_workflow&.state
+            ),
+            explanation: "Workflow ##{workflow.id} has stale branch-diverged output; the current PR branch is already at the protected remote SHA."
+          )
+        end
+      end
+    end
+
     def classify_nonretryable_failures
       runs.select(&:failed?).filter_map do |run|
         next if run.job&.closed?
         next if step_needs_terminal_run_reconciliation?(run.step)
+        next if recoverable_branch_divergence?(run)
 
         classification = run.run_failure_classification
         next if classification.nil?
@@ -1143,6 +1192,32 @@ module WorkEngine
       Step::Kind.fetch(step.kind).repair_semantics.to_s
     rescue ArgumentError
       nil
+    end
+
+    def recoverable_branch_divergence?(run)
+      branch_diverged_pr_open_run?(run) &&
+        run.workflow&.artifact("branch_divergence_recovery").blank? &&
+        divergence_current_pr_head?(run.job, run.workflow&.artifact("branch_divergence"))
+    end
+
+    def branch_diverged_pr_open_run?(run)
+      run.step&.kind == "pr_open" &&
+        run.run_failure_classification&.classification == "branch_diverged"
+    end
+
+    def divergence_current_pr_head?(job, divergence)
+      return false unless job&.pr_number.present?
+      return false unless divergence.is_a?(Hash)
+
+      remote_sha = divergence["remote_sha"].presence
+      remote_sha.present? && current_pr_head_sha(job).present? && remote_sha == current_pr_head_sha(job)
+    end
+
+    def current_pr_head_sha(job)
+      return nil unless job
+      return job[:head_sha].presence if job.has_attribute?(:head_sha)
+
+      job.mergeability_head_sha.presence || job.pr_checks_sha.presence
     end
 
     def context_description

@@ -48,6 +48,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       queued_with_healthy_queue_job_beside_dead_resume_job
       inline_successor_owned_by_live_root_job
       stale_auto_retry_workflow_with_queued_run
+      stale_branch_diverged_workflow
       closed_job_with_active_workflow
       running_step_with_failed_terminal_run
       running_step_with_succeeded_terminal_run
@@ -704,6 +705,45 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       )
     end
 
+    def stale_branch_diverged_workflow
+      job, workflow, step, run = graph
+      branch = "syrus/issue-#{case_number}-#{job.id}"
+      remote_sha = "remote-#{case_number}"
+      local_sha = "local-#{case_number}"
+      job.update_columns(
+        state: "queued",
+        pr_number: 10_000 + case_number,
+        branch_name: branch,
+        mergeability_head_sha: remote_sha
+      )
+      workflow.update_columns(state: "failed", trigger_kind: "retry", finished_at: 5.minutes.ago)
+      step.update_columns(kind: "pr_open", state: "failed", finished_at: 5.minutes.ago)
+      run.update_columns(state: "failed", finished_at: 5.minutes.ago)
+      workflow.set_artifact!("branch_divergence", {
+        "branch" => branch,
+        "remote_sha" => remote_sha,
+        "local_sha" => local_sha
+      })
+      RunFailureClassification.create!(
+        run: run,
+        classification: "branch_diverged",
+        retryable: false,
+        confidence: 0.95,
+        reason: "chaos branch divergence",
+        classified_at: 5.minutes.ago
+      )
+      trace << "workflow=#{workflow.id}:stale_branch_diverged remote=#{remote_sha} local=#{local_sha}"
+
+      expectation(
+        "stale branch-diverged workflow",
+        target: { workflow_id: workflow.id },
+        expected_issue: :stale_branch_diverged_workflow,
+        expected_action: :discard_superseded_branch_output,
+        forbidden_issues: %i[nonretryable_semantic_git_failure retryable_run_failure],
+        forbidden_actions: %i[operator_review_nonretryable_failure retry_workflow]
+      )
+    end
+
     def running_step_with_failed_terminal_run
       _job, workflow, step, _run = graph
       run = failed_terminal_run_on_running_step!(workflow, step)
@@ -1090,6 +1130,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
 
     assert_chaos_case!(simulation.empty_topology_case)
     assert_chaos_case!(simulation.send(:stale_auto_retry_workflow_with_queued_run))
+    assert_chaos_case!(simulation.send(:stale_branch_diverged_workflow))
     assert_chaos_case!(simulation.send(:running_step_with_failed_terminal_run))
     assert_chaos_case!(simulation.send(:running_step_with_succeeded_terminal_run))
     assert_chaos_case!(simulation.send(:closed_job_with_active_workflow))
