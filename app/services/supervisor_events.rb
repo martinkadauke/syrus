@@ -1,70 +1,92 @@
 class SupervisorEvents
   SEVERITIES = %w[info warning critical].freeze
-  DEDUPE_LOOKBACK = 24.hours
 
   class << self
-    def publish!(kind:, severity:, subject:, repository: nil, actor: nil, summary:, details: nil, dedupe_key: nil)
+    def publish!(kind:, severity:, subject:, repository: nil, job: nil, epic: nil, proposal: nil, workflow: nil, run: nil, pr_number: nil, actor: nil, summary:, details: nil, dedupe_key: nil)
       return [] unless Feature.admin_supervisor_chat_enabled?
+
+      recipients = ChatScopedEventRecipients.new(
+        repository: repository,
+        job: job,
+        epic: epic,
+        proposal: proposal,
+        workflow: workflow,
+        run: run,
+        pr_number: pr_number,
+        details: details
+      )
 
       event = normalize_event(
         kind: kind,
         severity: severity,
         subject: subject,
-        repository: repository,
+        repository: recipients.repository,
         actor: actor,
         summary: summary,
         details: details,
         dedupe_key: dedupe_key
       )
 
-      User.where(admin: true).find_each.filter_map do |admin|
-        publish_for_admin!(admin, event)
+      supervisor_events = User.where(admin: true).find_each.filter_map do |admin|
+        chat = SupervisorChat.ensure_for!(admin)
+        publish_for_chat!(
+          chat,
+          event,
+          repository: recipients.repository,
+          job: recipients.job,
+          epic: recipients.epic,
+          proposal: recipients.proposal,
+          changed_marker: "supervisor_event"
+        )
       end
+
+      scoped_chat_events = recipients.chat_sessions.filter_map do |chat|
+        publish_for_chat!(
+          chat,
+          event,
+          repository: recipients.repository,
+          job: recipients.job,
+          epic: recipients.epic,
+          proposal: recipients.proposal,
+          changed_marker: "scoped_event"
+        )
+      end
+
+      supervisor_events + scoped_chat_events
     end
 
     private
 
-    def publish_for_admin!(admin, event)
-      chat = SupervisorChat.ensure_for!(admin)
-      return if duplicate?(chat, event["dedupe_key"])
-
-      message = nil
+    def publish_for_chat!(chat, event, repository:, job:, epic:, proposal:, changed_marker:)
+      scoped_event = nil
+      created = false
       now = Time.current
       ChatSession.transaction(requires_new: true) do
-        message = chat.messages.create!(
-          role: "system",
-          content: {
-            "text" => message_text(event),
-            "supervisor_event" => event.merge("occurred_at" => now.iso8601)
-          }
+        scoped_event = ChatScopedEvent.record!(
+          chat_session: chat,
+          source_kind: event.fetch("kind"),
+          payload: event.merge("occurred_at" => now.iso8601),
+          repository: repository || job&.repository,
+          job: job,
+          epic: epic,
+          proposal: proposal,
+          dedupe_key: event["dedupe_key"]
         )
-        chat.update!(last_message_at: now, last_read_at: nil)
+        created = scoped_event.previously_new_record?
+        chat.update!(last_message_at: now, last_read_at: nil) if created && chat.system_kind_supervisor?
       end
+      return unless created
 
       AppEvents.broadcast(
-        user: admin,
+        user: chat.user,
         type: "updated",
         resource: "chat",
         id: chat.id,
-        changed: [ "last_message_at", "last_read_at", "supervisor_event" ]
-      )
+        changed: [ "last_message_at", "last_read_at", changed_marker ]
+      ) if chat.system_kind_supervisor?
+      ChatScopedEventEvaluatorJob.perform_later(scoped_event.id, chat.id)
 
-      message
-    end
-
-    def duplicate?(chat, dedupe_key)
-      return false if dedupe_key.blank?
-
-      chat.messages
-        .where(role: "system")
-        .where("created_at >= ?", DEDUPE_LOOKBACK.ago)
-        .order(created_at: :desc, id: :desc)
-        .limit(200)
-        .any? do |message|
-          content = message.content
-          content.is_a?(Hash) &&
-            content.dig("supervisor_event", "dedupe_key").to_s == dedupe_key.to_s
-        end
+      scoped_event
     end
 
     def normalize_event(kind:, severity:, subject:, repository:, actor:, summary:, details:, dedupe_key:)

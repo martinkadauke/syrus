@@ -24,6 +24,32 @@ settings. Switching the chat to another configured provider clears the warning
 for that chat immediately. Transient provider circuits are not treated as usage
 exhaustion and keep their existing non-red UI.
 
+Scoped chat events can be evaluated before a live chat turn is woken.
+`ChatScopedEventEvaluatorJob` runs a disposable provider session with a fresh
+temporary evaluator session id, rehydrated from a cloned persisted transcript.
+The clone uses the full chat when it fits; otherwise it keeps the latest 10,000
+messages and trims oversized content/tool outputs to a byte budget. Evaluators
+see only read-only MCP tools and persist a structured decision (`no_op`,
+`respond`, or `act`) on the `ChatScopedEvent`; temporary provider transcript
+artifacts are removed and the live chat provider session is left untouched.
+`no_op` decisions do not create visible chat messages. `respond` and `act`
+decisions create an immediate `ChatWakeup` containing the scoped event,
+evaluator decision, and handoff prompt; the live chat turn is instructed to
+refresh current Syrus state before relying on event data.
+The admin overview includes operator/debug observability for this pipeline:
+24-hour `no_op`/`respond`/`act` counts, evaluator state counts, recent scoped
+events, and recent evaluator failure reasons. Failed evaluator events remain
+retryable; already delivered actionable events are skipped on retry so visible
+chat wakeups are not duplicated.
+
+When the `admin_supervisor_chat` feature is enabled, the same scoped event flow
+also applies to ordinary chat threads for work that originated in that chat.
+Syrus resolves ordinary chat scope from confirmed proposal lineage: the
+materialized proposal itself, its Job or Epic, a Job's Epic, related
+Workflows/Runs through their Job, and pull request numbers that map back to a
+Syrus Job. Ordinary chats do not receive events for unrelated Jobs or Epics, and
+generic chat attachments are not treated as origin evidence.
+
 The chat composer recognizes leading slash commands. Typing `/` opens the
 command palette.
 

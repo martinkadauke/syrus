@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_02_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_02_180000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -55,9 +55,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_02_090000) do
     t.integer "chat_coding_workspace_budget_mb", default: 0, null: false
     t.datetime "created_at", null: false
     t.bigint "github_app_id"
+    t.integer "github_app_installation_sync_duration_ms"
     t.string "github_app_installation_sync_error_class"
     t.text "github_app_installation_sync_error_message"
-    t.integer "github_app_installation_sync_duration_ms"
     t.integer "github_app_installation_sync_records_seen"
     t.datetime "github_app_installation_sync_started_at"
     t.datetime "github_app_installation_sync_succeeded_at"
@@ -285,6 +285,36 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_02_090000) do
     t.index ["chat_session_id"], name: "index_chat_queued_messages_on_chat_session_id"
   end
 
+  create_table "chat_scoped_events", force: :cascade do |t|
+    t.integer "chat_message_id"
+    t.integer "chat_session_id", null: false
+    t.datetime "created_at", null: false
+    t.string "dedupe_key"
+    t.datetime "delivered_at"
+    t.string "delivery_state", default: "pending", null: false
+    t.integer "epic_id"
+    t.datetime "evaluated_at"
+    t.text "evaluator_error"
+    t.json "evaluator_result"
+    t.string "evaluator_session_id"
+    t.string "evaluator_state", default: "pending", null: false
+    t.integer "job_id"
+    t.json "payload", null: false
+    t.integer "proposal_id"
+    t.integer "repository_id"
+    t.string "source_kind", null: false
+    t.datetime "updated_at", null: false
+    t.index ["chat_message_id"], name: "index_chat_scoped_events_on_chat_message_id"
+    t.index ["chat_session_id", "dedupe_key"], name: "idx_chat_scoped_events_dedupe", unique: true
+    t.index ["chat_session_id", "delivery_state", "created_at"], name: "idx_chat_scoped_events_delivery"
+    t.index ["chat_session_id"], name: "index_chat_scoped_events_on_chat_session_id"
+    t.index ["epic_id"], name: "index_chat_scoped_events_on_epic_id"
+    t.index ["evaluator_state", "created_at"], name: "idx_chat_scoped_events_evaluator"
+    t.index ["job_id"], name: "index_chat_scoped_events_on_job_id"
+    t.index ["proposal_id"], name: "index_chat_scoped_events_on_proposal_id"
+    t.index ["repository_id"], name: "index_chat_scoped_events_on_repository_id"
+  end
+
   create_table "chat_scratchpad_items", force: :cascade do |t|
     t.integer "chat_session_id", null: false
     t.text "content", null: false
@@ -369,6 +399,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_02_090000) do
     t.integer "chat_session_id", null: false
     t.datetime "created_at", null: false
     t.datetime "fire_at", null: false
+    t.json "metadata"
     t.text "prompt", null: false
     t.string "state", default: "pending", null: false
     t.datetime "updated_at", null: false
@@ -1622,6 +1653,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_02_090000) do
   add_foreign_key "chat_proposals", "jobs"
   add_foreign_key "chat_proposals", "repositories"
   add_foreign_key "chat_queued_messages", "chat_sessions"
+  add_foreign_key "chat_scoped_events", "chat_messages"
+  add_foreign_key "chat_scoped_events", "chat_proposals", column: "proposal_id"
+  add_foreign_key "chat_scoped_events", "chat_sessions"
+  add_foreign_key "chat_scoped_events", "epics"
+  add_foreign_key "chat_scoped_events", "jobs"
+  add_foreign_key "chat_scoped_events", "repositories"
   add_foreign_key "chat_scratchpad_items", "chat_sessions"
   add_foreign_key "chat_sessions", "users"
   add_foreign_key "chat_video_walkthroughs", "chat_sessions"
