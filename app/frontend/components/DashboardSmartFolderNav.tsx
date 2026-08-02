@@ -24,7 +24,8 @@ export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: 
   const primaryFolders = useMemo(() => builtinFolders.filter((folder) => folder.visibility !== "on_demand"), [builtinFolders])
   const moreFolders = useMemo(() => builtinFolders.filter((folder) => folder.visibility === "on_demand"), [builtinFolders])
   const savedFolders = useMemo(() => payload.smart_folders.filter((folder) => folder.kind === "user_defined"), [payload.smart_folders])
-  const activeFolder = savedFolders.find((folder) => folder.id === payload.active_smart_folder_id)
+  const activeSmartFolderId = smartFolderIdFromSearch(search) ?? payload.active_smart_folder_id
+  const activeFolder = savedFolders.find((folder) => folder.id === activeSmartFolderId)
   const [orderedSavedFolders, setOrderedSavedFolders] = useState(savedFolders)
   const [isReordering, setIsReordering] = useState(false)
   const orderedSavedFoldersRef = useRef(savedFolders)
@@ -38,13 +39,13 @@ export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: 
   })
   const allPath = dashboardLink(`${prefix}${subjectPath(payload.subject)}`, { view: payload.view })
   const allJobsLink = (
-    <Link className={folderClass(payload.active_smart_folder_id == null)} onClick={() => updatePreferences.mutate({ subject: payload.subject, smart_folder_id: null })} to={allPath}>
+    <Link className={folderClass(activeSmartFolderId == null)} onClick={() => updatePreferences.mutate({ subject: payload.subject, smart_folder_id: null })} to={allPath}>
       {allSubjectLabel(payload.subject, t)}
     </Link>
   )
   const appliedTree = filterTreeFromPayload(payload.filter)
   const hasAppliedFilter = topFilterChildren(appliedTree).length > 0
-  const selectedFolder = payload.smart_folders.find((folder) => folder.id === payload.active_smart_folder_id)
+  const selectedFolder = payload.smart_folders.find((folder) => folder.id === activeSmartFolderId)
   const filterChangedFromSelectedFolder = selectedFolder?.filter != null && !filterTreesEqual(appliedTree, filterTreeFromPayload(selectedFolder.filter))
   const canUpdateFilter = activeFolder != null && filterChangedFromSelectedFolder
   const canSaveFilter = selectedFolder != null && hasAppliedFilter && filterChangedFromSelectedFolder
@@ -140,12 +141,12 @@ export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: 
     <aside aria-label={t("smart_folders_panel_aria")} className="space-y-2">
       <nav aria-label={t("smart_folders_aria")} className="space-y-1">
         {payload.subject === "job" ? null : allJobsLink}
-        {primaryFolders.map((folder) => <SmartFolderLink folder={folder} key={folder.id} onSelect={() => updatePreferences.mutate({ subject: payload.subject, smart_folder_id: folder.id })} prefix={prefix} />)}
+        {primaryFolders.map((folder) => <SmartFolderLink folder={folderWithActive(folder, activeSmartFolderId)} key={folder.id} onSelect={() => updatePreferences.mutate({ subject: payload.subject, smart_folder_id: folder.id })} prefix={prefix} />)}
         {moreFolders.length > 0 ? (
-          <details className="space-y-1" open={moreFolders.some((folder) => folder.active) || undefined}>
+          <details className="space-y-1" open={moreFolders.some((folder) => folder.id === activeSmartFolderId || folder.active) || undefined}>
             <summary className="list-none cursor-pointer px-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{t("smart_folder.more")}</summary>
             <div className="space-y-1">
-              {moreFolders.map((folder) => <SmartFolderLink folder={folder} key={folder.id} onSelect={() => updatePreferences.mutate({ subject: payload.subject, smart_folder_id: folder.id })} prefix={prefix} />)}
+              {moreFolders.map((folder) => <SmartFolderLink folder={folderWithActive(folder, activeSmartFolderId)} key={folder.id} onSelect={() => updatePreferences.mutate({ subject: payload.subject, smart_folder_id: folder.id })} prefix={prefix} />)}
             </div>
           </details>
         ) : null}
@@ -157,7 +158,7 @@ export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: 
             {orderedSavedFolders.map((folder, index) => (
               <SmartFolderLink
                 draggable={!isReordering}
-                folder={folder}
+                folder={folderWithActive(folder, activeSmartFolderId)}
                 key={folder.id}
                 onDragEnd={clearSavedFolderDrag}
                 onDragOver={(event) => dragOverSavedFolder(index, event)}
@@ -576,6 +577,19 @@ function clearDashboardFilterOverrides(path: string, search: string) {
 
   const query = params.toString()
   return query ? `${path}?${query}` : path
+}
+
+function folderWithActive(folder: DashboardSmartFolder, activeSmartFolderId: number | null) {
+  const active = folder.id === activeSmartFolderId
+  return folder.active === active ? folder : { ...folder, active }
+}
+
+function smartFolderIdFromSearch(search: string) {
+  const value = new URLSearchParams(search).get("smart_folder_id")
+  if (!value) return null
+
+  const id = Number(value)
+  return Number.isInteger(id) ? id : null
 }
 
 function mergeFilterTrees(baseTree: FilterTree, overrideTree: FilterTree): FilterTree {
