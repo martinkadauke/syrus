@@ -76,7 +76,7 @@ class SmartRetryEnqueuer
     return skipped(:active_run, "A Run is already in progress - wait for it to finish.") if job.any_active_run?
     return provider_circuit_skip if automatic? && provider_circuit.open?
 
-    resume_failed_step || retry_failed_step_or_landing || retry_landing || retry_implementation
+    resume_failed_step || retry_diverged_pr_open_as_new_workflow || retry_failed_step_or_landing || retry_landing || retry_implementation
   end
 
   private
@@ -133,6 +133,12 @@ class SmartRetryEnqueuer
     succeeded(:resume_failed_step, result)
   end
 
+  def retry_diverged_pr_open_as_new_workflow
+    return unless branch_diverged_pr_open?
+
+    retry_implementation
+  end
+
   def retry_failed_step_or_landing
     return unless latest_workflow&.retry_available?
     return unless failed_step
@@ -177,6 +183,18 @@ class SmartRetryEnqueuer
     return skipped(:not_retryable, result.error, circuit: result.circuit) unless result.success?
 
     succeeded(:implementation, result)
+  end
+
+  def branch_diverged_pr_open?
+    failed_step&.kind == "pr_open" &&
+      failed_run_classification == "branch_diverged"
+  end
+
+  def failed_run_classification
+    return nil unless failed_run
+
+    failed_run.run_failure_classification&.classification ||
+      RunFailureClassifier.classify(failed_run).classification
   end
 
   def succeeded(action, result = nil, workflow: nil)

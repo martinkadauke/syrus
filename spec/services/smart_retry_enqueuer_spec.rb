@@ -106,6 +106,30 @@ RSpec.describe SmartRetryEnqueuer do
     expect(workflow.reload).to be_running
   end
 
+  it "starts a fresh retry workflow for branch-diverged pr_open failures" do
+    job, workflow, step, run = failed_job(step_kind: "pr_open")
+    run.create_run_failure_classification!(
+      classification: "branch_diverged",
+      confidence: 0.95,
+      retryable: false,
+      reason: "The PR branch changed before Syrus could push this workflow.",
+      classified_at: Time.current
+    )
+
+    expect {
+      result = described_class.call(job: job, automatic: true)
+
+      expect(result).to be_success
+      expect(result.action).to eq(:implementation)
+      expect(result.workflow).not_to eq(workflow)
+      expect(result.workflow.trigger_kind).to eq("retry")
+    }.to change { job.workflows.where(trigger_kind: "retry").count }.by(1)
+      .and have_enqueued_job(RunJob)
+
+    expect(workflow.reload).to be_failed
+    expect(step.reload).to be_failed
+  end
+
   it "skips active runs and provider circuits with explicit reasons" do
     active_job, = failed_job
     active_job.latest_workflow.steps.first.runs.create!(
