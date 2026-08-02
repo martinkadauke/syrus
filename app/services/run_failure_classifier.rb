@@ -39,6 +39,8 @@ class RunFailureClassifier
       result("mcp_sidecar_failure", 0.75, true, "The agent sidecar failed or disconnected.")
     when process_died?
       result("worker_died", 0.95, true, "The worker or agent process disappeared while the run was active.")
+    when agent_resume_unavailable?
+      result("agent_resume_unavailable", 0.90, true, "The provider resume session was unavailable; retry without provider resume.")
     when branch_diverged?
       result("branch_diverged", 0.95, false, "The PR branch changed before Syrus could push this workflow.")
     when merge_train_rebase_conflict?
@@ -111,6 +113,10 @@ class RunFailureClassifier
   def branch_diverged?
     diagnostic&.error_class.to_s.match?(/Steps::PrOpen::BranchDiverged/) ||
       text_match?(/PR branch changed before Syrus could push|branch diverged|non-fast-forward/i)
+  end
+
+  def agent_resume_unavailable?
+    text_match?(/no stored rollout JSONL|no rollout found|thread\/resume failed|No conversation found/i)
   end
 
   def merge_train_rebuild_required?

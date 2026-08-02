@@ -72,6 +72,19 @@ RSpec.describe RunFailureClassifier do
     expect(classification.classification).to eq("provider_auth_or_config")
   end
 
+  it "classifies missing provider resume state as retryable" do
+    run.update!(state: "failed", agent_provider: "codex", agent_outcome: "turn_failed")
+    JobLog.append!(
+      run: run,
+      chunk: "[codex resume] resume for session 019f-missing did not complete successfully: thread/resume failed: no rollout found for thread id 019f-missing",
+      kind: "system"
+    )
+
+    result = classification
+    expect(result.classification).to eq("agent_resume_unavailable")
+    expect(result.retryable).to eq(true)
+  end
+
   it "classifies an Errno::E2BIG argv-too-long agent failure as agent_invocation_too_large" do
     run.update!(state: "failed", agent_provider: "claude")
     diagnostic("Errno::E2BIG", "Argument list too long - claude")

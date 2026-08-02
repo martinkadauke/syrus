@@ -43,9 +43,9 @@ module Steps
           required_mcp_tools: %w[submit_summary]
         )
       rescue StepFailed => e
-        raise unless prompt_too_long_failure?(e)
+        raise unless resume_fallback_failure?(e)
 
-        log("summarize resume prompt was too large; retrying summary without --resume")
+        log("#{resume_fallback_reason(e)}; retrying summary without --resume")
         run.update!(agent_pr_title: nil, agent_pr_body: nil, agent_summary: nil)
         run_agent(
           prompt: fallback_prompt,
@@ -89,6 +89,17 @@ module Steps
       workflow.steps.exists?(kind: "implement") && successful_implement_run.blank?
     end
 
+    def resume_fallback_failure?(error)
+      prompt_too_long_failure?(error) || codex_resume_unavailable_failure?
+    end
+
+    def resume_fallback_reason(error)
+      return "summarize resume prompt was too large" if prompt_too_long_failure?(error)
+      return "summarize Codex resume state was unavailable" if codex_resume_unavailable_failure?
+
+      "summarize resume failed"
+    end
+
     def prompt_too_long_failure?(error)
       return true if error.message.match?(/prompt is too long/i)
 
@@ -97,6 +108,14 @@ module Steps
         .limit(25)
         .pluck(:chunk)
         .any? { |chunk| chunk.to_s.match?(/prompt is too long/i) }
+    end
+
+    def codex_resume_unavailable_failure?
+      run.job_logs
+        .order(sequence: :desc)
+        .limit(25)
+        .pluck(:chunk)
+        .any? { |chunk| chunk.to_s.match?(/no stored rollout JSONL|no rollout found|thread\/resume failed|No conversation found/i) }
     end
 
     def fallback_prompt

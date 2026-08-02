@@ -199,6 +199,46 @@ RSpec.describe Steps::Summarize, :ci_only do
       expect(run.job_logs.pluck(:chunk).join("\n")).to include("retrying summary without --resume")
     end
 
+    it "retries summarize without --resume when Codex resume rollout is unavailable" do
+      workflow.update!(agent_provider: "codex")
+      implement_step = Step.create!(workflow: workflow, kind: "implement", position: 0, next_step_id: step.id)
+      implement_run = Run.create!(
+        job: job,
+        step: implement_step,
+        trigger_kind: "initial",
+        state: "succeeded",
+        agent_diff: "diff --git a/feature.rb b/feature.rb\n+def greet = 'hi'\n"
+      )
+      ClaudeSession.create!(resumable: implement_run, session_id: "019f-missing", provider: "codex")
+
+      calls = []
+      allow(handler).to receive(:run_agent) do |prompt:, **kwargs|
+        calls << { prompt: prompt, kwargs: kwargs }
+        if calls.size == 1
+          JobLog.append!(
+            run: run,
+            chunk: "[codex resume] resume for session 019f-missing did not complete successfully: thread/resume failed: no rollout found for thread id 019f-missing",
+            kind: "system"
+          )
+          raise Steps::Base::StepFailed, "agent exited 1"
+        end
+
+        expect(kwargs[:resume_session_id]).to be_nil
+        expect(prompt).to include("original agent session was too large to resume")
+        run.update!(
+          agent_pr_title: "Add greeting helper",
+          agent_pr_body: "Summarized from fallback.",
+          agent_summary: "Added a greeting helper."
+        )
+      end
+
+      handler.call
+
+      expect(calls.size).to eq(2)
+      expect(workflow.reload.artifact("pr_title")).to eq("Add greeting helper")
+      expect(run.job_logs.pluck(:chunk).join("\n")).to include("Codex resume state was unavailable")
+    end
+
     it "amends the placeholder commit subject to the agent-authored pr_title" do
       stub_agent(title: "Add greeting helper", body: "Adds a tiny helper.")
       handler.call
