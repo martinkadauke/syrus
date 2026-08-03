@@ -27,15 +27,31 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
     Class.new { include Syrus::Plugin::CoverageAnalyzer }
   end
 
+  let(:preview_provider_class) do
+    Class.new { include Syrus::Plugin::PreviewProvider }
+  end
+
   describe "EXTENSION_POINTS" do
     it "includes :coverage_analyzer" do
       expect(described_class::EXTENSION_POINTS).to include(:coverage_analyzer)
+    end
+
+    it "includes :preview_provider" do
+      expect(described_class::EXTENSION_POINTS).to include(:preview_provider)
+    end
+
+    it "is frozen" do
+      expect(described_class::EXTENSION_POINTS).to be_frozen
     end
   end
 
   describe "INTERFACE_FOR" do
     it "maps :coverage_analyzer to Syrus::Plugin::CoverageAnalyzer" do
       expect(described_class::INTERFACE_FOR[:coverage_analyzer].call).to eq(Syrus::Plugin::CoverageAnalyzer)
+    end
+
+    it "maps :preview_provider to Syrus::Plugin::PreviewProvider" do
+      expect(described_class::INTERFACE_FOR[:preview_provider].call).to eq(Syrus::Plugin::PreviewProvider)
     end
 
     it "gives coverage analyzer providers the class call contract used by the registry" do
@@ -91,7 +107,8 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
             mcp_tool_set:       mcp_tool_set_class,
             input_source:       input_source_class,
             test_result_parser: test_result_parser_class,
-            coverage_analyzer:  coverage_analyzer_class
+            coverage_analyzer:  coverage_analyzer_class,
+            preview_provider:   preview_provider_class
           }
         )
       }.not_to raise_error
@@ -159,6 +176,17 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
           provides: { coverage_analyzer: plain_class }
         )
       }.to raise_error(described_class::RegistrationError, /must include Syrus::Plugin::CoverageAnalyzer/)
+    end
+
+    it "raises RegistrationError when preview_provider class lacks the interface module" do
+      plain_class = Class.new
+
+      expect {
+        described_class.register(
+          name: "bad_plugin", version: "1.0.0",
+          provides: { preview_provider: plain_class }
+        )
+      }.to raise_error(described_class::RegistrationError, /must include Syrus::Plugin::PreviewProvider/)
     end
 
     it "allows the same extension point to be provided by multiple plugins" do
@@ -276,6 +304,15 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
       )
 
       expect(described_class.providers_for(:coverage_analyzer)).to eq([ coverage_analyzer_class ])
+    end
+
+    it "returns preview providers" do
+      described_class.register(
+        name: "preview_plugin", version: "1.0.0",
+        provides: { preview_provider: preview_provider_class }
+      )
+
+      expect(described_class.providers_for(:preview_provider)).to eq([ preview_provider_class ])
     end
 
     it "returns an empty array when no plugin provides the requested extension point" do
