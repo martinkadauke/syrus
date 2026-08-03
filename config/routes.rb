@@ -290,6 +290,7 @@ Rails.application.routes.draw do
           post "insights/:id/promote_memory", to: "insights#promote_memory"
           get "overview", to: "overview#show"
           get "worker_health", to: "worker_health#show"
+          get "plugins", to: "plugins#index"
           get "queue/:tab", to: "queue#show", as: :queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
           post "queue/reap_stale_runs", to: "queue#reap_stale_runs"
           get "stuck", to: "stuck#index"
@@ -382,6 +383,7 @@ Rails.application.routes.draw do
         get "overview", to: "overview#show"
         get "stuck",    to: "overview#stuck"
         get "worker_health", to: "worker_health#show"
+        get "plugins",  to: "plugins#index"
         get "performance", to: "performance#show"
 
         # Operator console kill switches.

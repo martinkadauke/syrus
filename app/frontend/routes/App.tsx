@@ -19,6 +19,7 @@ import { AdminInstallations } from "./AdminInstallations"
 import { AdminOverview } from "./AdminOverview"
 import { AdminOperationalLogs } from "./AdminOperationalLogs"
 import { AdminPerformance } from "./AdminPerformance"
+import { AdminPlugins } from "./AdminPlugins"
 import { AdminQueueRoute } from "./AdminQueue"
 import { AdminProcessDetail, AdminProcessesIndex } from "./AdminProcesses"
 import { AdminSettings } from "./AdminSettings"
@@ -83,6 +84,7 @@ const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/admin/stuck", element: <AdminStuck /> },
   { path: "/admin/performance", element: <AdminPerformance /> },
   { path: "/admin/operational_logs", element: <AdminOperationalLogs /> },
+  { path: "/admin/plugins", element: <AdminPlugins /> },
   { path: "/admin/processes", element: <AdminProcessesIndex /> },
   { path: "/admin/processes/:id", element: <AdminProcessDetail /> },
   { path: "/admin/runs/:runId/transcript", element: <AdminTranscript /> },
