@@ -110,7 +110,7 @@ module ChatSerialization
         :agent_questions,
         :repository_attachments,
         { chat_attachments: :attachable },
-        { pending_actions: [ :message, :user, :repository ] },
+        { pending_actions: [ :message, :tool_call_message, :user, :repository ] },
         { video_walkthroughs: { file_attachment: :blob } }
       ]
     ).call
@@ -145,6 +145,7 @@ module ChatSerialization
 
   def pending_actions_json(chat_session)
     ChatPendingAction.repair_tool_call_anchors_for!(chat_session)
+    chat_session.association(:pending_actions).reset
 
     chat_session.pending_actions.includes(:tool_call_message, :message).where(state: %w[queued pending]).order(:created_at, :id).map do |action|
       {
