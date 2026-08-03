@@ -831,6 +831,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.integer "epic_id"
     t.string "epic_title"
     t.string "external_pr_author"
+    t.boolean "external_pr_fork", default: false
     t.integer "external_pr_number"
     t.integer "failure_count", default: 0, null: false
     t.datetime "finished_at"
