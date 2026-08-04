@@ -54,7 +54,7 @@ class WorkflowStepResourceProfile < ApplicationRecord
   end
 
   def attribution_confidence_level
-    confidence_for(process_attributed_sample_count)
+    confidence_for([ attributed_sample_count.to_i, process_attributed_sample_count.to_i ].max)
   end
 
   def permits_soft_prediction?
@@ -62,7 +62,8 @@ class WorkflowStepResourceProfile < ApplicationRecord
   end
 
   def permits_attributed_prediction?
-    process_attributed_sample_count >= SOFT_PREDICTION_SAMPLE_COUNT
+    attributed_sample_count >= SOFT_PREDICTION_SAMPLE_COUNT ||
+      process_attributed_sample_count >= SOFT_PREDICTION_SAMPLE_COUNT
   end
 
   def permits_normal_admission?
@@ -125,7 +126,7 @@ class WorkflowStepResourceProfile < ApplicationRecord
   end
 
   def prediction_sample_count
-    [ process_attributed_sample_count.to_i, host_prediction_sample_count ].max
+    [ attributed_sample_count.to_i, process_attributed_sample_count.to_i, host_prediction_sample_count ].max
   end
 
   def host_prediction_sample_count
@@ -133,6 +134,23 @@ class WorkflowStepResourceProfile < ApplicationRecord
   end
 
   def attributed_prediction_values
+    return command_attributed_prediction_values if attributed_sample_count >= SOFT_PREDICTION_SAMPLE_COUNT
+
+    process_attributed_prediction_values
+  end
+
+  def command_attributed_prediction_values
+    {
+      duration_seconds: observed_or_default(:duration_seconds, p90_attributed_duration_seconds),
+      cpu_pressure: observed_or_default(:cpu_pressure, p90_attributed_cpu_pressure),
+      io_pressure: observed_or_default(:io_pressure, p90_attributed_io_pressure),
+      memory_used_percent: observed_or_default(:memory_used_percent, p90_attributed_memory_used_percent),
+      prediction_source: "command_attributed",
+      fallback_reason: nil
+    }
+  end
+
+  def process_attributed_prediction_values
     {
       duration_seconds: observed_or_default(:duration_seconds, p90_process_attributed_duration_seconds),
       cpu_pressure: observed_or_default(:cpu_pressure, p90_process_attributed_cpu_percent),

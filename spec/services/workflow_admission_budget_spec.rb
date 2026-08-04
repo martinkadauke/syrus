@@ -32,6 +32,10 @@ RSpec.describe WorkflowAdmissionBudget do
       p90_process_attributed_cpu_percent: attributed_cpu,
       p90_process_attributed_io_bytes: attributed_io,
       p90_process_attributed_memory_bytes: attributed_memory,
+      p90_attributed_duration_seconds: attributed_duration,
+      p90_attributed_cpu_pressure: attributed_cpu,
+      p90_attributed_io_pressure: attributed_io,
+      p90_attributed_memory_used_percent: attributed_memory,
       timeout_rate: 0.0,
       failure_rate: 0.0,
       last_observed_at: Time.current,
@@ -216,8 +220,8 @@ RSpec.describe WorkflowAdmissionBudget do
     expect(decision.pressure.dig("candidate", "predicted_command_cost")).to include(
       "duration_seconds" => 130,
       "cpu_pressure" => 12.0,
-      "io_pressure" => 0.0,
-      "memory_used_percent" => 0.0,
+      "io_pressure" => 10.0,
+      "memory_used_percent" => 25.0,
       "source" => "command_attributed",
       "confidence" => "process_attributed"
     )

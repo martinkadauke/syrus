@@ -226,7 +226,7 @@ RSpec.describe WorkflowStepResourceProfiles::Refresh do
     )
   end
 
-  it "keeps command-span host pressure out of process-attributed command metrics" do
+  it "stores attributed command metrics separately from host-correlated fallback metrics" do
     10.times do |index|
       resource_summary(
         repository: repository,
@@ -246,14 +246,14 @@ RSpec.describe WorkflowStepResourceProfiles::Refresh do
 
     profile = WorkflowStepResourceProfile.first
     expect(profile.sample_count).to eq(10)
-    expect(profile.attributed_sample_count).to eq(0)
     expect(profile.process_attributed_sample_count).to eq(0)
+    expect(profile.attributed_sample_count).to eq(10)
     expect(profile.p90_cpu_pressure).to eq(88.0)
-    expect(profile.p90_attributed_cpu_pressure).to be_nil
+    expect(profile.p90_attributed_cpu_pressure).to eq(18.0)
     expect(profile.conservative_prediction).to include(
-      cpu_pressure: 88.0,
-      prediction_source: "host_correlated",
-      fallback_reason: "command_attributed_profile_unavailable"
+      cpu_pressure: 18.0,
+      prediction_source: "command_attributed",
+      fallback_reason: nil
     )
   end
 
