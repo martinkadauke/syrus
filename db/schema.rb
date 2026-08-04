@@ -548,7 +548,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.string "epic_dependency_policy", default: "linear", null: false
     t.string "github_issue_url"
     t.integer "number", null: false
-    t.integer "owner_id"
+    t.bigint "owner_id"
     t.integer "owner_user_id"
     t.json "pending_epic_dependency_refs", null: false
     t.bigint "reconciliation_job_id"
@@ -643,20 +643,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.index ["repository_id", "grader_name", "status", "created_at"], name: "idx_grader_conclusions_history_lookup"
     t.index ["run_id"], name: "index_grader_conclusions_on_run_id"
     t.index ["workflow_id"], name: "index_grader_conclusions_on_workflow_id"
-  end
-
-  create_table "input_sources", force: :cascade do |t|
-    t.json "config", null: false
-    t.datetime "created_at", null: false
-    t.text "credentials"
-    t.boolean "polling_enabled", default: true, null: false
-    t.integer "repository_id", null: false
-    t.string "type", null: false
-    t.datetime "updated_at", null: false
-    t.integer "user_id", null: false
-    t.index ["repository_id", "type"], name: "index_input_sources_on_repository_and_type", unique: true
-    t.index ["repository_id"], name: "index_input_sources_on_repository_id"
-    t.index ["user_id"], name: "index_input_sources_on_user_id"
   end
 
   create_table "insight_schedule_configs", force: :cascade do |t|
@@ -827,7 +813,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
 
   create_table "jobs", force: :cascade do |t|
     t.string "agent_provider", null: false
-    t.json "approval_evidence", default: {}, null: false
+    t.json "approval_evidence", null: false
     t.datetime "approved_at"
     t.integer "approved_by_user_id"
     t.string "approved_via"
@@ -844,15 +830,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.integer "dependencies_overridden_by_user_id"
     t.integer "epic_id"
     t.string "epic_title"
+    t.string "external_pr_author"
+    t.boolean "external_pr_fork", default: false
     t.integer "external_pr_number"
-    t.string "external_ref"
     t.integer "failure_count", default: 0, null: false
     t.datetime "finished_at"
     t.integer "fork_review_pr_number"
     t.boolean "github_mergeable"
     t.string "github_mergeable_state"
     t.datetime "grace_period_expires_at"
-    t.integer "input_source_id"
     t.json "invalidation_evidence", null: false
     t.text "invalidation_reason"
     t.text "issue_body"
@@ -874,7 +860,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.datetime "last_feedback_addressed_at"
     t.datetime "last_seen_comment_at"
     t.datetime "last_seen_fork_review_comment_at"
-    t.integer "linked_chat_id"
+    t.bigint "linked_chat_id"
     t.string "local_mergeability_base_sha"
     t.datetime "local_mergeability_checked_at"
     t.string "local_mergeability_head_sha"
@@ -921,13 +907,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.index ["epic_id"], name: "index_jobs_on_epic_id"
     t.index ["external_pr_number"], name: "index_jobs_on_external_pr_number"
     t.index ["grace_period_expires_at"], name: "index_jobs_on_grace_period_expires_at"
-    t.index ["input_source_id"], name: "index_jobs_on_input_source_id"
     t.index ["landing_queue_entry_key"], name: "index_jobs_on_landing_queue_entry_key"
     t.index ["linked_chat_id"], name: "index_jobs_on_linked_chat_id"
     t.index ["needs_attention"], name: "index_jobs_on_needs_attention"
     t.index ["owner_user_id"], name: "index_jobs_on_owner_user_id"
     t.index ["parent_job_id"], name: "index_jobs_on_parent_job_id"
     t.index ["pr_repository_id"], name: "index_jobs_on_pr_repository_id"
+    t.index ["repository_id", "external_pr_number"], name: "index_jobs_on_repository_id_and_external_pr_number_unique", unique: true
     t.index ["repository_id", "issue_number", "state"], name: "index_jobs_on_repository_id_and_issue_number_and_state"
     t.index ["repository_id", "owner_user_id", "kind", "state"], name: "idx_jobs_dashboard_repo_owner_kind_state"
     t.index ["repository_id", "state", "closure_reason", "finished_at"], name: "idx_jobs_repo_state_closure_finished"
@@ -1148,6 +1134,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.datetime "created_at", null: false
     t.string "default_branch", default: "main", null: false
     t.string "epic_dependency_policy", default: "linear", null: false
+    t.boolean "external_pr_ingestion_enabled", default: false, null: false
     t.string "feedback_policy", default: "confirm", null: false
     t.boolean "fork_auto_sync_enabled", default: false, null: false
     t.integer "fork_pr_grace_period_hours", default: 24, null: false
@@ -1307,7 +1294,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.integer "step_id"
     t.string "trigger_kind", null: false
     t.datetime "updated_at", null: false
-    t.integer "user_id", null: false
+    t.bigint "user_id", null: false
     t.index ["agent_provider", "cost_usd"], name: "idx_runs_spending_provider_cost"
     t.index ["agent_provider", "created_at", "cost_usd"], name: "idx_runs_spending_provider_window"
     t.index ["cost_usd", "created_at"], name: "idx_runs_spending_top_cost"
@@ -1376,7 +1363,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
 
   create_table "smart_folders", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.json "filter", default: {}, null: false
+    t.json "filter", null: false
     t.string "kind", null: false
     t.string "name", null: false
     t.integer "position", default: 0, null: false
@@ -1481,8 +1468,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.string "relay_address"
     t.datetime "started_at", null: false
     t.datetime "updated_at", null: false
-    t.integer "user_id", null: false
-    t.integer "workflow_id"
+    t.bigint "user_id", null: false
+    t.bigint "workflow_id"
     t.string "working_directory", null: false
     t.index ["finished_at"], name: "index_terminal_sessions_on_finished_at"
     t.index ["user_id"], name: "index_terminal_sessions_on_user_id"
@@ -1589,7 +1576,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.integer "chat_session_id", null: false
     t.datetime "created_at", null: false
     t.datetime "last_edited_at"
-    t.json "scene_json", default: {"elements" => []}, null: false
+    t.json "scene_json", null: false
     t.datetime "updated_at", null: false
     t.integer "version", default: 0, null: false
     t.index ["chat_session_id"], name: "index_whiteboards_on_chat_session_id", unique: true
@@ -1635,7 +1622,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
     t.string "state", default: "queued", null: false
     t.string "trigger_kind", null: false
     t.datetime "updated_at", null: false
-    t.integer "user_id", null: false
+    t.bigint "user_id", null: false
     t.string "worker_hostname"
     t.index ["cleaned_up_at"], name: "index_workflows_on_cleaned_up_at"
     t.index ["job_id", "created_at"], name: "index_workflows_on_job_id_and_created_at"
@@ -1718,8 +1705,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
   add_foreign_key "grader_conclusions", "runs"
   add_foreign_key "grader_conclusions", "steps"
   add_foreign_key "grader_conclusions", "workflows"
-  add_foreign_key "input_sources", "repositories"
-  add_foreign_key "input_sources", "users"
   add_foreign_key "insight_schedule_configs", "repositories"
   add_foreign_key "insight_suggestions", "chat_memories", column: "target_memory_id"
   add_foreign_key "insight_suggestions", "insight_suggestions", column: "target_insight_id"
@@ -1741,7 +1726,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_153000) do
   add_foreign_key "job_pins", "users"
   add_foreign_key "jobs", "chat_sessions", column: "linked_chat_id"
   add_foreign_key "jobs", "epics"
-  add_foreign_key "jobs", "input_sources"
   add_foreign_key "jobs", "jobs", column: "parent_job_id"
   add_foreign_key "jobs", "repositories"
   add_foreign_key "jobs", "repositories", column: "pr_repository_id"

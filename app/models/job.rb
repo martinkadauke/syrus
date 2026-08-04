@@ -10,7 +10,7 @@ class Job < ApplicationRecord
   include JobExecutionAccessors
   include JobLifecycle
 
-  KINDS = %w[ issue cron direct main_grader agent_insight ].freeze
+  KINDS = %w[ issue cron direct main_grader agent_insight external_pr ].freeze
   MAIN_GRADER_CLOSURE_REASON = "main_grader".freeze
   SCHEDULED_TASK_OUTCOMES = {
     "too_many_failures"          => :record_failure!,
@@ -106,6 +106,10 @@ class Job < ApplicationRecord
   validate  :issue_number_blank_for_main_grader, if: :main_grader?
   validate  :issue_number_blank_for_agent_insight, if: :agent_insight?
   validate  :agent_insights_feature_enabled, if: :agent_insight?
+  validate  :issue_number_blank_for_external_pr, if: :external_pr?
+  validate  :external_pr_starts_implemented, if: :external_pr?, on: :create
+  validates :external_pr_number, presence: true, if: :external_pr?
+  validates :external_pr_number, uniqueness: { scope: :repository_id }, if: :external_pr?
   validate  :epic_belongs_to_same_user_and_repository
   before_validation :default_owner_user, on: :create
   before_validation :default_agent_provider, on: :create
@@ -138,6 +142,7 @@ class Job < ApplicationRecord
   scope :issue_kind, -> { where(kind: "issue") }
   scope :cron_kind,  -> { where(kind: "cron") }
   scope :direct_kind, -> { where(kind: "direct") }
+  scope :external_pr_kind, -> { where(kind: "external_pr") }
   scope :with_pr, -> { where("pr_number IS NOT NULL OR external_pr_number IS NOT NULL") }
   scope :without_pr, -> { where(pr_number: nil, external_pr_number: nil) }
   scope :with_needs_attention, -> { where(needs_attention: true) }
@@ -204,6 +209,10 @@ class Job < ApplicationRecord
     kind == "agent_insight"
   end
 
+  def external_pr?
+    kind == "external_pr"
+  end
+
   def main_branch_repair?
     system_kind == SYSTEM_KIND_MAIN_BRANCH_REPAIR ||
       (system_kind.blank? && direct? && issue_title == MAIN_BRANCH_REPAIR_TITLE)
@@ -239,6 +248,11 @@ class Job < ApplicationRecord
       )
     elsif direct?
       Struct.new(:title, :body).new(issue_title.to_s, issue_body.to_s)
+    elsif external_pr?
+      Struct.new(:title, :body).new(
+        issue_title.presence || "External PR ##{external_pr_number}",
+        issue_body.presence || "External PR ##{external_pr_number} submitted by #{external_pr_author}"
+      )
     end
   end
 
@@ -479,6 +493,7 @@ class Job < ApplicationRecord
   after_update_commit :auto_approve_main_branch_repair_after_implementation, if: :saved_change_to_implemented_main_branch_repair?
   after_update_commit :cancel_queued_chat_pending_actions, if: :saved_change_to_closed?
   after_update_commit :purge_coverage_hit_maps_on_close, if: :saved_change_to_closed?
+  after_update_commit :enqueue_close_external_pr, if: :saved_change_to_closed_external_pr_to_close?
   after_update_commit :trigger_insight_if_max_threshold_reached, if: :saved_change_to_closed_coding_job?
   after_update_commit :ensure_main_branch_repair_after_close, if: :saved_change_to_closed_main_branch_repair?
   after_update_commit :enqueue_urgent_job_closed, if: :saved_change_to_closed_urgent_job?
@@ -628,6 +643,23 @@ class Job < ApplicationRecord
     close_with_reason!(reason)
   end
 
+  def mark_externally_implemented!(number)
+    transaction do
+      runs.active.find_each do |run|
+        run.cancel! if run.may_cancel?
+        run.save!
+      end
+
+      self.external_pr_number = number
+      self.state = "implemented"
+      self.closure_reason = nil
+      self.finished_at = nil
+      self.landing_failure_reason = nil
+      clear_approval_metadata
+      save!
+    end
+  end
+
   # The most recently created Run on this thread, regardless of state.
   def current_run
     runs.last
@@ -711,6 +743,11 @@ class Job < ApplicationRecord
     saved_change_to_closed? && !agent_insight?
   end
 
+  def saved_change_to_closed_external_pr_to_close?
+    saved_change_to_closed? && external_pr? && external_pr_number.present? &&
+      !closure_reason.in?(%w[external_pr_merged external_pr_closed])
+  end
+
   def saved_change_to_implemented_main_branch_repair?
     saved_change_to_implemented? && main_branch_repair?
   end
@@ -729,6 +766,10 @@ class Job < ApplicationRecord
 
   def enqueue_urgent_job_closed
     UrgentJobClosedJob.perform_later(repository_id)
+  end
+
+  def enqueue_close_external_pr
+    CloseExternalPrJob.perform_later(id)
   end
 
   def trigger_insight_if_max_threshold_reached
@@ -1187,6 +1228,14 @@ class Job < ApplicationRecord
 
   def issue_number_blank_for_agent_insight
     errors.add(:issue_number, "must be blank for agent_insight Jobs") if issue_number.present?
+  end
+
+  def issue_number_blank_for_external_pr
+    errors.add(:issue_number, "must be blank for external_pr Jobs") if issue_number.present?
+  end
+
+  def external_pr_starts_implemented
+    errors.add(:state, "must be implemented for external_pr Jobs") unless implemented?
   end
 
   def agent_insights_feature_enabled

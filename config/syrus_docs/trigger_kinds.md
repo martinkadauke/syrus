@@ -68,6 +68,14 @@ Structurally like `retry`; treated identically in most code paths.
 
 Validates mergeability, re-runs required graders on the exact PR branch with each grader's `fast` command when configured, then merges. Landing does not run `coverage_analyze` because fast grader variants are pass/fail gates and do not produce the full coverage flow. Transient GitHub errors defer the Job back to `approved` for retry. Does not run `implement` — only landing validation and merge.
 
+## external_pr_merge
+
+**When it fires:** An `external_pr` Job is approved through the landing queue.
+
+**Step chain:** `mergeability_preflight → prepare → grader_fanout → grader_collect → external_pr_merge`
+
+Validates the externally filed PR and merges it through GitHub's merge API. The workflow prepares the workspace before running graders but does not run a normal push step. Same-repository external PRs can run `landing_fix` after grader failures and push repair commits back to the PR head before merge. Fork PRs receive a `REQUEST_CHANGES` review on required grader failure and return to `implemented` for re-approval after the contributor pushes a fix.
+
 ## merge_train
 
 **When it fires:** All open child Jobs of an Epic are approved and `AppSetting.merge_train_enabled` is true.

@@ -8,7 +8,7 @@ Each Syrus workflow is a chain of steps. Steps are either **agentic** (invoke th
 
 Non-agentic. Runs the commands from `.syrus.yml` `prepare:` (or auto-detected from lockfiles) in the cloned workspace. Explicit commands hard-fail on error; auto-detected commands soft-fail with a warning so a wrong guess doesn't block the first run. Per-timeout: 10 minutes per command.
 
-Present in: `initial`, `pr_comment`, `chat_feedback`, `ci_failure`, `retry`, `auto_merge`, `merge_train`, `coding_handoff`.
+Present in: `initial`, `pr_comment`, `chat_feedback`, `ci_failure`, `retry`, `auto_merge`, `external_pr_merge`, `merge_train`, `coding_handoff`.
 
 ## Agentic implementation steps
 
@@ -160,6 +160,10 @@ Non-agentic. Refreshes GitHub mergeability, runs a local rebase preflight when G
 Non-agentic. Calls the GitHub merge API. Transient failures defer the Job back to `approved`; a 405 "can't rebase" dispatches the rebase path instead of treating the attempt as terminal.
 
 When a merge succeeds and GitHub returns a merge commit SHA, Syrus stores it as `Job#landed_sha`. `PollAllDeploymentStagesJob` later uses that SHA to detect configured deployment stages from repository tags.
+
+### external_pr_merge
+
+Non-agentic. Calls the GitHub merge API for an `external_pr` Job's `external_pr_number`. If same-repository landing repair produced commits in the workflow workspace, pushes those commits to the PR's actual head branch before merging. Fork PRs are never pushed by this step.
 
 ### merge_train_assemble
 

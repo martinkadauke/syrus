@@ -105,6 +105,8 @@ class Step
       Entry.new(kind: "auto_merge",         handler: "AutoMerge",          label: "Auto-merge",                 style: "bg-green-100 text-green-700", agentic: false,
                 repair_semantics: :publication,
                 reconcile_strategy: :auto_merge),
+      Entry.new(kind: "external_pr_merge",  handler: "ExternalPrMerge",    label: "Merge external PR",          style: "bg-green-100 text-green-700", agentic: false,
+                repair_semantics: :publication),
       Entry.new(kind: "merge_train_assemble", handler: "MergeTrainAssemble", label: "Assemble train",          style: "bg-green-100 text-green-800", agentic: false,
                 repair_semantics: :deterministic_idempotent),
       Entry.new(kind: "merge_train_build",  handler: "MergeTrainBuild",    label: "Build integration branch",  style: "bg-green-100 text-green-800", agentic: true,

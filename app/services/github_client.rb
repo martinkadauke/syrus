@@ -169,6 +169,13 @@ class GithubClient
     raise
   end
 
+  def list_open_pull_requests(repo_slug)
+    track_rate_limits { @client.pull_requests(repo_slug, state: "open") }
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited listing open PRs on #{repo_slug}: #{e.message}")
+    raise
+  end
+
   def create_issue(repo_slug, title:, body:, labels: [])
     track_rate_limits { @client.create_issue(repo_slug, title, body, labels: labels) }
   rescue Octokit::TooManyRequests => e
@@ -255,14 +262,19 @@ class GithubClient
     end
   end
 
-  def merge_pull_request(repo_slug, pr_number, commit_title:, merge_method:)
+  def merge_pull_request(repo_slug, pr_number, commit_title:, merge_method:, sha: nil)
+    options = {
+      commit_title: commit_title,
+      merge_method: merge_method
+    }
+    options[:sha] = sha if sha.present?
+
     track_rate_limits do
       @client.merge_pull_request(
         repo_slug,
         pr_number,
         "",
-        commit_title: commit_title,
-        merge_method: merge_method
+        **options
       )
     end
   rescue Octokit::TooManyRequests => e
