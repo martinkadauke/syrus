@@ -24,6 +24,7 @@ default: &default
     schedule: every 5 minutes
   poll_external_open_prs:
     class: PollAllExternalOpenPrsJob
+    queue: polling
     schedule: every 5 minutes
   poll_merge_states:
     class: PollAllMergeStatesJob
