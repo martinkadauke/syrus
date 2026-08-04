@@ -826,6 +826,36 @@ RSpec.describe ChatTurnJob do
     expect(chat.stop_requested_at).to be_nil
   end
 
+  it "closes a dangling tool call when cancellation interrupts the turn" do
+    ChatTurnJob.agent_runner = ->(log_sink:, stop_requested:, **_) {
+      log_sink.call(
+        "● admin_overview",
+        kind: "tool_call",
+        tool_name: "syrus-chat-sidecar.admin_overview",
+        tool_input: {},
+        tool_use_id: "call_admin_overview"
+      )
+      chat.update!(stop_requested_at: Time.current)
+
+      expect(stop_requested.call).to eq(true)
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    tool_result = chat.messages.find_by!(role: "tool_result", tool_use_id: "call_admin_overview")
+    expect(tool_result.tool_name).to eq("syrus-chat-sidecar.admin_overview")
+    expect(tool_result.content).to include(
+      "type" => "tool_result",
+      "tool_use_id" => "call_admin_overview",
+      "is_error" => true
+    )
+    expect(tool_result.content.dig("content", 0, "text")).to eq("Cancelled by operator before this tool returned.")
+    expect(chat.messages.order(:created_at, :id).pluck(:role, :content)).to include(
+      [ "system", { "text" => "Cancelled by operator." } ]
+    )
+  end
+
   it "does not promote a queued follow-up while the agent process is still live" do
     queued_message = chat.chat_queued_messages.create!(content: { "text" => "Wait for process exit" })
     ChatTurnJob.agent_runner = ->(workspace_path:, process_started:, stop_requested:, **_) {

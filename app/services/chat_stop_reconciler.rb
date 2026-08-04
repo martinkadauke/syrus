@@ -71,7 +71,12 @@ class ChatStopReconciler
       return false if live_agent_process?(chat)
       return false if stale_turn && pending_chat_turn_job?(chat)
 
-      create_terminal_message!(chat, stop_request ? @message : FAILED_MESSAGE) if chat.turn_in_flight?
+      turn_in_flight = chat.turn_in_flight?
+      message = stop_request ? @message : FAILED_MESSAGE
+      closed_tool_calls = close_dangling_tool_calls!(chat, message)
+      if turn_in_flight || closed_tool_calls.positive?
+        create_terminal_message!(chat, message)
+      end
       chat.update!(stop_requested_at: nil) if chat.stop_requested_at?
       changed = true
     end
@@ -184,5 +189,12 @@ class ChatStopReconciler
 
   def create_terminal_message!(chat, message)
     chat.messages.create!(role: "system", content: { "text" => message })
+  end
+
+  def close_dangling_tool_calls!(chat, message)
+    ChatDanglingToolCallCloser.close!(
+      chat_session: chat,
+      message: "#{message.delete_suffix(".")} before this tool returned."
+    )
   end
 end

@@ -72,6 +72,18 @@ RSpec.describe ReapOrphanedSpawnedProcessesJob do
     user = Factories.user(claude_oauth_token: "oat-test")
     chat = ChatSession.create!(user: user, workspace_path: "/tmp/chat-reaper", stop_requested_at: 10.seconds.ago)
     chat.messages.create!(role: "user", content: { "text" => "Stop this" }, created_at: 20.seconds.ago)
+    chat.messages.create!(
+      role: "tool_use",
+      tool_name: "syrus-chat-sidecar.admin_overview",
+      tool_use_id: "call_reaper",
+      content: {
+        "type" => "tool_use",
+        "id" => "call_reaper",
+        "name" => "syrus-chat-sidecar.admin_overview",
+        "input" => {}
+      },
+      created_at: 19.seconds.ago
+    )
     fixture(hostname: "dead-pod-xyz", workdir: chat.workspace_root.to_s, started_at: 15.seconds.ago)
     stub_live_hosts("live-pod")
 
@@ -82,6 +94,13 @@ RSpec.describe ReapOrphanedSpawnedProcessesJob do
     expect(chat.messages.order(:created_at).pluck(:role, :content)).to include(
       [ "system", { "text" => "Cancelled by operator." } ]
     )
+    tool_result = chat.messages.find_by!(role: "tool_result", tool_use_id: "call_reaper")
+    expect(tool_result.content).to include(
+      "type" => "tool_result",
+      "tool_use_id" => "call_reaper",
+      "is_error" => true
+    )
+    expect(tool_result.content.dig("content", 0, "text")).to eq("Cancelled by operator before this tool returned.")
   end
 
   it "marks orphaned chat agent turns as failed when there was no stop request" do
