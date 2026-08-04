@@ -851,6 +851,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_162000) do
     t.string "job_provider_setting", default: "default", null: false
     t.string "kind", default: "issue", null: false
     t.string "landed_sha"
+    t.string "landing_blocker_override_key"
+    t.text "landing_blocker_override_reason"
+    t.datetime "landing_blocker_override_requested_at"
+    t.integer "landing_blocker_override_requested_by_user_id"
+    t.datetime "landing_blocker_override_used_at"
     t.text "landing_failure_reason"
     t.json "landing_queue_blocked_reason"
     t.json "landing_queue_blocker_job_ids"
@@ -911,6 +916,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_162000) do
     t.index ["epic_id"], name: "index_jobs_on_epic_id"
     t.index ["external_pr_number"], name: "index_jobs_on_external_pr_number"
     t.index ["grace_period_expires_at"], name: "index_jobs_on_grace_period_expires_at"
+    t.index ["input_source_id"], name: "index_jobs_on_input_source_id"
+    t.index ["landing_blocker_override_key"], name: "index_jobs_on_landing_blocker_override_key"
+    t.index ["landing_blocker_override_requested_by_user_id"], name: "index_jobs_on_landing_blocker_override_requested_by_user_id"
     t.index ["landing_queue_entry_key"], name: "index_jobs_on_landing_queue_entry_key"
     t.index ["linked_chat_id"], name: "index_jobs_on_linked_chat_id"
     t.index ["needs_attention"], name: "index_jobs_on_needs_attention"
