@@ -60,6 +60,41 @@ describe("RecentChatsSidebar active chat highlighting", () => {
     expect(screen.getByRole("img", { name: /Codex usage limit reached/ })).toBeInTheDocument()
   })
 
+  it("includes provider evidence details in usage warning labels", () => {
+    renderSidebar([
+      chatNav({
+        id: 1,
+        title: "Codex chat",
+        provider_availability: {
+          provider: "codex",
+          label: "Codex",
+          model: "gpt-5.5",
+          state: "exhausted",
+          open: true,
+          usage_exhausted: true,
+          retry_after: null,
+          reason: "Provider usage limit exhausted.",
+          message: "Codex usage limit reached for gpt-5.5.",
+          evidence: {
+            current: {
+              status: "exhausted",
+              source: "usage_probe",
+              observed_at: "2026-08-04T16:00:00Z",
+              provider: "codex",
+              account_id: "account-123",
+              model: "gpt-5.5",
+              http_status: 200
+            }
+          }
+        }
+      })
+    ])
+
+    const warning = screen.getByRole("img", { name: /Evidence: exhausted from usage_probe/ })
+    expect(warning).toHaveAttribute("title", expect.stringContaining("scope codex / account account-123 / model gpt-5.5"))
+    expect(warning).toHaveAttribute("title", expect.stringContaining("HTTP 200"))
+  })
+
   it("does not highlight a chat as active when the URL is not /chats/:id even if current=true", () => {
     renderSidebar([chatNav({ id: 1, title: "My Chat", current: true })])
 

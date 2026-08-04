@@ -86,6 +86,7 @@ class ChatTurnJob < ApplicationJob
     flush_current_assistant_content!
     capture_session!(provider, result) if result
     @chat.record_turn_usage!(result) if result
+    record_provider_success_evidence!(provider, result)
     update_coding_checkout_uncommitted_state!
     touch_chat!
     stop_requested?
@@ -139,6 +140,27 @@ class ChatTurnJob < ApplicationJob
   def chat_provider
     @chat.pin_chat_provider!(broadcast: false) if @chat.chat_provider.blank? && @chat.messages.exists?
     ChatProviders.for(@chat.effective_chat_provider).new(chat: @chat, runner: self.class.agent_runner)
+  end
+
+  def record_provider_success_evidence!(provider, result)
+    return unless provider.provider == "codex"
+    return unless result
+    return if result.is_error || !result.success?
+
+    ProviderAvailabilityEvidence.record_codex_success!(
+      user: @chat.user,
+      source: "chat_turn_success",
+      model: @chat.chat_model.presence || CodexInvocation.configured_model,
+      chat_session: @chat,
+      chat_message: @user_message,
+      details: {
+        outcome: result.outcome,
+        session_id: result.session_id
+      }
+    )
+    App::ProviderAvailability.broadcast_changed(user: @chat.user, provider: "codex")
+  rescue StandardError => e
+    Rails.logger.warn("[ProviderAvailabilityEvidence] failed to record Codex chat success for ChatSession ##{@chat.id}: #{e.class}: #{e.message}")
   end
 
   def provider_with_turn_context(provider, attachment_context, agent_env)

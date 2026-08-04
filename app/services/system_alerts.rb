@@ -60,20 +60,27 @@ module SystemAlerts
   private_class_method :github_token_blocked
 
   def self.codex_usage(user)
-    status = user.codex_usage_status.to_s
-    return unless %w[exhausted warning].include?(status)
+    availability = App::ProviderAvailability.for_user(user, "codex", cached: false)
+    status = availability&.dig(:usage, :status).to_s.presence || user.codex_usage_status.to_s
+    latest_success_at = availability&.dig(:evidence, :latest_positive, :observed_at)&.then { |value| Time.zone.parse(value) rescue nil }
+    stale_exhausted_cache = status == "exhausted" && latest_success_at && user.codex_usage_observed_at && latest_success_at > user.codex_usage_observed_at
+    return unless availability&.dig(:usage_exhausted) || status == "warning" || (status == "exhausted" && !stale_exhausted_cache)
 
     snapshot = user.codex_usage_snapshot || {}
     remaining = snapshot["remaining_percent"]
     limit_label = codex_usage_breakdown(snapshot).presence || (remaining.present? ? "#{remaining.round}% remaining" : status)
     reset_at = [ snapshot.dig("primary", "reset_at"), snapshot.dig("secondary", "reset_at") ].compact.min
-    title = status == "exhausted" ? "Codex usage limit has been reached." : "Codex usage is low."
+    exhausted = availability&.dig(:usage_exhausted) || status == "exhausted"
+    title = exhausted ? "Codex usage limit has been reached." : "Codex usage is low."
     message = "Codex reports #{ERB::Util.html_escape(limit_label)} for this account."
+    if (evidence = availability&.dig(:evidence, :current))
+      message += " Latest evidence: <code>#{ERB::Util.html_escape(evidence[:status])}</code> from <code>#{ERB::Util.html_escape(evidence[:source])}</code>."
+    end
     message += " The next reset is around <code>#{ERB::Util.html_escape(reset_at)}</code>." if reset_at.present?
 
     Alert.new(
       id: "codex_usage:#{user.id}",
-      severity: status == "exhausted" ? :alarm : :warn,
+      severity: exhausted ? :alarm : :warn,
       title: title,
       message: message,
       action_steps: [

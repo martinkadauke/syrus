@@ -7,6 +7,10 @@ class CodexInvocation
   MCP_STARTUP_TIMEOUT_SECONDS = 60
   MCP_TOOL_TIMEOUT_SECONDS = 60
 
+  def self.configured_model
+    ENV.fetch("SYRUS_CODEX_MODEL", DEFAULT_MODEL).presence
+  end
+
   def initialize(workspace_path, prompt:, api_key: nil,
                  log_sink: ->(*, **) { },
                  runner: nil,
@@ -29,7 +33,7 @@ class CodexInvocation
     @codex_home = codex_home&.to_s
     @mcp_server = mcp_server
     @mcp_servers = mcp_servers
-    @model = model.presence || ENV.fetch("SYRUS_CODEX_MODEL", DEFAULT_MODEL).presence
+    @model = model.presence || self.class.configured_model
     @resume_session_id = resume_session_id
     @resume_transcript_jsonl = resume_transcript_jsonl
     @stop_requested = stop_requested

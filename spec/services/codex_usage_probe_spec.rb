@@ -45,6 +45,12 @@ RSpec.describe CodexUsageProbe do
 
     expect(result.status).to eq("exhausted")
     expect(user.reload.codex_usage_snapshot["rate_limit_reached_type"]).to eq("rate_limit_reached")
+    expect(ProviderAvailabilityEvidence.last).to have_attributes(
+      user: user,
+      provider: "codex",
+      status: "exhausted",
+      source: "usage_probe"
+    )
   end
 
   it "does not claim subscription visibility for API-key mode" do
@@ -56,14 +62,26 @@ RSpec.describe CodexUsageProbe do
     expect(a_request(:get, usage_url)).not_to have_been_made
   end
 
-  it "records 429 usage responses as exhausted" do
+  it "records 429 usage responses as inconclusive instead of exhausted" do
     user = Factories.user(codex_auth_mode: "chatgpt_login", codex_auth_json: auth_json)
     stub_request(:get, usage_url).to_return(status: 429, body: { error: "usage limit reached" }.to_json)
 
     result = described_class.refresh_for(user: user, force: true)
 
-    expect(result.status).to eq("exhausted")
+    expect(result.status).to eq("probe_inconclusive")
     expect(user.reload.codex_usage_snapshot).to include("http_status" => 429)
+    evidence = ProviderAvailabilityEvidence.last
+    expect(evidence).to have_attributes(
+      user: user,
+      provider: "codex",
+      status: "probe_inconclusive",
+      source: "usage_probe",
+      http_status: 429
+    )
+    expect(App::ProviderAvailability.for_user(user, "codex", cached: false)).to include(
+      state: "available",
+      usage_exhausted: false
+    )
   end
 
   it "does not treat a zero add-on credit balance as exhausted while rate-limit capacity remains" do

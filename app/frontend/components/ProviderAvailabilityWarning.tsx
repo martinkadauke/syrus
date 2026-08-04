@@ -3,7 +3,7 @@ import type { ProviderAvailability } from "../api/providerAvailability"
 export function ProviderAvailabilityWarning({ availability, className = "" }: { availability?: ProviderAvailability | null; className?: string }) {
   if (!availability?.usage_exhausted && availability?.state !== "rate_limited") return null
 
-  const label = availability.message || `${availability.label || availability.provider} usage limit reached. This item uses ${availability.label || availability.provider} until usage resets.`
+  const label = warningLabel(availability)
   const tone = availability.usage_exhausted ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"
 
   return (
@@ -15,4 +15,38 @@ export function ProviderAvailabilityWarning({ availability, className = "" }: { 
       </svg>
     </span>
   )
+}
+
+function warningLabel(availability: NonNullable<ProviderAvailability>): string {
+  const base = availability.message || `${availability.label || availability.provider} usage limit reached. This item uses ${availability.label || availability.provider} until usage resets.`
+  const evidence = availability.evidence?.current || availability.usage?.evidence
+  if (!evidence) return base
+
+  const parts = [
+    base,
+    `Evidence: ${evidence.status} from ${evidence.source}`,
+    evidence.observed_at ? `observed ${formatTimestamp(evidence.observed_at)}` : null,
+    scopeLabel(evidence),
+    evidence.http_status ? `HTTP ${evidence.http_status}` : null,
+  ].filter(Boolean)
+
+  return parts.join(". ")
+}
+
+function scopeLabel(evidence: NonNullable<NonNullable<ProviderAvailability>["evidence"]>["current"]): string | null {
+  if (!evidence) return null
+
+  const scope = [
+    evidence.provider,
+    evidence.account_id ? `account ${evidence.account_id}` : null,
+    evidence.model ? `model ${evidence.model}` : null,
+  ].filter(Boolean)
+
+  return scope.length ? `scope ${scope.join(" / ")}` : null
+}
+
+function formatTimestamp(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
 }

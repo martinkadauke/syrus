@@ -110,9 +110,13 @@ class Run < ApplicationRecord
                        if: :saved_change_to_state_to_failed?
   after_update_commit :classify_failure!,
                        if: :saved_change_to_state_to_failed?
+  after_update_commit :record_provider_failure_evidence!,
+                       if: :saved_change_to_state_to_failed?
   after_update_commit :broadcast_provider_availability_after_failure!,
                        if: :saved_change_to_state_to_failed?
   after_update_commit :clear_transcript_on_success!,
+                       if: :saved_change_to_state_to_succeeded?
+  after_update_commit :record_provider_success_evidence!,
                        if: :saved_change_to_state_to_succeeded?
   after_update_commit :broadcast_provider_availability_after_success!,
                        if: :saved_change_to_state_to_succeeded?
@@ -274,6 +278,53 @@ class Run < ApplicationRecord
     RunFailureClassifier.persist!(self)
   rescue StandardError => e
     Rails.logger.warn("[RunFailureClassifier] failed for Run ##{id}: #{e.class}: #{e.message}")
+    nil
+  end
+
+  def record_provider_failure_evidence!
+    return unless agent_provider == "codex"
+    return unless step.nil? || step.agentic?
+
+    text = [
+      agent_outcome,
+      run_failure_classification&.classification,
+      run_diagnostic&.error_class,
+      run_diagnostic&.error_message
+    ].compact.join(" ")
+    return unless agent_outcome.to_s == ProviderUsageLimit::OUTCOME ||
+      run_failure_classification&.classification == ProviderUsageLimit::CLASSIFICATION ||
+      ProviderUsageLimit.detect?(text)
+
+    ProviderAvailabilityEvidence.record_codex_invocation_failure!(
+      run: self,
+      model: ProviderUsageLimit.extract_model(text),
+      message: text,
+      observed_at: finished_at || Time.current
+    )
+  rescue StandardError => e
+    Rails.logger.warn("[ProviderAvailabilityEvidence] failed to record Codex failure for Run ##{id}: #{e.class}: #{e.message}")
+    nil
+  end
+
+  def record_provider_success_evidence!
+    return unless agent_provider == "codex"
+    return unless step.nil? || step.agentic?
+
+    ProviderAvailabilityEvidence.record_codex_success!(
+      user: user,
+      source: "run_success",
+      model: CodexInvocation.configured_model,
+      run: self,
+      observed_at: finished_at || Time.current,
+      details: {
+        outcome: agent_outcome,
+        workflow_id: workflow_id,
+        job_id: job_id,
+        step_kind: step&.kind
+      }
+    )
+  rescue StandardError => e
+    Rails.logger.warn("[ProviderAvailabilityEvidence] failed to record Codex success for Run ##{id}: #{e.class}: #{e.message}")
     nil
   end
 

@@ -3,7 +3,7 @@ require "set"
 module App
   class ProviderAvailability
     CACHE_TTL = 2.minutes
-    CACHE_VERSION = "v2"
+    CACHE_VERSION = "v3"
     @cache_mutex = Mutex.new
     @process_cache = {}
     @shared_cache_keys = Set.new
@@ -145,7 +145,7 @@ module App
 
     attr_reader :user, :provider, :now
 
-    UsageLimitSignal = Data.define(:run, :model, :reason)
+    UsageLimitSignal = Data.define(:run, :model, :reason, :evidence)
     RateLimitSignal = Data.define(:run, :reason)
 
     def open_status(circuit)
@@ -159,7 +159,8 @@ module App
         retry_after: circuit.retry_after&.iso8601,
         reason: circuit.reason.presence || "Provider appears temporarily unavailable.",
         message: transient_message(circuit),
-        usage: usage_snapshot
+        usage: usage_snapshot,
+        evidence: latest_evidence_payload
       }
     end
 
@@ -177,7 +178,8 @@ module App
         retry_after: nil,
         reason: nil,
         message: "#{provider_label} is available.",
-        usage: usage
+        usage: usage,
+        evidence: latest_evidence_payload
       }
     end
 
@@ -193,13 +195,13 @@ module App
         retry_after: retry_after.iso8601,
         reason: signal.reason,
         message: "#{provider_label} is rate-limited. Syrus will treat #{provider_label} as unavailable until a later #{provider_label} run completes without a rate-limit failure.",
-        usage: usage_snapshot
+        usage: usage_snapshot,
+        evidence: latest_evidence_payload
       }
     end
 
     def usage_limit_status(signal)
-      retry_after = ProviderQuotaReset.retry_after_for_run(signal.run, now: now) ||
-        (signal.run.finished_at || signal.run.updated_at || now) + ProviderCircuitBreaker::USAGE_LIMIT_OPEN_FOR
+      retry_after = retry_after_for_usage_signal(signal)
       {
         provider: provider,
         label: provider_label,
@@ -210,7 +212,8 @@ module App
         retry_after: retry_after.iso8601,
         reason: signal.reason,
         message: usage_limit_message(signal, retry_after),
-        usage: usage_snapshot
+        usage: usage_snapshot,
+        evidence: latest_evidence_payload(primary: usage_signal_summary(signal))
       }
     end
 
@@ -226,18 +229,63 @@ module App
     end
 
     def usage_limit_signal
+      evidence = current_usage_limit_evidence
+      if evidence
+        return UsageLimitSignal.new(
+          run: evidence.run,
+          model: evidence.model,
+          reason: usage_limit_reason_for_evidence(evidence),
+          evidence: evidence
+        )
+      end
+
       usage_limit_failed_runs.filter_map do |run|
         text = diagnostic_text(run)
         next unless usage_limit?(run, text)
         retry_after = ProviderQuotaReset.retry_after_for_run(run, now: now)
         next if retry_after && retry_after <= now
+        model = ProviderUsageLimit.extract_model(text)
+        observed_at = run.finished_at || run.updated_at || now
+        next if provider == "codex" && ProviderAvailabilityEvidence.latest_positive_after?(
+          user: user,
+          provider: provider,
+          account_id: CodexAccountScope.for_user(user),
+          model: model,
+          observed_at: observed_at
+        )
 
         UsageLimitSignal.new(
           run: run,
-          model: ProviderUsageLimit.extract_model(text),
-          reason: "Provider usage limit exhausted."
+          model: model,
+          reason: "Provider usage limit exhausted.",
+          evidence: nil
         )
       end.first
+    end
+
+    def current_usage_limit_evidence
+      return unless provider == "codex"
+
+      ProviderAvailabilityEvidence
+        .where(user: user, provider: provider, status: "exhausted")
+        .where("observed_at >= ?", now - ProviderCircuitBreaker::USAGE_LIMIT_WINDOW)
+        .recent
+        .detect do |evidence|
+          next false if codex_evidence_reset_at(evidence)&.<= now
+
+          !ProviderAvailabilityEvidence.latest_positive_after?(
+            user: user,
+            provider: provider,
+            account_id: evidence.account_id,
+            model: evidence.model,
+            observed_at: evidence.observed_at
+          )
+        end
+    end
+
+    def usage_limit_reason_for_evidence(evidence)
+      source = evidence.source.to_s.humanize(capitalize: false)
+      "Provider usage limit exhausted (#{source})."
     end
 
     def latest_provider_run_signal
@@ -307,14 +355,87 @@ module App
 
       snapshot = user.codex_usage_snapshot || {}
       windows = codex_usage_windows(snapshot)
-      return if windows.blank? && snapshot["remaining_percent"].blank? && user.codex_usage_status.blank?
+      evidence = latest_codex_evidence
+      return if windows.blank? && snapshot["remaining_percent"].blank? && user.codex_usage_status.blank? && evidence.blank?
 
       {
-        status: user.codex_usage_status,
-        observed_at: user.codex_usage_observed_at&.iso8601,
+        status: evidence&.status || user.codex_usage_status,
+        observed_at: evidence&.observed_at&.iso8601 || user.codex_usage_observed_at&.iso8601,
         remaining_percent: snapshot["remaining_percent"],
-        windows: windows
+        windows: windows,
+        evidence: evidence&.summary
       }.compact
+    end
+
+    def latest_evidence_payload(primary: nil)
+      return unless provider == "codex"
+
+      current = primary || latest_codex_evidence&.summary
+      return if current.blank? && latest_codex_positive_evidence.blank? && latest_codex_negative_evidence.blank?
+
+      {
+        current: current,
+        latest_positive: latest_codex_positive_evidence&.summary,
+        latest_negative: latest_codex_negative_evidence&.summary
+      }.compact
+    end
+
+    def usage_signal_summary(signal)
+      return signal.evidence.summary if signal.evidence
+      return unless signal.run
+
+      observed_at = signal.run.finished_at || signal.run.updated_at
+      {
+        status: "exhausted",
+        source: "failed_run",
+        observed_at: observed_at&.iso8601,
+        provider: provider,
+        account_id: CodexAccountScope.for_user(user),
+        model: signal.model,
+        run_id: signal.run.id,
+        details: {
+          agent_outcome: signal.run.agent_outcome,
+          failure_classification: signal.run.run_failure_classification&.classification
+        }.compact
+      }.compact
+    end
+
+    def latest_codex_evidence
+      @latest_codex_evidence ||= ProviderAvailabilityEvidence.where(user: user, provider: "codex").recent.first
+    end
+
+    def latest_codex_positive_evidence
+      @latest_codex_positive_evidence ||= ProviderAvailabilityEvidence.where(user: user, provider: "codex").positive.recent.first
+    end
+
+    def latest_codex_negative_evidence
+      @latest_codex_negative_evidence ||= ProviderAvailabilityEvidence.where(user: user, provider: "codex").negative.recent.first
+    end
+
+    def retry_after_for_usage_signal(signal)
+      if signal.run
+        return ProviderQuotaReset.retry_after_for_run(signal.run, now: now) ||
+          (signal.run.finished_at || signal.run.updated_at || now) + ProviderCircuitBreaker::USAGE_LIMIT_OPEN_FOR
+      end
+
+      codex_evidence_reset_at(signal.evidence) ||
+        (signal.evidence&.observed_at || now) + ProviderCircuitBreaker::USAGE_LIMIT_OPEN_FOR
+    end
+
+    def codex_evidence_reset_at(evidence)
+      snapshot = evidence&.details&.dig("snapshot") || {}
+      windows = [
+        snapshot["primary"],
+        snapshot["secondary"],
+        snapshot.dig("spend_control", "individual_limit"),
+        *Array(snapshot["additional_rate_limits"]).flat_map { |entry| [ entry["primary"], entry["secondary"] ] }
+      ].compact
+      reset_values = windows.filter_map { |window| window["reset_at"].presence }
+      return if reset_values.blank?
+
+      Time.zone.parse(reset_values.min) + ProviderQuotaReset::RETRY_BUFFER
+    rescue ArgumentError, TypeError
+      nil
     end
 
     def codex_usage_windows(snapshot)
