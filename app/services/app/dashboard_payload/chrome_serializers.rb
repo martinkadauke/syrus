@@ -17,10 +17,10 @@ module App
                      .to_a
         end
 
+        folder_counts = smart_folder_counts(folders)
+
         folders.filter_map do |folder|
-          count = PerformanceLogging.phase("dashboard_smart_folders.count", subject: subject, folder_id: folder.id, builtin_key: folder.builtin_key) do
-            smart_folder_count(folder)
-          end
+          count = folder_counts.fetch(folder.id, 0)
           next unless smart_folder_visible?(folder, count)
 
           json = {
@@ -67,23 +67,32 @@ module App
         end
       end
 
-      def smart_folder_count(folder)
-        Rails.cache.fetch(smart_folder_count_cache_key(folder), expires_in: 30.seconds) do
-          smart_folder_count_uncached(folder)
+      def smart_folder_counts(folders)
+        return {} if folders.empty?
+
+        Rails.cache.fetch(smart_folder_counts_cache_key(folders), expires_in: 2.minutes) do
+          PerformanceLogging.phase("dashboard_smart_folders.counts", subject: subject, count: folders.size) do
+            folders.to_h do |folder|
+              count = PerformanceLogging.phase("dashboard_smart_folders.count", subject: subject, folder_id: folder.id, builtin_key: folder.builtin_key) do
+                smart_folder_count_uncached(folder)
+              end
+              [ folder.id, count ]
+            end
+          end
         end
       end
 
-      def smart_folder_count_cache_key(folder)
+      def smart_folder_counts_cache_key(folders)
         [
-          "dashboard_smart_folder_count",
+          "dashboard_smart_folder_counts",
           SyrusVersion.current,
           user.id,
           subject,
           ownership_scope,
           selected_owner_user&.id,
           active_repo_ids,
-          folder.id,
-          folder.updated_at.to_i
+          folders.map(&:id),
+          folders.map { |folder| folder.updated_at.to_i }.max
         ]
       end
 

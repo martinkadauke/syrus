@@ -545,6 +545,40 @@ RSpec.describe App::DashboardPayload do
     end
   end
 
+  describe "smart folder count caching" do
+    before { SmartFolder.ensure_builtins_for_subject!("job") }
+
+    it "caches all sidebar counts as one snapshot instead of one cache entry per folder" do
+      cache_store = ActiveSupport::Cache::MemoryStore.new
+      fetch_keys = []
+      computed_folder_ids = []
+
+      allow(Rails).to receive(:cache).and_return(cache_store)
+      allow(cache_store).to receive(:fetch).and_wrap_original do |method, key, **options, &block|
+        fetch_keys << key
+        method.call(key, **options, &block)
+      end
+      allow_any_instance_of(described_class).to receive(:smart_folder_count_uncached).and_wrap_original do |method, folder|
+        computed_folder_ids << folder.id
+        method.call(folder)
+      end
+
+      first = call(subject: "job", section: "chrome")
+      second = call(subject: "job", section: "chrome")
+
+      expect(second[:smart_folders].map { |folder| [ folder[:id], folder[:count] ] }).to eq(
+        first[:smart_folders].map { |folder| [ folder[:id], folder[:count] ] }
+      )
+      expect(fetch_keys.select { |key| Array(key).first == "dashboard_smart_folder_counts" }.size).to eq(2)
+      expect(fetch_keys).not_to include(a_collection_including("dashboard_smart_folder_count"))
+      expect(computed_folder_ids).to match_array(
+        SmartFolder.for_subject("job")
+                   .where("user_id IS NULL OR user_id = ?", user.id)
+                   .pluck(:id)
+      )
+    end
+  end
+
   describe "start_blocked filter" do
     it "filters job items to queued workflows with a start blocked reason" do
       blocked_job = Factories.job_record(user: user, repository: repo, state: "queued")
