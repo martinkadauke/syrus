@@ -4,6 +4,8 @@ class ChatPendingAction < ApplicationRecord
     close_job_successfully
     retry_job
     rebase_job
+    force_rebase
+    restack_epic
     reopen_job
     force_fail_job
     fire_scheduled_task_now
@@ -30,6 +32,19 @@ class ChatPendingAction < ApplicationRecord
     admin_retry_step
     admin_cleanup_workspace
     admin_refresh_installations
+    reconcile_job_state
+    force_state_transition
+    cancel_stale_work
+    reenqueue_work
+    force_landing_recheck
+    manual_agentic_run
+    adopt_current_pr_head
+    replace_pr_branch_with_workflow_output
+    retry_from_current_pr_branch
+    rerun_ci_repair
+    mark_ci_repair_noop
+    override_landing_blocker_once
+    wake_landing_queue
   ].freeze
   ACTION_TYPES = %w[ schedule_recurring ].freeze
   EMPTY_PAYLOAD_ACTIONS = %w[
@@ -47,6 +62,8 @@ class ChatPendingAction < ApplicationRecord
   REQUESTED_BY = %w[ agent operator ].freeze
 
   attribute :payload, :json, default: -> { {} }
+  attribute :before_snapshot, :json, default: -> { {} }
+  attribute :after_snapshot, :json, default: -> { {} }
 
   belongs_to :chat_session
   belongs_to :repository, optional: true
@@ -83,7 +100,14 @@ class ChatPendingAction < ApplicationRecord
       return false unless pending?
 
       ApplicationRecord.transaction do
-        record = apply!
+        raise ActiveRecord::RecordInvalid, self unless valid?
+
+        command = PendingActions.for(action_key).new(self)
+        repair_targets = command.repair_snapshot_targets
+        self.before_snapshot = PendingActions::RepairAuditSnapshot.capture(repair_targets) if command.repair_action?
+        record = command.execute
+        self.after_snapshot = PendingActions::RepairAuditSnapshot.capture(repair_targets) if command.repair_action?
+        record_repair_admin_action!(record) if command.repair_action?
         updates = { state: "confirmed", confirmed_at: Time.current }
         updates[:result] = record if record
         update!(updates)
@@ -249,6 +273,34 @@ class ChatPendingAction < ApplicationRecord
     PendingActions.for(action_key).new(self).validate_payload(errors)
   rescue PendingActions::UnknownAction
     # unknown actions are caught by known_action validation
+  end
+
+  def record_repair_admin_action!(record)
+    AdminAction.log!(
+      user: user,
+      action: "repair_#{action_key}",
+      params: {
+        pending_action_id: id,
+        chat_session_id: chat_session_id,
+        repository_id: repository_id,
+        action: action_key,
+        reason: reason,
+        requested_by: requested_by,
+        payload: payload,
+        result: repair_result_payload(record),
+        before_snapshot: before_snapshot,
+        after_snapshot: after_snapshot
+      }
+    )
+  end
+
+  def repair_result_payload(record)
+    return nil unless record
+
+    {
+      type: record.class.name,
+      id: record.id
+    }
   end
 
   def queued_actions_are_job_scoped

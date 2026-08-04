@@ -1782,6 +1782,7 @@ RSpec.describe ChatTurnJob do
     pending_action = chat.pending_actions.create!(
       action: "rebase_job",
       payload: { "job_id" => job.id },
+      reason: "Move the PR branch onto the current base.",
       requested_by: "agent"
     )
     user_message.update!(pending_action: pending_action)
@@ -1819,6 +1820,7 @@ RSpec.describe ChatTurnJob do
     rebase_action = chat.pending_actions.create!(
       action: "rebase_job",
       payload: { "job_id" => rebase_job.id },
+      reason: "Move the PR branch onto the current base.",
       requested_by: "agent"
     )
     retry_action = chat.pending_actions.create!(

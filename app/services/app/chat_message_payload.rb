@@ -92,11 +92,20 @@ module App
         app_confirm_path: "/api/v1/app/chats/#{chat_session.id}/pending_actions/#{action.id}/confirm",
         app_reject_path: "/api/v1/app/chats/#{chat_session.id}/pending_actions/#{action.id}/reject"
       }
+      base[:reason] = action.reason if action.reason.present?
+      base[:before_snapshot] = action.before_snapshot if action.before_snapshot.present?
+      base[:after_snapshot] = action.after_snapshot if action.after_snapshot.present?
 
       case action.action.presence || action.action_type
-      when "cancel_job", "close_job_successfully", "retry_job", "force_fail_job", "rebase_job", "reopen_job", "poll_job_feedback", "check_job_mergeability", "submit_chat_feedback"
+      when "cancel_job", "close_job_successfully", "retry_job", "force_fail_job", "rebase_job", "force_rebase", "reopen_job", "poll_job_feedback", "check_job_mergeability", "submit_chat_feedback", "force_landing_recheck", "override_landing_blocker_once"
         if (job = cached_action_job(action, payload["job_id"]))
           base.merge(resource_title: job.issue_title, resource_url: job_path(job))
+        else
+          base
+        end
+      when "restack_epic"
+        if (epic = cached_action_epic(action, payload["epic_id"]))
+          base.merge(resource_title: epic.title, resource_url: epic_path(epic))
         else
           base
         end
@@ -378,6 +387,18 @@ module App
       end
     end
 
+    def cached_action_epic(action, id)
+      id = id.to_i
+      return if id <= 0
+
+      if action.user.admin?
+        @admin_epics_by_id ||= {}
+        @admin_epics_by_id[id] ||= Epic.find_by(id: id)
+      else
+        cached_user_epics(action.user, [ id ])[id]
+      end
+    end
+
     def cached_document(id)
       id = id.to_i
       return if id <= 0
@@ -413,6 +434,10 @@ module App
         "Force fail #{::App::Presentation.job_slug(payload['job_id'])}"
       when "rebase_job"
         "Rebase #{::App::Presentation.job_slug(payload['job_id'])}"
+      when "force_rebase"
+        "Force rebase #{::App::Presentation.job_slug(payload['job_id'])}"
+      when "restack_epic"
+        "Restack Epic ##{payload['epic_id']}"
       when "reopen_job"
         "Reopen #{::App::Presentation.job_slug(payload['job_id'])}"
       when "fire_scheduled_task_now"
@@ -425,6 +450,12 @@ module App
         "Poll PR feedback for #{::App::Presentation.job_slug(payload['job_id'])}"
       when "check_job_mergeability"
         "Check mergeability for #{::App::Presentation.job_slug(payload['job_id'])}"
+      when "force_landing_recheck"
+        "Force landing recheck for #{::App::Presentation.job_slug(payload['job_id'])}"
+      when "override_landing_blocker_once"
+        "Override #{payload['blocker_key']} once for #{::App::Presentation.job_slug(payload['job_id'])}"
+      when "wake_landing_queue"
+        "Wake landing queue"
       when "delegate_issue"
         "Delegate issue ##{payload['issue_number']}"
       when "pause_landing_queue"
