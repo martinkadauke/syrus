@@ -1,6 +1,12 @@
 require "rails_helper"
 
 RSpec.describe "API: /api/v1/app/admin/overview", type: :request do
+  before { Rails.cache.clear }
+
+  def cached_stuck_snapshot(items)
+    Admin::StuckItemsCache::Snapshot.new(items: items, captured_at: Time.current)
+  end
+
   def parse_body
     JSON.parse(response.body)
   end
@@ -40,6 +46,21 @@ RSpec.describe "API: /api/v1/app/admin/overview", type: :request do
     job = Factories.job(user: admin)
     run = job.initial_run
     run.update_columns(state: "running", started_at: 10.minutes.ago, last_heartbeat_at: 10.minutes.ago)
+    allow(Admin::StuckItemsCache).to receive(:read).and_return(cached_stuck_snapshot([
+      {
+        "kind" => "running_run_without_live_worker_evidence",
+        "severity" => "alarm",
+        "attention_state" => "auto_repairable",
+        "run_id" => run.id,
+        "workflow_id" => run.step.workflow.id,
+        "workflow_slug" => "WF-#{run.step.workflow.id}",
+        "workflow_path" => "/jobs/#{job.id}?tab=workflows#workflow-#{run.step.workflow.id}",
+        "job_id" => job.id,
+        "job_path" => "/jobs/#{job.id}",
+        "detail" => "Run has no live worker evidence.",
+        "age_label" => "10m"
+      }
+    ]))
     sign_in_as(admin)
 
     get api_v1_app_admin_overview_path
@@ -58,7 +79,8 @@ RSpec.describe "API: /api/v1/app/admin/overview", type: :request do
       "workers",
       "recurring",
       "stuck",
-      "stuck_pagination"
+      "stuck_pagination",
+      "stuck_snapshot"
     )
     expect(body["active_runs"]["total"]).to eq(1)
     expect(body["chat_scoped_events"]).to include(
@@ -71,6 +93,10 @@ RSpec.describe "API: /api/v1/app/admin/overview", type: :request do
       "per_page" => 50,
       "total" => 1,
       "total_pages" => 1
+    )
+    expect(body["stuck_snapshot"]).to include(
+      "captured_at" => a_kind_of(String),
+      "stale" => false
     )
     expect(body["stuck"].first).to include(
       "kind" => "running_run_without_live_worker_evidence",

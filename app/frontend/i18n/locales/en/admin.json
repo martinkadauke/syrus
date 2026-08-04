@@ -45,6 +45,7 @@
     "all_healthy": "all healthy",
     "needs_attention": "needs attention",
     "nothing_flagged": "nothing flagged",
+    "stuck_snapshot_stale": "snapshot pending",
     "queue_unreachable": "queue tables unreachable",
     "stale_workers": "{{count}} stale",
     "warning_workers": "{{count}} warning",

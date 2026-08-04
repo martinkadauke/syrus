@@ -34,8 +34,9 @@ module Admin
           worker_data_root_usages: PerformanceLogging.phase("admin_overview.worker_data_root_usages") { InstanceVersion.worker_data_root_usages },
           worker_health: PerformanceLogging.phase("admin_overview.worker_health") { worker_health_payload(sample_limit_per_host: 4) },
           chat_scoped_events: PerformanceLogging.phase("admin_overview.chat_scoped_events") { chat_scoped_events_payload },
-          stuck: PerformanceLogging.phase("admin_overview.stuck") { paginated_stuck_items },
-          stuck_pagination: PerformanceLogging.phase("admin_overview.stuck_pagination") { stuck_pagination }
+          stuck: PerformanceLogging.phase("admin_overview.stuck_cache") { paginated_cached_stuck_items },
+          stuck_pagination: PerformanceLogging.phase("admin_overview.stuck_pagination") { cached_stuck_pagination },
+          stuck_snapshot: PerformanceLogging.phase("admin_overview.stuck_snapshot") { stuck_snapshot_payload }
         }
 
         payload[:workers] = PerformanceLogging.phase("admin_overview.workers") { workers_payload }
@@ -46,9 +47,11 @@ module Admin
 
     def stuck_json
       PerformanceLogging.phase("admin_stuck_payload") do
+        items = stuck_items
+        ::Admin::StuckItemsCache.write(items: items, captured_at: Time.current)
         {
-          items: paginated_stuck_items,
-          pagination: stuck_pagination
+          items: paginated_items(items),
+          pagination: pagination_for(items)
         }
       end
     end
@@ -158,29 +161,65 @@ module Admin
     end
 
     def paginated_stuck_items
-      stuck_items.slice(stuck_offset, STUCK_ITEMS_PER_PAGE) || []
+      paginated_items(stuck_items)
     end
 
     def stuck_pagination
-      total = stuck_items.size
+      pagination_for(stuck_items)
+    end
+
+    def cached_stuck_snapshot
+      @cached_stuck_snapshot ||= ::Admin::StuckItemsCache.read
+    end
+
+    def cached_stuck_items
+      cached_stuck_snapshot.items
+    end
+
+    def paginated_cached_stuck_items
+      paginated_items(cached_stuck_items)
+    end
+
+    def cached_stuck_pagination
+      pagination_for(cached_stuck_items)
+    end
+
+    def stuck_snapshot_payload
+      cached_stuck_snapshot.as_json.except(:items)
+    end
+
+    def paginated_items(items)
+      items.slice(stuck_offset_for(items), STUCK_ITEMS_PER_PAGE) || []
+    end
+
+    def pagination_for(items)
+      total = items.size
       {
-        page: stuck_page,
+        page: stuck_page_for(items),
         per_page: STUCK_ITEMS_PER_PAGE,
         total: total,
-        total_pages: stuck_total_pages,
-        first_item: total.zero? ? 0 : stuck_offset + 1,
-        last_item: [ stuck_offset + paginated_stuck_items.size, total ].min,
-        previous_path: stuck_page > 1 ? stuck_page_path(stuck_page - 1) : nil,
-        next_path: stuck_page < stuck_total_pages ? stuck_page_path(stuck_page + 1) : nil
+        total_pages: total_pages_for(items),
+        first_item: total.zero? ? 0 : stuck_offset_for(items) + 1,
+        last_item: [ stuck_offset_for(items) + paginated_items(items).size, total ].min,
+        previous_path: stuck_page_for(items) > 1 ? stuck_page_path(stuck_page_for(items) - 1) : nil,
+        next_path: stuck_page_for(items) < total_pages_for(items) ? stuck_page_path(stuck_page_for(items) + 1) : nil
       }
     end
 
     def stuck_offset
-      (stuck_page - 1) * STUCK_ITEMS_PER_PAGE
+      (stuck_page_for(stuck_items) - 1) * STUCK_ITEMS_PER_PAGE
+    end
+
+    def stuck_offset_for(items)
+      (stuck_page_for(items) - 1) * STUCK_ITEMS_PER_PAGE
     end
 
     def stuck_page
-      [ requested_stuck_page, stuck_total_pages ].min
+      stuck_page_for(stuck_items)
+    end
+
+    def stuck_page_for(items)
+      [ requested_stuck_page, total_pages_for(items) ].min
     end
 
     def requested_stuck_page
@@ -193,7 +232,11 @@ module Admin
     end
 
     def stuck_total_pages
-      [ (stuck_items.size.to_f / STUCK_ITEMS_PER_PAGE).ceil, 1 ].max
+      total_pages_for(stuck_items)
+    end
+
+    def total_pages_for(items)
+      [ (items.size.to_f / STUCK_ITEMS_PER_PAGE).ceil, 1 ].max
     end
 
     def stuck_page_path(page)

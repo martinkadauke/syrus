@@ -19,13 +19,15 @@ module WorkEngine
     )
 
     def perform(source:, job_id: nil, workflow_id: nil, run_id: nil)
-      Reconciler.call(
+      result = Reconciler.call(
         source: source,
         job_id: job_id,
         workflow_id: workflow_id,
         run_id: run_id,
         execute_repairs: Feature.unified_work_engine_reconciler_enabled?
       )
+      Admin::StuckItemsCache.write_from_result(result: result) if job_id.blank? && workflow_id.blank? && run_id.blank?
+      result
     end
   end
 end

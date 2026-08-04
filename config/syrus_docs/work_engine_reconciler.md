@@ -150,16 +150,20 @@ Planner examples:
 
 ## Stuck visibility and explanations
 
-Admin stuck surfaces are reconciler-backed. The admin overview health tile,
-dedicated stuck list, token admin stuck API, `admin_stuck_jobs`, and
-`explain_stuck_job` all expose the same issue kinds, evidence, repair plans,
-and derived attention state:
+Admin stuck surfaces are reconciler-backed. The dedicated stuck list, token
+admin stuck API, `admin_stuck_jobs`, and `explain_stuck_job` all expose the
+same issue kinds, evidence, repair plans, and derived attention state. The
+admin overview is intentionally read-only against the latest cached stuck
+snapshot refreshed by the global reconciler or by opening the dedicated stuck
+list; it must not run a global reconciliation inline because that path can be
+too expensive for the dashboard and Supervisor `admin_overview` tool.
 
 The React admin overview and dedicated stuck list paginate visible stuck items
 in 50-item pages. The `/api/v1/app/admin/stuck` and `/api/v1/admin/stuck`
-payloads accept `page` and return `pagination` metadata with the total count;
-the overview embeds the first page plus `stuck_pagination` so the health tile
-can show the full stuck total without rendering every row.
+payloads accept `page` and return live `pagination` metadata with the total
+count; the overview embeds the first page from the cached snapshot plus
+`stuck_pagination` so the health tile can show the last known total without
+rendering every row or blocking on reconciliation.
 
 - `auto_repairable` when the plan is safe for automatic execution
 - `waiting` when the plan is blocked by queue capacity, dependency or stack

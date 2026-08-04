@@ -114,6 +114,10 @@ export type AdminOverviewPayload = {
     previous_path: string | null
     next_path: string | null
   }
+  stuck_snapshot?: {
+    captured_at: string | null
+    stale: boolean
+  }
 }
 
 export type ChatScopedEventObservation = {

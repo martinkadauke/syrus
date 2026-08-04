@@ -45,6 +45,7 @@
     "all_healthy": "alle gesund",
     "needs_attention": "Aufmerksamkeit erforderlich",
     "nothing_flagged": "nichts markiert",
+    "stuck_snapshot_stale": "Snapshot ausstehend",
     "queue_unreachable": "Warteschlangen-Tabellen nicht erreichbar",
     "stale_workers": "{{count}} veraltet",
     "warning_workers": "{{count}} mit Warnung",

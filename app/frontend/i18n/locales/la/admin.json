@@ -45,6 +45,7 @@
     "all_healthy": "omnes sani",
     "needs_attention": "attentione opus est",
     "nothing_flagged": "nihil signatum",
+    "stuck_snapshot_stale": "imago exspectatur",
     "queue_unreachable": "tabulae agminis non attinguntur",
     "stale_workers": "{{count}} obsoleti",
     "warning_workers": "{{count}} moniti",

@@ -40,12 +40,14 @@ module Admin
       new(job_id: job.id).all
     end
 
-    def initialize(job_id: nil, now: Time.current)
+    def initialize(job_id: nil, now: Time.current, result: nil)
       @job_id = job_id
       @now = now
+      @result = result
     end
 
     def all
+      preload_records(result.issues)
       result.issues.each_with_index.map do |issue, index|
         build_item(issue, result.repair_plans[index], repair_execution_for(result.repair_plans[index]))
       end
@@ -82,7 +84,23 @@ module Admin
 
     def record_for(klass, issue, key)
       id = issue.affected_ids.fetch(key, []).first
-      klass.find_by(id: id)
+      record_maps.fetch(klass).fetch(id, nil)
+    end
+
+    def preload_records(issues)
+      @record_maps = {
+        Run => Run.where(id: affected_ids(issues, :run_ids)).includes(:job, :claude_session, step: :workflow).index_by(&:id),
+        Workflow => Workflow.where(id: affected_ids(issues, :workflow_ids)).includes(:job, :steps).index_by(&:id),
+        Job => Job.where(id: affected_ids(issues, :job_ids)).index_by(&:id)
+      }
+    end
+
+    def affected_ids(issues, key)
+      issues.flat_map { |issue| issue.affected_ids.fetch(key, []) }.compact.uniq
+    end
+
+    def record_maps
+      @record_maps ||= {}
     end
 
     def repair_execution_for(repair_plan)
