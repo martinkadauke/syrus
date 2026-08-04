@@ -18,6 +18,7 @@ class SplitRunResourceSummaryAttribution < ActiveRecord::Migration[8.1]
     RENAMES.each do |old_name, new_name|
       rename_column :run_resource_summaries, old_name, new_name if column_exists?(:run_resource_summaries, old_name)
     end
+
     add_column :run_resource_summaries, :process_attribution_method, :string, null: false, limit: 64, default: "unknown" unless column_exists?(:run_resource_summaries, :process_attribution_method)
     add_column :run_resource_summaries, :process_attribution_version, :integer, null: false, default: 1 unless column_exists?(:run_resource_summaries, :process_attribution_version)
     add_column :run_resource_summaries, :process_attribution_confidence, :string, null: false, limit: 32, default: "unknown" unless column_exists?(:run_resource_summaries, :process_attribution_confidence)
