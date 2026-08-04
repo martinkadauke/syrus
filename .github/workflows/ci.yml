@@ -18,10 +18,15 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true
+
+      - name: Check migration baselines
+        run: bin/check-primary-migration-baselines
 
       - name: Prepare test database
         run: bin/rails db:test:prepare

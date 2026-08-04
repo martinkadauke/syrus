@@ -1,0 +1,126 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Syrus primary migration-baseline grader.
+#
+# Verifies the current primary database migrations can run both from
+# scratch and from the schema snapshots represented by deployment tags.
+# This catches the deploy footgun where a migration was added after an
+# environment tag, then later removed because current schema.rb already
+# had the table/column.
+
+require "json"
+require "open3"
+require "tmpdir"
+require "timeout"
+
+ROOT = File.expand_path("..", __dir__)
+DEFAULT_BASELINE_TAGS = %w[staging production public].freeze
+COMMAND_TIMEOUT_SECONDS = Integer(ENV.fetch("MIGRATION_BASELINE_TIMEOUT", "120"))
+
+def configured_baseline_tags
+  ENV.fetch("MIGRATION_BASELINE_TAGS", DEFAULT_BASELINE_TAGS.join(" ")).split(/\s+/).reject(&:empty?)
+end
+
+def tag_exists?(tag)
+  system("git", "rev-parse", "--verify", "--quiet", "refs/tags/#{tag}", out: File::NULL, err: File::NULL)
+end
+
+def fetch_tags
+  system("git", "fetch", "--tags", "--force", "--quiet", "origin", out: File::NULL, err: File::NULL)
+end
+
+def rails_env_for(data_root)
+  {
+    "BUNDLE_GEMFILE" => File.join(ROOT, "Gemfile"),
+    "RAILS_ENV" => "production",
+    "SECRET_KEY_BASE_DUMMY" => "1",
+    "SYRUS_APP_HOST" => "syrus.example.test",
+    "SYRUS_ASSUME_SSL" => "false",
+    "SYRUS_FORCE_SSL" => "false",
+    "SYRUS_SQLITE" => "1",
+    "SYRUS_DATA_ROOT" => data_root
+  }
+end
+
+def run!(*command, env:)
+  stdout = +""
+  stderr = +""
+  status = nil
+
+  Timeout.timeout(COMMAND_TIMEOUT_SECONDS) do
+    stdout, stderr, status = Open3.capture3(env, *command, chdir: ROOT)
+  end
+
+  return stdout if status.success?
+
+  warn "Command failed: #{command.join(" ")}"
+  warn "status: #{status.exitstatus}"
+  warn ""
+  warn "stdout:"
+  warn stdout
+  warn ""
+  warn "stderr:"
+  warn stderr
+  exit 1
+rescue Timeout::Error
+  warn "Command timed out after #{COMMAND_TIMEOUT_SECONDS}s: #{command.join(" ")}"
+  exit 1
+end
+
+def create_isolated_primary_database!(env)
+  run!("bin/rails", "db:create", env: env)
+end
+
+def migrate_isolated_primary_database!(env)
+  run!("bin/rails", "db:migrate:primary", env: env)
+end
+
+def load_schema_from_tag!(tag, data_root, env)
+  schema_path = File.join(data_root, "#{tag}-schema.rb")
+  schema = run!("git", "show", "#{tag}:db/schema.rb", env: {})
+  File.write(schema_path, schema)
+
+  run!("bin/rails", "runner", "load #{schema_path.to_json}", env: env)
+end
+
+def check_scratch!
+  puts "[migration-baselines] checking scratch primary migration path"
+
+  Dir.mktmpdir("syrus-primary-migrate-scratch-") do |data_root|
+    env = rails_env_for(data_root)
+
+    create_isolated_primary_database!(env)
+    migrate_isolated_primary_database!(env)
+  end
+end
+
+def check_tag!(tag)
+  puts "[migration-baselines] checking #{tag} schema baseline"
+
+  Dir.mktmpdir("syrus-primary-migrate-#{tag}-") do |data_root|
+    env = rails_env_for(data_root)
+
+    create_isolated_primary_database!(env)
+    load_schema_from_tag!(tag, data_root, env)
+    migrate_isolated_primary_database!(env)
+  end
+end
+
+baseline_tags = configured_baseline_tags
+missing_tags = baseline_tags.reject { |tag| tag_exists?(tag) }
+if missing_tags.any?
+  fetch_tags
+  missing_tags = baseline_tags.reject { |tag| tag_exists?(tag) }
+end
+
+if missing_tags.any?
+  warn "[migration-baselines] missing migration baseline tag(s): #{missing_tags.join(", ")}"
+  warn "Create or fetch the deployment tags, or override MIGRATION_BASELINE_TAGS for this run."
+  exit 1
+end
+
+check_scratch!
+baseline_tags.each { |tag| check_tag!(tag) }
+
+puts "[migration-baselines] ok"

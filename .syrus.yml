@@ -101,6 +101,16 @@ grade:
     run: bin/check-migrations
     timeout_minutes: 1
 
+  - name: migration-baselines
+    description: |
+      Verifies primary database migrations work from scratch and from
+      the schema snapshots represented by deployment tags (`staging`,
+      `production`, and `public` by default). This catches deleted or
+      reordered migrations that are invisible on a fully migrated dev
+      database but crash deploys when an environment is still behind.
+    run: bin/check-primary-migration-baselines
+    timeout_minutes: 5
+
   - name: thread-budget
     description: |
       Rejects a SolidQueue worker config whose thread budget exceeds
