@@ -203,12 +203,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_162000) do
   create_table "chat_pending_actions", force: :cascade do |t|
     t.string "action"
     t.string "action_type"
+    t.json "after_snapshot", null: false
+    t.json "before_snapshot", null: false
     t.datetime "cancelled_at"
     t.bigint "chat_message_id"
     t.integer "chat_session_id", null: false
     t.datetime "confirmed_at"
     t.datetime "created_at", null: false
     t.json "payload", null: false
+    t.text "reason"
     t.datetime "rejected_at"
     t.integer "repository_id"
     t.string "requested_by", default: "agent", null: false
