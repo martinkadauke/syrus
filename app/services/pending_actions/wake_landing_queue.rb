@@ -16,5 +16,7 @@ module PendingActions
     def action_detail
       "reason: #{reason}"
     end
+
+    def repair_action? = true
   end
 end

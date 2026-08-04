@@ -207,6 +207,10 @@ RSpec.describe "SyrusChatMcp admin tools" do
     expect {
       expect(action.confirm!).to be true
     }.to have_enqueued_job(LandingQueueProcessorJob)
+      .and change { AdminAction.where(action: "repair_wake_landing_queue").count }.by(1)
+
+    expect(action.reload.before_snapshot).to include("jobs" => [])
+    expect(action.after_snapshot).to include("jobs" => [])
   end
 
   it "returns force_rebase dry-run output without creating a pending action" do
