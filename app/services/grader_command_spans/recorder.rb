@@ -32,11 +32,11 @@ module GraderCommandSpans
           local __syrus_command="$3"
           local __syrus_started_ms
           local __syrus_exit
-          __syrus_started_ms="$(date +%s%3N)"
-          printf '\\036%s\tstart\t%s\t%s\t%s\t%s\\037' '#{MARKER_PREFIX}' "$__syrus_seq" "$__syrus_started_ms" "$(printf '%s' "$__syrus_name" | base64 | tr -d '\\n')" "$(printf '%s' "$__syrus_command" | base64 | tr -d '\\n')"
+          __syrus_started_ms="$(($(date +%s) * 1000))"
+          printf '\\036%s\tstart\t%s\t%s\t%s\t%s\\037' '#{MARKER_PREFIX}' "$__syrus_seq" "$__syrus_started_ms" "$(printf '%s' "$__syrus_name" | base64 | tr -d '\\r\\n')" "$(printf '%s' "$__syrus_command" | base64 | tr -d '\\r\\n')"
           eval "$__syrus_command"
           __syrus_exit="$?"
-          printf '\\036%s\tfinish\t%s\t%s\t%s\\037' '#{MARKER_PREFIX}' "$__syrus_seq" "$(date +%s%3N)" "$__syrus_exit"
+          printf '\\036%s\tfinish\t%s\t%s\t%s\\037' '#{MARKER_PREFIX}' "$__syrus_seq" "$(($(date +%s) * 1000))" "$__syrus_exit"
           return "$__syrus_exit"
         }
       BASH
