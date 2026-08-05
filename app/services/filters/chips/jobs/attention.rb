@@ -145,15 +145,8 @@ module Filters
         end
 
         def apply_in_progress
-          # Job.state covers normal execution, but landing and maintenance
-          # workflows can run while the thread is approved/landing after
-          # transient retries. Treat any open thread whose latest workflow
-          # is running as in progress so the dashboard mirrors active work.
-          running_workflow_job_ids = latest_workflow_job_ids("running")
-
-          scope.where(state: "running")
-               .or(scope.open_threads.where.not(state: "landing").where(id: running_workflow_job_ids))
-               .where.not(id: paused_workflow_job_ids)
+          scope.where(state: "running").where.not(id: paused_workflow_job_ids)
+               .or(scope.open_threads.where(id: unpaused_running_workflow_job_ids))
         end
 
         def apply_paused
@@ -263,6 +256,12 @@ module Filters
             )
           SQL
             .select(:job_id)
+        end
+
+        def unpaused_running_workflow_job_ids
+          Workflow.where(state: "running")
+                  .where("artifacts IS NULL OR NOT (artifacts LIKE ? OR artifacts LIKE ?)", '%"pause_reason"%', '%"start_blocked_reason"%')
+                  .select(:job_id)
         end
 
         def paused_workflow_job_ids

@@ -114,7 +114,7 @@ RSpec.describe "Filters::Chips" do
       expect(run(field: "attention", op: "is", value: "pinned")).to contain_exactly(pinned)
     end
 
-    it "in_progress: includes running work but excludes queued workflows" do
+    it "in_progress: includes any unpaused running workflow but excludes queued and paused workflows" do
       running = Factories.job_record(repository: repo, issue_number: 1, state: "running")
       landing_running = Factories.job_record(repository: repo, issue_number: 2, state: "landing")
       queued_rebase = Factories.job_record(repository: repo, issue_number: 3, state: "approved")
@@ -122,6 +122,10 @@ RSpec.describe "Filters::Chips" do
       finished_rebase = Factories.job_record(repository: repo, issue_number: 5, state: "approved")
       landing_queued = Factories.job_record(repository: repo, issue_number: 6, state: "landing")
       running_merge_train = Factories.job_record(repository: repo, issue_number: 8, state: "approved")
+      running_retry = Factories.job_record(repository: repo, issue_number: 9, state: "failed")
+      running_ci_failure = Factories.job_record(repository: repo, issue_number: 10, state: "implemented")
+      old_running_workflow = Factories.job_record(repository: repo, issue_number: 11, state: "approved")
+      paused_running = Factories.job_record(repository: repo, issue_number: 12, state: "running")
       Factories.job_record(repository: repo, issue_number: 7, state: "approved")
 
       Workflow.create!(job: queued_rebase, trigger_kind: "rebase", state: "queued")
@@ -130,11 +134,25 @@ RSpec.describe "Filters::Chips" do
       Workflow.create!(job: landing_running, trigger_kind: "auto_merge", state: "running")
       Workflow.create!(job: landing_queued, trigger_kind: "auto_merge", state: "queued")
       Workflow.create!(job: running_merge_train, trigger_kind: "merge_train", state: "running")
+      Workflow.create!(job: running_retry, trigger_kind: "retry", state: "running")
+      Workflow.create!(job: running_ci_failure, trigger_kind: "ci_failure", state: "running")
+      Workflow.create!(job: old_running_workflow, trigger_kind: "rebase", state: "running")
+      Workflow.create!(job: old_running_workflow, trigger_kind: "retry", state: "succeeded")
+      Workflow.create!(
+        job: paused_running,
+        trigger_kind: "initial",
+        state: "running",
+        artifacts: { "pause_reason" => "workflow_admission_budget" }
+      )
 
       expect(run(field: "attention", op: "is", value: "in_progress")).to contain_exactly(
         running,
+        landing_running,
         running_rebase,
-        running_merge_train
+        running_merge_train,
+        running_retry,
+        running_ci_failure,
+        old_running_workflow
       )
     end
 
