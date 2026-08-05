@@ -398,7 +398,29 @@ class WorkflowAdmissionBudget
     return false if step.present?
 
     minimum_progress_floor_capacity.positive? &&
-      active_agentic_run_count < minimum_progress_floor_capacity
+      minimum_progress_floor_slots_used < minimum_progress_floor_capacity
+  end
+
+  def minimum_progress_floor_slots_used
+    active_agentic_run_count + active_minimum_progress_handoff_count
+  end
+
+  def active_minimum_progress_handoff_count
+    @active_minimum_progress_handoff_count ||= Workflow.active
+      .where.not(id: workflow.id)
+      .where.not(job_id: job.id)
+      .where(created_at: (now - ACTIVE_WORKFLOW_WINDOW)..)
+      .includes(:steps)
+      .select { |candidate| minimum_progress_handoff_slot?(candidate) }
+      .size
+  end
+
+  def minimum_progress_handoff_slot?(candidate)
+    return false unless admission_controlled_active_workflow?(candidate)
+    override = candidate.artifact("workflow_admission_override").to_h
+    return false unless (override["reason"] || override[:reason]) == "minimum_progress_floor"
+
+    candidate.steps.none? { |candidate_step| candidate_step.agentic? && candidate_step.runs.exists? }
   end
 
   def minimum_progress_floor_reason(candidate, active, pressure)
@@ -646,8 +668,10 @@ class WorkflowAdmissionBudget
       "repository_active_workflow_count" => repository_active_workflow_count,
       "active_run_count" => active_run_count,
       "active_agentic_run_count" => active_agentic_run_count,
+      "active_minimum_progress_handoff_count" => active_minimum_progress_handoff_count,
       "healthy_worker_count" => healthy_worker_count,
       "minimum_progress_floor_capacity" => minimum_progress_floor_capacity,
+      "minimum_progress_floor_slots_used" => minimum_progress_floor_slots_used,
       "minimum_progress_floor_available" => minimum_progress_floor_available?,
       "minimum_progress_floor_used" => false,
       "hard_pressure_gates_considered" => %w[worker_memory_exhausted worker_disk_exhausted],

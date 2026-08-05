@@ -223,6 +223,81 @@ RSpec.describe WorkflowAdmissionBudget do
     )
   end
 
+  it "keeps a minimum-progress floor slot occupied after prepare until the first agentic run exists" do
+    WorkerHostHealthSample.delete_all
+    worker_sample(hostname: "worker-1")
+    WorkflowStepResourceProfile.delete_all
+    profile(step_kind: "prepare", trigger_kind: "retry", duration: 20, cpu: 2.0, io: 2.0, memory: 20.0)
+    admitted = workflow_for(state: "running")
+    admitted.first_step.update_columns(state: "succeeded", started_at: 2.minutes.ago, finished_at: 1.minute.ago, updated_at: Time.current)
+    admitted.update!(
+      artifacts: {
+        "workflow_admission_override" => {
+          "action" => "admit_now",
+          "reason" => "minimum_progress_floor",
+          "override" => true
+        }
+      }
+    )
+    expect(admitted.reload.artifact("workflow_admission_override")).to include("reason" => "minimum_progress_floor")
+    candidate = workflow_for(trigger_kind: "retry")
+
+    budget = described_class.new(workflow: candidate)
+    expect(budget.send(:active_minimum_progress_handoff_count)).to eq(1)
+    decision = budget.call
+
+    expect(decision.action).to eq("delay_until")
+    expect(decision.reason).to eq("predicted_budget_pressure_high")
+    expect(decision.details).to include(
+      "active_agentic_run_count" => 0,
+      "active_minimum_progress_handoff_count" => 1,
+      "minimum_progress_floor_capacity" => 1,
+      "minimum_progress_floor_slots_used" => 1,
+      "minimum_progress_floor_available" => false
+    )
+  end
+
+  it "releases a minimum-progress handoff slot once the first agentic run has been created" do
+    WorkerHostHealthSample.delete_all
+    worker_sample(hostname: "worker-1")
+    WorkflowStepResourceProfile.delete_all
+    %w[prepare implement].each do |step_kind|
+      profile(step_kind: step_kind, trigger_kind: "retry", duration: 20, cpu: 2.0, io: 2.0, memory: 20.0)
+    end
+    admitted = workflow_for(state: "running")
+    admitted.first_step.update_columns(state: "succeeded", started_at: 2.minutes.ago, finished_at: 1.minute.ago, updated_at: Time.current)
+    implement_step = admitted.steps.find_by!(kind: "implement")
+    implement_step.runs.create!(
+      job: admitted.job,
+      user: admitted.job.user,
+      trigger_kind: admitted.trigger_kind,
+      agent_provider: admitted.agent_provider,
+      state: "succeeded",
+      started_at: 1.minute.ago,
+      finished_at: 30.seconds.ago
+    )
+    admitted.update!(
+      artifacts: {
+        "workflow_admission_override" => {
+          "action" => "admit_now",
+          "reason" => "minimum_progress_floor",
+          "override" => true
+        }
+      }
+    )
+    candidate = workflow_for(trigger_kind: "retry")
+
+    decision = described_class.call(workflow: candidate)
+
+    expect(decision.action).to eq("admit_now")
+    expect(decision.reason).to eq("minimum_progress_floor")
+    expect(decision.details).to include(
+      "active_agentic_run_count" => 0,
+      "active_minimum_progress_handoff_count" => 0,
+      "minimum_progress_floor_slots_used" => 0
+    )
+  end
+
   it "records urgent admission as an override instead of delaying for soft pressure" do
     profile(step_kind: "grader", grader_name: "production-build-boot", duration: 2_400, cpu: 70.0, io: 40.0, memory: 70.0)
     workflow_for(state: "running")
