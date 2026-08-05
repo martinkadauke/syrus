@@ -134,6 +134,20 @@ RSpec.describe LandingQueueProcessor do
     )
   end
 
+  it "does not dispatch a second landing workflow for a job that already has one active" do
+    job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+    job.start_landing!
+    job.save!
+    existing = Workflows::AutoMerge.instantiate(job: job)
+
+    expect {
+      described_class.new.send(:land, job)
+    }.not_to change { Workflow.where(job: job, trigger_kind: "auto_merge").count }
+
+    expect(existing.reload).to be_queued
+    expect(job.reload).to be_landing
+  end
+
   it "retries a landing-start blocker after its backoff expires" do
     job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
     job.update!(landing_failure_reason: "landing start blocked: workflow admission budget")
@@ -847,6 +861,20 @@ RSpec.describe LandingQueueProcessor do
 
       expect(described_class.try_land!(target)).to be_nil
       expect(target.reload).to be_approved
+    end
+
+    it "no-ops when the target Job already has an active landing workflow" do
+      job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+      job.start_landing!
+      job.save!
+      Workflows::AutoMerge.instantiate(job: job)
+      job.update!(state: "approved")
+
+      expect {
+        expect(described_class.try_land!(job)).to be_nil
+      }.not_to change { Workflow.where(job: job, trigger_kind: "auto_merge").count }
+
+      expect(job.reload).to be_approved
     end
 
     it "dispatches when another repository is already landing" do

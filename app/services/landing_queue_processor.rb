@@ -424,6 +424,7 @@ class LandingQueueProcessor
     Job.transaction do
       job.lock!
       raise ActiveRecord::Rollback if landing_in_progress_for_repository?(job.repository_id)
+      raise ActiveRecord::Rollback if active_landing_workflow_for_job?(job)
       raise ActiveRecord::Rollback unless job.approved?
       raise ActiveRecord::Rollback unless blockage_for(job, consume_override: true)[:blocked_reason].blank?
 
@@ -443,6 +444,10 @@ class LandingQueueProcessor
 
   def landing_in_progress_for_repository?(repository_id)
     Job.landing.where(repository_id: repository_id).exists?
+  end
+
+  def active_landing_workflow_for_job?(job)
+    job.workflows.active.where(trigger_kind: Workflow::LANDING_TRIGGER_KINDS).exists?
   end
 
   def merge_train_for_epic_child?(job)
