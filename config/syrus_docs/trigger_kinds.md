@@ -160,4 +160,6 @@ This trigger kind is infrastructure-facing and not surfaced in the operator Job 
 
 Only the Job's latest workflow is eligible for "Retry from failed step" (`Workflow#retry_available?` checks `latest_for_job?`). The `reopen` AASM event also carries this guard, so a superseded workflow cannot be reopened even by direct API calls.
 
+**Runaway workflow guard:** Syrus closes a Job as `too_many_failed_workflows` after 10 consecutive failed Workflows, and as `too_many_workflows` once it reaches 50 total Workflows. A successful Workflow breaks the failed streak. The total-workflow guard cancels the newly-created Workflow before it starts, so repeated queue wakeups cannot create hundreds of attempts for one Job.
+
 **Retry/Reopen suppression:** Infrastructure Jobs and their anchor workflows are not operator-retryable. The "Retry from failed step", "Retry implementation", and "Reopen" UI actions are suppressed for infrastructure jobs in `App::JobDetailPayload` and `App::JobRetryActions`.

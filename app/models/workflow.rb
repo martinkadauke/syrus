@@ -125,9 +125,19 @@ class Workflow < ApplicationRecord
   end
 
   after_update_commit :schedule_auto_retry!, if: :saved_change_to_state_to_failed?
+  after_update_commit :enforce_job_workflow_runaway_limits_on_fail!, if: :saved_change_to_state_to_failed?
+  after_create_commit :enforce_job_workflow_runaway_limits_on_create!
 
   def saved_change_to_state_to_failed?
     saved_change_to_state? && state == "failed"
+  end
+
+  def enforce_job_workflow_runaway_limits_on_create!
+    job.enforce_workflow_runaway_limits!(created_workflow: self)
+  end
+
+  def enforce_job_workflow_runaway_limits_on_fail!
+    job.enforce_workflow_runaway_limits!(failed_workflow: self)
   end
 
   def job_must_be_open_on_create

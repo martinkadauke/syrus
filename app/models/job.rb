@@ -14,11 +14,15 @@ class Job < ApplicationRecord
   MAIN_GRADER_CLOSURE_REASON = "main_grader".freeze
   SCHEDULED_TASK_OUTCOMES = {
     "too_many_failures"          => :record_failure!,
+    "too_many_failed_workflows"  => :record_failure!,
+    "too_many_workflows"         => :record_failure!,
     "replaced_by_scheduled_task" => nil              # bookkeeping only; no counter update
   }.freeze
   SYSTEM_KIND_MAIN_BRANCH_REPAIR = "main_branch_repair".freeze
   SYSTEM_KINDS = [ SYSTEM_KIND_MAIN_BRANCH_REPAIR ].freeze
   MAIN_BRANCH_REPAIR_TITLE = "Fix broken main branch".freeze
+  MAX_CONSECUTIVE_FAILED_WORKFLOWS = 10
+  MAX_TOTAL_WORKFLOWS = 50
   CREDENTIAL_MODES = %w[ app pat ].freeze
   PREPARE_SKIP_LABEL = "syrus-skip-prepare".freeze
   TERMINAL_STATES = %w[ closed no_change_needed ].freeze
@@ -711,6 +715,52 @@ class Job < ApplicationRecord
         )
       end
     end
+  end
+
+  def enforce_workflow_runaway_limits!(created_workflow: nil, failed_workflow: nil)
+    return if closed?
+
+    total = workflows.count
+    return close_for_workflow_runaway!("too_many_workflows", created_workflow || failed_workflow, total: total) if total >= MAX_TOTAL_WORKFLOWS
+    return unless failed_workflow
+
+    failed_streak = consecutive_failed_workflows_count
+    return if failed_streak < MAX_CONSECUTIVE_FAILED_WORKFLOWS
+
+    close_for_workflow_runaway!("too_many_failed_workflows", failed_workflow, total: total, failed_streak: failed_streak)
+  end
+
+  def consecutive_failed_workflows_count
+    workflows.reorder(created_at: :desc, id: :desc)
+             .limit(MAX_CONSECUTIVE_FAILED_WORKFLOWS)
+             .pluck(:state)
+             .take_while { |state| state == "failed" }
+             .count
+  end
+
+  def close_for_workflow_runaway!(reason, workflow, total:, failed_streak: nil)
+    if workflow&.state.in?(%w[queued running]) && workflow.may_cancel?
+      workflow.cancel!
+      workflow.save!
+    end
+
+    close_with_reason!(reason)
+    failed_streak ||= consecutive_failed_workflows_count
+    NotificationService.create_for(
+      user: user,
+      kind: "job_failed",
+      job: self,
+      pr_url: notification_pr_url,
+      body: "#{slug} stopped after runaway workflow activity: #{title.truncate(80)}"
+    )
+    run = workflow&.runs&.order(:id)&.last || current_run
+    return unless run
+
+    JobLog.append!(
+      run: run,
+      kind: "system",
+      chunk: "job stopped: #{reason} (#{total} total workflows, #{failed_streak} consecutive failed workflows)"
+    )
   end
 
   # When a cron Job reaches a terminal state, propagate the outcome
