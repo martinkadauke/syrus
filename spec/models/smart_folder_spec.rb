@@ -91,6 +91,29 @@ RSpec.describe SmartFolder do
     expect(described_class.builtins(:epic)).to be_empty
   end
 
+  it "repairs duplicate system built-ins when ensuring a subject" do
+    now = Time.current
+    duplicate_rows = 2.times.map do |index|
+      {
+        name: "Paused",
+        kind: "builtin",
+        subject_type: "job",
+        filter: { "and" => [ { "field" => "attention", "op" => "is", "value" => "paused" } ] },
+        position: 99 + index,
+        user_id: nil,
+        created_at: now,
+        updated_at: now
+      }
+    end
+    described_class.insert_all!(duplicate_rows)
+
+    expect {
+      described_class.ensure_builtins_for_subject!(:job)
+    }.to change { described_class.where(name: "Paused", kind: "builtin", subject_type: "job", user_id: nil).count }.from(2).to(1)
+
+    expect(described_class.builtins(:job).pluck(:name).grep("Paused")).to eq([ "Paused" ])
+  end
+
   it "sweeps retired built-ins on next ensure_builtins!" do
     described_class.create!(name: "Ghost", kind: "builtin", filter: { "attention" => "ghost" }, position: 99)
     described_class.create!(name: "Ghost", subject_type: "epic", kind: "builtin", filter: { "attention" => "ghost" }, position: 99)

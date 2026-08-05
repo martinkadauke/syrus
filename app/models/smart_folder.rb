@@ -206,7 +206,7 @@ class SmartFolder < ApplicationRecord
 
   def self.ensure_builtin_set!(subject, definitions)
     subject = subject.to_s
-    existing_by_name = builtin.where(user_id: nil, subject_type: subject).index_by(&:name)
+    existing_by_name = canonical_builtin_rows_by_name(subject)
 
     definitions.each_with_index do |definition, index|
       folder = existing_by_name[definition.fetch(:name)] || new(user_id: nil, subject_type: subject, name: definition.fetch(:name))
@@ -223,6 +223,14 @@ class SmartFolder < ApplicationRecord
     # sidebar after we remove or rename a definition. ("Awaiting your
     # move" used to live here; its filter resolved to relation.none.)
     builtin.where(user_id: nil, subject_type: subject).where.not(name: definitions.map { |d| d.fetch(:name) }).destroy_all
+  end
+
+  def self.canonical_builtin_rows_by_name(subject)
+    builtin.where(user_id: nil, subject_type: subject).order(:position, :id).group_by(&:name).transform_values do |folders|
+      keeper = folders.max_by(&:id)
+      (folders - [ keeper ]).each(&:destroy!)
+      keeper
+    end
   end
 
   # Sidebar tier for this folder — see BUILTIN_DEFINITIONS for the
