@@ -108,6 +108,9 @@ module Admin
         trigger_kind: workflow.trigger_kind,
         state: workflow.state,
         failure_reason: workflow.failure_reason.presence || workflow.artifact("failure_reason").presence,
+        start_blocked_reason: workflow.artifact("start_blocked_reason"),
+        start_blocked_details: workflow.artifact("start_blocked_details"),
+        start_blocked_next_check_at: workflow.artifact("start_blocked_next_check_at"),
         run_count: runs.size,
         latest_run_id: runs.max_by { |run| [ run.created_at || Time.zone.at(0), run.id ] }&.id,
         failed_run: failed_run_payload(failed_run),
@@ -474,6 +477,15 @@ module Admin
       return action("confirm_rebase", "The Job is behind base or GitHub reports an unclean mergeability state.") if rebase_recommended?(payload)
       return action("inspect_logs", "PR checks are failing.", pr_number: job.pr_number) if job.pr_checks_state == "failing"
       return action("wait", "PR checks are still pending.", pr_number: job.pr_number) if job.pr_checks_state == "pending"
+      if (blocked_landing = landing_start_blocked_workflow(payload))
+        return action(
+          "release_landing_slot",
+          "Landing workflow start is admission-blocked before its first Run; release the landing slot and retry after the recorded backoff.",
+          workflow_id: blocked_landing[:id],
+          start_blocked_reason: blocked_landing[:start_blocked_reason],
+          next_check_at: blocked_landing[:start_blocked_next_check_at]
+        )
+      end
       return action("manual_intervention", "Dependency graph has unresolved, redundant, or multiple leaf blockers.") if dependency_intervention_needed?(payload)
       return action("retry_job", "The latest workflow failed and no narrower repair action was detected.", workflow_id: job.latest_workflow&.id) if job.latest_workflow&.failed? || job.failed?
       return action("wait", "The Job has active queued or running workflow work.") if payload.dig(:workflows, :active).present?
@@ -504,6 +516,17 @@ module Admin
         payload.dig(:dependencies, :multiple_leaf_dependencies).to_a.size > 1 ||
         payload.dig(:dependencies, :redundant_transitive_dependencies).present? ||
         payload.dig(:dependencies, :pr_base_mismatch, :mismatch)
+    end
+
+    def landing_start_blocked_workflow(payload)
+      return unless job.landing?
+
+      payload.dig(:workflows, :active).to_a.find do |workflow|
+        workflow[:trigger_kind].in?(%w[auto_merge external_pr_merge merge_train]) &&
+          workflow[:state] == "queued" &&
+          workflow[:run_count].to_i.zero? &&
+          workflow[:start_blocked_reason].present?
+      end
     end
 
     def action(kind, reason, **extra)

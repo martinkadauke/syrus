@@ -136,6 +136,8 @@ module Admin
         "Queue starvation or worker capacity pressure: #{issue.explanation}"
       when "dependency_stack_start_block"
         dependency_detail(issue, job)
+      when "landing_start_blocked"
+        "Landing start blocked: #{issue.explanation} The reconciler can release the landing slot and let the queue retry after the recorded backoff."
       when "main_health_start_block"
         "Main health blocked: #{issue.explanation}"
       when "retryable_run_failure"

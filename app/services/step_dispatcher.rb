@@ -105,12 +105,33 @@ class StepDispatcher
     admission = WorkflowAdmissionBudget.call(workflow: workflow)
     unless admission.admit?
       reason = ADMISSION_BLOCK_REASON
+      backoff = admission.delay_until ? admission_backoff(admission) : START_BLOCKED_BACKOFF
+
+      if workflow.landing_workflow?
+        landing_reason = "landing start blocked: workflow admission budget"
+        details = admission.artifact
+        next_check_at = Time.current + backoff
+        fail_unstartable_landing_workflow!(
+          workflow,
+          landing_reason,
+          details: details,
+          next_check_at: next_check_at,
+          extra_artifacts: {
+            "workflow_admission_decision" => details,
+            "workflow_admission_decided_at" => Time.current.iso8601
+          }
+        )
+        schedule_landing_queue_recheck!(workflow, backoff)
+        warn_if_stuck_queued(workflow, "#{reason}: #{admission.reason}")
+        return
+      end
+
       return if start_blocked_backoff_active?(workflow, reason)
 
       record_start_blocked!(
         workflow,
         reason,
-        backoff: admission.delay_until ? admission_backoff(admission) : START_BLOCKED_BACKOFF,
+        backoff: backoff,
         details: admission.artifact
       )
       warn_if_stuck_queued(workflow, "#{reason}: #{admission.reason}")
@@ -257,16 +278,25 @@ class StepDispatcher
     nil
   end
 
-  def self.fail_unstartable_landing_workflow!(workflow, reason)
-    workflow.artifacts = (workflow.artifacts || {}).merge(
+  def self.fail_unstartable_landing_workflow!(workflow, reason, details: nil, next_check_at: nil, extra_artifacts: {})
+    artifacts = (workflow.artifacts || {}).merge(
       "failure_reason" => reason,
       "start_blocked_reason" => reason,
       "start_blocked_at" => Time.current.iso8601
-    )
+    ).merge(extra_artifacts)
+    artifacts["start_blocked_details"] = details if details.present?
+    artifacts["start_blocked_next_check_at"] = next_check_at.iso8601 if next_check_at.present?
+    workflow.artifacts = artifacts
     workflow.failure_reason = reason
     workflow.fail! if workflow.may_fail?
     workflow.save!
     nil
+  end
+
+  def self.schedule_landing_queue_recheck!(workflow, backoff)
+    LandingQueueProcessorJob
+      .set(wait: backoff, priority: workflow.job.solid_queue_priority)
+      .perform_later
   end
 
   def self.warn_if_stuck_queued(workflow, reason)

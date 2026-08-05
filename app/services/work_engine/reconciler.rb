@@ -368,6 +368,26 @@ module WorkEngine
     def classify_workflows
       workflows.filter_map do |workflow|
         if workflow.queued? && older_than?(workflow.created_at, ORPHAN_RUN_GRACE_PERIOD) && queued_without_first_run?(workflow)
+          if landing_start_blocked_workflow?(workflow)
+            reason = workflow.artifact("start_blocked_reason")
+            next issue(
+              kind: :landing_start_blocked,
+              severity: :warning,
+              affected_ids: ids_for(workflow),
+              safe_to_auto_repair: workflow.job.may_defer_landing?,
+              recommended_repair_action: "defer_landing_start_blocked_workflow",
+              check_after: parse_time(workflow.artifact("start_blocked_next_check_at")),
+              evidence: workflow_evidence(workflow).merge(
+                first_step_id: workflow.first_step&.id,
+                start_blocked_reason: reason,
+                start_blocked_details: workflow.artifact("start_blocked_details"),
+                landing_failure_reason: workflow.failure_reason.presence || workflow.artifact("failure_reason"),
+                landing_queue_entry: landing_queue_evidence(workflow.job)
+              ),
+              explanation: "Landing Workflow ##{workflow.id} is queued with no first Run and is blocking the repository landing slot: #{reason}."
+            )
+          end
+
           if stale_dependency_start_block?(workflow)
             next issue(
               kind: :stale_dependency_start_block,
@@ -604,6 +624,25 @@ module WorkEngine
       job.workflows.active.none?
     end
 
+    def landing_start_blocked_workflow?(workflow)
+      workflow.job&.landing? &&
+        workflow.landing_workflow? &&
+        workflow.artifact("start_blocked_reason").present?
+    end
+
+    def landing_queue_evidence(job)
+      entry = LandingQueueProcessor.entries(Job.where(id: job.id)).find { |candidate| candidate.job_id == job.id }
+      return unless entry
+
+      {
+        position: entry.position,
+        eligible: entry.eligible?,
+        blocked_reason: entry.blocked_reason,
+        waiting_for_job_ids: entry.waiting_for_jobs.map(&:id),
+        blocker_job_ids: entry.blocker_jobs.map(&:id)
+      }
+    end
+
     def classify_completed_main_grader_jobs
       jobs.filter_map do |job|
         next unless job.kind == "main_grader"
@@ -632,6 +671,7 @@ module WorkEngine
     def classify_start_blocks
       workflows.filter_map do |workflow|
         next unless workflow.queued? && start_blocked?(workflow)
+        next if landing_start_blocked_workflow?(workflow)
 
         reason = workflow.artifact("start_blocked_reason")
         dependency_block = dependency_block_reason?(reason)

@@ -34,6 +34,49 @@ RSpec.describe Admin::StuckJobExplainer do
     expect(payload.dig(:recommended_action, :action)).to eq("manual_intervention")
   end
 
+  it "recommends releasing the landing slot for a queued zero-run auto-merge admission block" do
+    job = Factories.job_record(
+      user: user,
+      repository: repository,
+      state: "landing",
+      issue_number: 2242,
+      pr_number: 2181,
+      branch_name: "syrus/issue-2242",
+      pr_checks_state: "passing",
+      github_mergeable_state: "clean",
+      github_mergeable: true,
+      local_mergeable: true,
+      local_mergeable_state: "clean",
+      commits_behind_base: 0,
+      approved_at: 2.minutes.ago,
+      approved_via: "operator"
+    )
+    workflow = Workflows::AutoMerge.instantiate(job: job)
+    workflow.update!(
+      created_at: 5.minutes.ago,
+      updated_at: 5.minutes.ago,
+      artifacts: {
+        "start_blocked_reason" => StepDispatcher::ADMISSION_BLOCK_REASON,
+        "start_blocked_details" => { "reason" => "predicted_budget_pressure_high" },
+        "start_blocked_next_check_at" => 3.minutes.from_now.iso8601
+      }
+    )
+
+    payload = described_class.call(job.reload, github_client: no_github_client)
+
+    expect(payload.dig(:workflows, :latest)).to include(
+      id: workflow.id,
+      state: "queued",
+      trigger_kind: "auto_merge",
+      run_count: 0,
+      start_blocked_reason: StepDispatcher::ADMISSION_BLOCK_REASON
+    )
+    expect(payload.dig(:recommended_action, :action)).to eq("release_landing_slot")
+    expect(payload.dig(:recommended_action, :workflow_id)).to eq(workflow.id)
+    expect(payload.dig(:recommended_action, :reason)).to include("admission-blocked")
+    expect(payload.dig(:recommended_action, :reason)).not_to include("Dependency graph")
+  end
+
   it "recommends a successful no-change close for an empty reconciliation branch" do
     parent = Factories.job_record(
       user: user,
