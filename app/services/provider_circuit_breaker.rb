@@ -176,7 +176,7 @@ class ProviderCircuitBreaker
       retry_after = ProviderQuotaReset.retry_after_for_run(run, now: now)
       next if retry_after && retry_after <= now
       model = ProviderUsageLimit.extract_model(text)
-      next if provider == "codex" && ProviderAvailabilityEvidence.latest_positive_after?(
+      next if provider == "codex" && ProviderAvailabilityEvidence.suppressed_by_positive_after?(
         user: run.user,
         provider: provider,
         account_id: CodexAccountScope.for_user(run.user),
@@ -201,7 +201,7 @@ class ProviderCircuitBreaker
       .where("observed_at >= ?", now - USAGE_LIMIT_WINDOW)
       .recent
       .detect do |evidence|
-        !ProviderAvailabilityEvidence.latest_positive_after?(
+        !ProviderAvailabilityEvidence.suppressed_by_positive_after?(
           user: evidence.user,
           provider: provider,
           account_id: evidence.account_id,
@@ -220,6 +220,7 @@ class ProviderCircuitBreaker
   end
 
   def usage_limit?(run, text)
+    return false if ProviderUsageLimit.inconclusive?(text)
     return true if run.agent_outcome.to_s == ProviderUsageLimit::OUTCOME
     return false unless ProviderUsageLimit.run_can_exhaust_provider?(run)
 

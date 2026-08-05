@@ -80,6 +80,40 @@ RSpec.describe SystemAlerts do
       expect(alert.title).to include("reached")
     end
 
+    it "does not surface a Codex alarm after later success suppresses bogus model-scoped evidence" do
+      user = Factories.user
+      repository = Factories.repository(user: user)
+      job = Factories.job(repository: repository, user: user, agent_provider: "codex")
+      run = Run.create!(
+        job: job,
+        user: user,
+        step: job.latest_workflow.first_step,
+        trigger_kind: "initial",
+        state: "failed",
+        agent_provider: "codex",
+        agent_outcome: "provider_usage_limit",
+        finished_at: 2.minutes.ago
+      )
+      ProviderAvailabilityEvidence.record_codex_invocation_failure!(
+        run: run,
+        model: "for",
+        message: "provider usage limit exhausted for model for",
+        observed_at: 2.minutes.ago
+      )
+      ProviderAvailabilityEvidence.record_codex_success!(
+        user: user,
+        source: "chat_turn_success",
+        model: "gpt-5.5",
+        observed_at: Time.current
+      )
+      allow(DataRootDiskUsage).to receive(:current).and_return(nil)
+
+      alerts = described_class.active_for(user: user)
+
+      expect(alerts.map(&:id)).not_to include("codex_usage:#{user.id}")
+      expect(alerts.map(&:message).join).not_to include("model for")
+    end
+
     it "surfaces warning disk usage to admins with actionable details" do
       user = Factories.user(admin: true)
       allow(DataRootDiskUsage).to receive(:current).and_return(disk_snapshot(used_percent: 86, available_bytes: 9.gigabytes, level: :warning))

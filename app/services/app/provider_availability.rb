@@ -246,7 +246,7 @@ module App
         next if retry_after && retry_after <= now
         model = ProviderUsageLimit.extract_model(text)
         observed_at = run.finished_at || run.updated_at || now
-        next if provider == "codex" && ProviderAvailabilityEvidence.latest_positive_after?(
+        next if provider == "codex" && ProviderAvailabilityEvidence.suppressed_by_positive_after?(
           user: user,
           provider: provider,
           account_id: CodexAccountScope.for_user(user),
@@ -273,7 +273,7 @@ module App
         .detect do |evidence|
           next false if codex_evidence_reset_at(evidence)&.<= now
 
-          !ProviderAvailabilityEvidence.latest_positive_after?(
+          !ProviderAvailabilityEvidence.suppressed_by_positive_after?(
             user: user,
             provider: provider,
             account_id: evidence.account_id,
@@ -317,6 +317,7 @@ module App
     end
 
     def usage_limit?(run, text)
+      return false if ProviderUsageLimit.inconclusive?(text)
       return true if run.agent_outcome.to_s == ProviderUsageLimit::OUTCOME
       return false unless ProviderUsageLimit.run_can_exhaust_provider?(run)
 

@@ -298,6 +298,7 @@ class Run < ApplicationRecord
       run_diagnostic&.error_class,
       run_diagnostic&.error_message
     ].compact.join(" ")
+    return if ProviderUsageLimit.inconclusive?(text)
     return unless agent_outcome.to_s == ProviderUsageLimit::OUTCOME ||
       run_failure_classification&.classification == ProviderUsageLimit::CLASSIFICATION ||
       ProviderUsageLimit.detect?(text)

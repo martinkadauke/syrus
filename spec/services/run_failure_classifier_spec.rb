@@ -236,6 +236,20 @@ RSpec.describe RunFailureClassifier do
     expect(classification.classification).to eq("provider_usage_limit")
   end
 
+  it "does not classify Codex model metadata decode failures as usage exhaustion" do
+    run.update!(state: "failed", agent_provider: "codex")
+    run.step.update!(kind: "implement")
+    diagnostic(
+      "CodexInvocation::Error",
+      "failed to refresh available models: failed to decode models response: unknown variant `max`, expected one of none/minimal/low/medium/high/xhigh"
+    )
+
+    result = classification
+
+    expect(result.classification).to eq("provider_transient")
+    expect(result.classification).not_to eq("provider_usage_limit")
+  end
+
   it "does not classify non-agentic grader output mentioning usage-limit UI as provider exhaustion" do
     workflow = Workflow.create!(job: job, trigger_kind: "auto_merge", agent_provider: "codex")
     grader_step = Step.create!(workflow: workflow, kind: "grader", position: 0)

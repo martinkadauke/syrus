@@ -150,6 +150,49 @@ RSpec.describe App::ProviderAvailability do
     )
   end
 
+  it "does not extract generic prose words as exhausted Codex models" do
+    expect(ProviderUsageLimit.extract_model("invoking agent for direct job failed")).to be_nil
+    expect(ProviderUsageLimit.extract_model("provider usage limit exhausted for model for")).to be_nil
+  end
+
+  it "does not show exhausted Codex availability for model metadata decode failures" do
+    failed_run(
+      provider: "codex",
+      outcome: "turn_failed",
+      classification: "provider_usage_limit",
+      message: "failed to refresh available models: failed to decode models response: unknown variant `max`, expected one of none/minimal/low/medium/high/xhigh"
+    )
+
+    status = described_class.for_user(user, "codex", now: now, cached: false)
+
+    expect(status).to be_nil
+  end
+
+  it "lets later Codex success suppress bogus model-scoped exhausted evidence" do
+    run = failed_run(
+      provider: "codex",
+      outcome: "provider_usage_limit",
+      message: "provider usage limit exhausted for model for"
+    )
+    ProviderAvailabilityEvidence.record_codex_invocation_failure!(
+      run: run,
+      model: "for",
+      message: "provider usage limit exhausted for model for",
+      observed_at: now - 1.minute
+    )
+    ProviderAvailabilityEvidence.record_codex_success!(
+      user: user,
+      source: "chat_turn_success",
+      model: "gpt-5.5",
+      observed_at: now
+    )
+
+    status = described_class.for_user(user, "codex", now: now, cached: false)
+
+    expect(status).to include(state: "available", open: false, usage_exhausted: false)
+    expect(status[:message]).not_to include("model for")
+  end
+
   it "does not let a different Codex model success clear model-specific exhaustion" do
     failed_run(provider: "codex", message: "Codex API error: model gpt-5.5 weekly usage limit exhausted")
 

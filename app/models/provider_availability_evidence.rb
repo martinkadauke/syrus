@@ -103,6 +103,22 @@ class ProviderAvailabilityEvidence < ApplicationRecord
       .exists?
   end
 
+  def self.suppressed_by_positive_after?(user:, provider:, observed_at:, account_id: nil, model: nil)
+    if provider.to_s == "codex" && ProviderUsageLimit.suspicious_model?(model)
+      return matching_positive_scope(user: user, provider: provider, account_id: account_id, model: nil, any_model: true)
+        .where("observed_at > ?", observed_at)
+        .exists?
+    end
+
+    latest_positive_after?(
+      user: user,
+      provider: provider,
+      account_id: account_id,
+      model: model,
+      observed_at: observed_at
+    )
+  end
+
   def self.matching_positive_after(user:, provider:, observed_at:, account_id: nil, model: nil)
     matching_positive_scope(user: user, provider: provider, account_id: account_id, model: model)
       .where("observed_at > ?", observed_at)
@@ -160,9 +176,11 @@ class ProviderAvailabilityEvidence < ApplicationRecord
     normalized.present? ? [ normalized, nil ] : [ nil ]
   end
 
-  def self.matching_positive_scope(user:, provider:, account_id: nil, model: nil)
+  def self.matching_positive_scope(user:, provider:, account_id: nil, model: nil, any_model: false)
     scope = where(user: user, provider: provider.to_s).positive
     scope = account_id.present? ? scope.where(account_id: [ account_id.to_s, nil ]) : scope
+    return scope if any_model
+
     normalized_model = model.to_s.strip.presence
     normalized_model.present? ? scope.where(model: [ normalized_model, nil ]) : scope
   end

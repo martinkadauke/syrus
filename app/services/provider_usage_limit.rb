@@ -16,15 +16,37 @@ class ProviderUsageLimit
     /\b(?:upgrade|add credits|check billing|billing plan)\b.*\b(?:usage|quota|credits?|limit)\b/i
   ].freeze
 
+  INCONCLUSIVE_PATTERNS = [
+    /failed to refresh available models/i,
+    /failed to decode models response/i,
+    /unknown variant [`'"]?max[`'"]?/i,
+    /model(?:s)? metadata decode/i,
+    /model(?:s)? schema/i
+  ].freeze
+
   MODEL_PATTERNS = [
     /\bmodel(?:\s+name)?\s*[:=]\s*["']?([A-Za-z0-9._:-]+)["']?/i,
     /\bmodel\s+["']([A-Za-z0-9._:-]+)["']/i,
-    /\bmodel\s+([A-Za-z0-9._:-]+)\b/i,
-    /\b(?:limit|quota)\s+(?:for|on)\s+(?:model\s+)?["']?([A-Za-z0-9._:-]+)["']?/i
+    /\[(?:codex|claude)[^\]]*\]\s+model\s+([A-Za-z0-9._:-]+)\s*:/i,
+    /\bmodel\s+([A-Za-z0-9._:-]+)\b.{0,80}\b(?:usage\s+)?limit(?:s)?\b.{0,80}\b(?:exhausted|reached|exceeded)\b/i,
+    /\b(?:monthly|weekly|daily|hourly)\s+(?:usage\s+)?limit(?:s)?\s+for\s+model\s+["']?([A-Za-z0-9._:-]+)["']?/i,
+    /\b(?:model|token|message|request)\s+(?:usage\s+)?limit(?:s)?\s+(?:for|on)\s+["']?([A-Za-z0-9._:-]+)["']?/i,
+    /\b(?:limit|quota)\s+(?:for|on)\s+(?:model\s+)?["']?([A-Za-z0-9._:-]+)["']?\s+(?:exhausted|reached|exceeded)\b/i
+  ].freeze
+
+  SUSPICIOUS_MODEL_WORDS = %w[
+    a an and are as at available by decode direct error for from in into is job max metadata model models
+    of on or response schema the this to unknown usage variant with
   ].freeze
 
   def self.detect?(text)
+    return false if inconclusive?(text)
+
     LIMIT_PATTERNS.any? { |pattern| text.to_s.match?(pattern) }
+  end
+
+  def self.inconclusive?(text)
+    INCONCLUSIVE_PATTERNS.any? { |pattern| text.to_s.match?(pattern) }
   end
 
   def self.run_can_exhaust_provider?(run)
@@ -40,10 +62,20 @@ class ProviderUsageLimit
 
     MODEL_PATTERNS.each do |pattern|
       match = text.to_s.match(pattern)
-      return match[1] if match && match[1].present?
+      model = match && match[1].to_s.strip.presence
+      return model if model && !suspicious_model?(model)
     end
 
     nil
+  end
+
+  def self.suspicious_model?(model)
+    normalized = model.to_s.strip.downcase
+    return true if normalized.blank?
+    return true if SUSPICIOUS_MODEL_WORDS.include?(normalized)
+    return true unless normalized.match?(/\A[A-Za-z0-9][A-Za-z0-9._:-]*\z/)
+
+    false
   end
 
   def self.detail(provider:, model: nil, message:)

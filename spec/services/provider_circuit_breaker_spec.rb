@@ -111,6 +111,45 @@ RSpec.describe ProviderCircuitBreaker do
     expect(decision).not_to be_usage_limit
   end
 
+  it "suppresses stale Codex usage-limit runs with inconclusive model metadata decode errors" do
+    run = failed_agent_run(
+      outcome: "turn_failed",
+      message: "failed to refresh available models: failed to decode models response: unknown variant `max`, expected one of none/minimal/low/medium/high/xhigh"
+    )
+    run.create_run_failure_classification!(
+      classification: "provider_usage_limit",
+      confidence: 0.95,
+      retryable: false,
+      reason: "stale false-positive usage exhausted",
+      classified_at: now - 1.minute
+    )
+
+    decision = described_class.call("codex", now: now)
+
+    expect(decision).not_to be_open
+    expect(decision).not_to be_usage_limit
+  end
+
+  it "lets later Codex success suppress bogus model-scoped usage evidence" do
+    ProviderAvailabilityEvidence.record_codex_invocation_failure!(
+      run: failed_agent_run(outcome: "provider_usage_limit", message: "invoking agent for direct job failed"),
+      model: "for",
+      message: "provider usage limit exhausted for model for",
+      observed_at: now - 1.minute
+    )
+    ProviderAvailabilityEvidence.record_codex_success!(
+      user: user,
+      source: "chat_turn_success",
+      model: "gpt-5.5",
+      observed_at: now
+    )
+
+    decision = described_class.call("codex", now: now)
+
+    expect(decision).not_to be_open
+    expect(decision).not_to be_usage_limit
+  end
+
   it "keeps Codex usage-limit circuit open when success evidence is for a different model" do
     run = failed_agent_run(
       outcome: "provider_usage_limit",

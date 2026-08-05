@@ -90,6 +90,7 @@ class RunFailureClassifier
   end
 
   def provider_usage_limit?
+    return false if ProviderUsageLimit.inconclusive?(searchable_text)
     return true if run.agent_outcome.to_s == ProviderUsageLimit::OUTCOME
     return false unless ProviderUsageLimit.run_can_exhaust_provider?(run)
 
@@ -180,6 +181,9 @@ class RunFailureClassifier
       connection\ reset|
       connection\ refused|
       network\ error|
+      failed\ to\ refresh\ available\ models|
+      failed\ to\ decode\ models\ response|
+      unknown\ variant\ [`'"]?max[`'"]?|
       (?:status|http|code)\s*[:=]?\s*5\d\d|
       5xx
     }ix)
