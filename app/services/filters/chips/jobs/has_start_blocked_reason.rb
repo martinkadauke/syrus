@@ -8,7 +8,7 @@ module Filters
         operators :is_true, :is_false
 
         def apply
-          blocked = Workflow.queued
+          blocked = Workflow.active
                             .where("artifacts LIKE ?", '%"start_blocked_reason"%')
                             .select(:job_id)
 

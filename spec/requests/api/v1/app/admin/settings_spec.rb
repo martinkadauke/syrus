@@ -131,6 +131,7 @@ RSpec.describe "API: /api/v1/app/admin/settings", type: :request do
 
     get "/api/v1/app/admin/settings"
     expect(parse_body.dig("settings", "workflow_admission_control_enabled")).to be true
+    expect(parse_body.dig("settings", "workflow_admission_policy")).to eq("whole_workflow")
 
     expect(WorkflowAdmissionControlWakeup).to receive(:call)
     expect {
@@ -160,6 +161,21 @@ RSpec.describe "API: /api/v1/app/admin/settings", type: :request do
 
     expect(AppSetting.current.reload.workflow_admission_control_enabled).to be true
     expect(WorkflowAdmissionControlWakeup).to have_received(:call)
+  end
+
+  it "updates workflow admission policy without treating it as a kill-switch audit" do
+    sign_in_as(admin)
+    AppSetting.current.update!(workflow_admission_policy: "whole_workflow")
+
+    expect {
+      patch "/api/v1/app/admin/settings", params: {
+        app_setting: { workflow_admission_policy: "phase_aware" }
+      }
+    }.not_to change { AdminAction.count }
+
+    expect(response).to have_http_status(:ok)
+    expect(AppSetting.current.reload.workflow_admission_policy).to eq("phase_aware")
+    expect(parse_body.dig("settings", "workflow_admission_policy")).to eq("phase_aware")
   end
 
   it "rejects a proactive_rebase_commit_threshold below 1" do

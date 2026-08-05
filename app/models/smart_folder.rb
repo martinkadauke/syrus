@@ -54,6 +54,7 @@ class SmartFolder < ApplicationRecord
     # operator will notice them.
     { key: "pinned",           name: "Pinned",                 visibility: :when_present, filter: user_job_attention_preset_filter("pinned") },
     { key: "in_progress",      name: "In progress",            visibility: :when_present, filter: user_job_attention_preset_filter("in_progress") },
+    { key: "paused",           name: "Paused",                 visibility: :when_present, filter: user_job_attention_preset_filter("paused") },
     { key: "queued",           name: "Queued",                 visibility: :when_present, filter: user_job_attention_preset_filter("queued") },
     { key: "invalid",          name: "Invalid",                visibility: :when_present, filter: user_job_attention_preset_filter("needs_review") },
     { key: "awaiting_epic",    name: "Awaiting Epic",          visibility: :when_present, filter: user_job_attention_preset_filter("awaiting_epic") },

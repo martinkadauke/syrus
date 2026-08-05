@@ -128,6 +128,21 @@ RSpec.describe AppSetting do
     expect(setting).to be_valid
   end
 
+  it "defaults workflow admission policy to whole_workflow and validates known policies" do
+    setting = AppSetting.current
+
+    expect(setting.workflow_admission_policy).to eq("whole_workflow")
+    expect(AppSetting.workflow_admission_policy).to eq("whole_workflow")
+    expect(AppSetting.workflow_admission_phase_aware?).to be(false)
+
+    setting.workflow_admission_policy = "phase_aware"
+    expect(setting).to be_valid
+
+    setting.workflow_admission_policy = "bogus"
+    expect(setting).not_to be_valid
+    expect(setting.errors[:workflow_admission_policy]).to be_present
+  end
+
   # Guard against the destructive-cutoff footgun: retention 0/negative would
   # make the prune cutoff land at/after now and purge every stored video.
   it "rejects a video_retention_days below 1" do

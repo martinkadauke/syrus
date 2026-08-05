@@ -165,6 +165,7 @@
     "queued": "in Warteschlange",
     "blocked_by_epic": "durch Epic blockiert",
     "running": "läuft",
+    "paused": "pausiert",
     "open": "offen",
     "implemented": "umgesetzt",
     "approved": "genehmigt",

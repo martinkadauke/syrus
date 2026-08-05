@@ -15,6 +15,7 @@ export type AdminSettingsPayload = {
     proactive_rebase_commit_threshold: number
     rebase_failure_cooldown_minutes: number
     workflow_admission_control_enabled: boolean
+    workflow_admission_policy: "whole_workflow" | "phase_aware"
     workflow_admission_control_changed_at: string | null
     workflow_admission_control_changed_by: {
       id: number
@@ -35,6 +36,7 @@ export type AdminSettingsUpdate = {
   proactive_rebase_commit_threshold?: number
   rebase_failure_cooldown_minutes?: number
   workflow_admission_control_enabled?: boolean
+  workflow_admission_policy?: "whole_workflow" | "phase_aware"
   mode?: "advanced" | "simple"
 }
 

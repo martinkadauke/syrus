@@ -1108,6 +1108,7 @@ RSpec.describe StepDispatcher, "phase admission gate" do
   let!(:grader_fanout) { Step.create!(workflow: workflow, kind: "grader_fanout", position: 1) }
 
   before do
+    AppSetting.current.update!(workflow_admission_policy: "phase_aware")
     clear_enqueued_jobs
     implement.update!(next_step_id: grader_fanout.id)
     workflow.update!(state: "running", started_at: 1.minute.ago)
@@ -1155,6 +1156,7 @@ RSpec.describe StepDispatcher, "phase admission gate" do
     }.not_to change { grader_fanout.runs.count }
 
     expect(workflow.reload.artifact("start_blocked_reason")).to eq(StepDispatcher::ADMISSION_BLOCK_REASON)
+    expect(workflow.artifact("pause_reason")).to eq(StepDispatcher::PAUSE_REASON_ADMISSION)
     expect(workflow.artifact("start_blocked_details")).to include(
       "action" => "delay_until",
       "reason" => "worker_host_pressure_high",
@@ -1247,6 +1249,33 @@ RSpec.describe StepDispatcher, "phase admission gate" do
     }.to change { grader_fanout.runs.count }.by(1)
 
     expect(workflow.reload.artifact("start_blocked_reason")).to be_nil
+  end
+
+  it "does not defer a normal phase for soft pressure under whole-workflow policy" do
+    AppSetting.current.update!(workflow_admission_policy: "whole_workflow")
+    worker_pressure!
+    resource_profile(step_kind: "grader", grader_name: "production-build-boot")
+
+    expect {
+      described_class.advance_from(implement)
+    }.to change { grader_fanout.runs.count }.by(1)
+
+    expect(workflow.reload.artifact("pause_reason")).to be_nil
+    expect(workflow.artifact("start_blocked_reason")).to be_nil
+  end
+
+  it "pauses a phase for hard resource pressure under whole-workflow policy" do
+    AppSetting.current.update!(workflow_admission_policy: "whole_workflow")
+    worker_pressure!(memory: 97.0)
+
+    expect {
+      described_class.advance_from(implement)
+    }.not_to change { grader_fanout.runs.count }
+
+    expect(workflow.reload.artifact("pause_reason")).to eq(StepDispatcher::PAUSE_REASON_RESOURCE_SAFETY)
+    expect(workflow.artifact("pause_kind")).to eq("hard_resource_pressure")
+    expect(workflow.artifact("start_blocked_reason")).to eq(StepDispatcher::PAUSE_REASON_RESOURCE_SAFETY)
+    expect(enqueued_jobs.map { |entry| entry[:job] }).to include(WorkflowPhaseAdmissionJob)
   end
 
   it "preserves urgent priority semantics at phase boundaries" do

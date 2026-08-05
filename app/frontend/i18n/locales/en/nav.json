@@ -80,6 +80,7 @@
       "all_jobs": "All jobs",
       "pinned": "Pinned",
       "in_progress": "In progress",
+      "paused": "Paused",
       "queued": "Queued",
       "invalid": "Invalid",
       "awaiting_epic": "Awaiting Epic",

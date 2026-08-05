@@ -571,6 +571,16 @@ module App
       run_ids = @job_runtime_latest_runs_by_job_id.values.map(&:id)
       @job_runtime_run_diagnostics_by_run_id = run_ids.empty? ? {} : RunDiagnostic.where(run_id: run_ids).index_by(&:run_id)
       @job_runtime_active_job_ids = job_ids.empty? ? {} : Run.active.where(job_id: job_ids).distinct.pluck(:job_id).index_with(true)
+      @job_runtime_paused_job_ids = paused_job_ids(job_ids).index_with(true)
+    end
+
+    def paused_job_ids(job_ids)
+      return [] if job_ids.empty?
+
+      latest_by_job = @job_runtime_latest_workflows_by_job_id || latest_workflows_by_job_id(job_ids)
+      latest_by_job.values.select do |workflow|
+        workflow.running? && workflow_pause_artifact?(workflow)
+      end.map(&:job_id) - @job_runtime_active_job_ids.keys
     end
 
     def latest_runs_by_job_id(job_ids)
@@ -654,6 +664,7 @@ module App
     def summary_state(job)
       return "preempted" if job.closure_reason == "preempted"
       return "preempted" if job.closure_reason&.start_with?("external_pr_")
+      return "paused" if job_apparently_paused?(job)
 
       job.state
     end
@@ -662,6 +673,22 @@ module App
       return nil unless summary_state(job) == "running"
 
       job.active_workflow_trigger_kind
+    end
+
+    def job_apparently_paused?(job)
+      if defined?(@job_runtime_active_job_ids)
+        return false if @job_runtime_active_job_ids.key?(job.id)
+        return @job_runtime_paused_job_ids.key?(job.id)
+      end
+
+      return false if job.any_active_run?
+
+      workflow = job.latest_workflow
+      workflow&.running? && workflow_pause_artifact?(workflow)
+    end
+
+    def workflow_pause_artifact?(workflow)
+      workflow.artifact("pause_reason").present? || workflow.artifact("start_blocked_reason").present?
     end
 
     def ownership_param_present?

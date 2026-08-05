@@ -107,6 +107,7 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
   const [proactiveRebaseThreshold, setProactiveRebaseThreshold] = useState(String(payload.settings.proactive_rebase_commit_threshold))
   const [rebaseFailureCooldown, setRebaseFailureCooldown] = useState(String(payload.settings.rebase_failure_cooldown_minutes))
   const [workflowAdmissionControlEnabled, setWorkflowAdmissionControlEnabled] = useState(payload.settings.workflow_admission_control_enabled)
+  const [workflowAdmissionPolicy, setWorkflowAdmissionPolicy] = useState<"whole_workflow" | "phase_aware">(payload.settings.workflow_admission_policy)
   const [mode, setMode] = useState<"advanced" | "simple">(payload.settings.mode)
   const update = useMutation({
     mutationFn: () => updateAdminSettings({
@@ -117,6 +118,7 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
       proactive_rebase_commit_threshold: Number(proactiveRebaseThreshold),
       rebase_failure_cooldown_minutes: Number(rebaseFailureCooldown),
       workflow_admission_control_enabled: workflowAdmissionControlEnabled,
+      workflow_admission_policy: workflowAdmissionPolicy,
       mode
     }),
     onSuccess: (updated) => {
@@ -134,8 +136,9 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
     setProactiveRebaseThreshold(String(payload.settings.proactive_rebase_commit_threshold))
     setRebaseFailureCooldown(String(payload.settings.rebase_failure_cooldown_minutes))
     setWorkflowAdmissionControlEnabled(payload.settings.workflow_admission_control_enabled)
+    setWorkflowAdmissionPolicy(payload.settings.workflow_admission_policy)
     setMode(payload.settings.mode)
-  }, [payload.settings.signups_open, payload.settings.video_retention_days, payload.settings.video_storage_budget_mb, payload.settings.max_concurrent_agent_runs, payload.settings.proactive_rebase_commit_threshold, payload.settings.rebase_failure_cooldown_minutes, payload.settings.workflow_admission_control_enabled, payload.settings.mode])
+  }, [payload.settings.signups_open, payload.settings.video_retention_days, payload.settings.video_storage_budget_mb, payload.settings.max_concurrent_agent_runs, payload.settings.proactive_rebase_commit_threshold, payload.settings.rebase_failure_cooldown_minutes, payload.settings.workflow_admission_control_enabled, payload.settings.workflow_admission_policy, payload.settings.mode])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -255,6 +258,19 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
               </span>
             ) : null}
           </span>
+        </div>
+        <div className="mt-3">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="admin-settings-workflow-admission-policy">{t("settings.workflow_admission_policy_label")}</label>
+          <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">{t("settings.workflow_admission_policy_help")}</span>
+          <select
+            id="admin-settings-workflow-admission-policy"
+            className="mt-2 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-950 dark:text-gray-100 px-2 py-1 text-sm"
+            onChange={(event) => setWorkflowAdmissionPolicy(event.target.value as "whole_workflow" | "phase_aware")}
+            value={workflowAdmissionPolicy}
+          >
+            <option value="whole_workflow">{t("settings.workflow_admission_policy_whole_workflow")}</option>
+            <option value="phase_aware">{t("settings.workflow_admission_policy_phase_aware")}</option>
+          </select>
         </div>
       </div>
 

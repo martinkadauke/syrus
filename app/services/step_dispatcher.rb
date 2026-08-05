@@ -161,6 +161,8 @@ class StepDispatcher
   FAN_IN_BLOCK_REASON = JobStackResolver::FAN_IN_BLOCK_REASON
   JOB_BLOCK_REASON = "job_not_ready_for_execution"
   ADMISSION_BLOCK_REASON = "workflow_admission_budget"
+  PAUSE_REASON_ADMISSION = ADMISSION_BLOCK_REASON
+  PAUSE_REASON_RESOURCE_SAFETY = "resource_safety"
   PHASE_ADMISSION_RECHECK_DELAY = 10.minutes
   START_BLOCKED_BACKOFF = 5.minutes
 
@@ -255,7 +257,13 @@ class StepDispatcher
       "start_blocked_at",
       "start_blocked_last_seen_at",
       "start_blocked_next_check_at",
-      "start_blocked_details"
+      "start_blocked_details",
+      "pause_reason",
+      "pause_kind",
+      "pause_started_at",
+      "pause_last_seen_at",
+      "pause_next_check_at",
+      "pause_details"
     )
     workflow.update!(artifacts: cleared)
   end
@@ -337,6 +345,7 @@ class StepDispatcher
       clear_start_blocked!(workflow, ADMISSION_BLOCK_REASON)
       return false
     end
+    return false if whole_workflow_policy_ignores_phase_delay?(admission)
 
     backoff = admission.delay_until ? admission_backoff(admission) : PHASE_ADMISSION_RECHECK_DELAY
     details = admission.artifact.merge(
@@ -344,7 +353,8 @@ class StepDispatcher
       "phase_step_kind" => step.kind,
       "phase_step_position" => step.position
     )
-    if workflow.landing_workflow?
+    hard_pause = hard_resource_pause?(admission)
+    if workflow.landing_workflow? && !hard_pause
       landing_reason = "landing start blocked: workflow admission budget"
       next_check_at = Time.current + backoff
       append_phase_deferral_log!(workflow, step, admission)
@@ -362,10 +372,44 @@ class StepDispatcher
       return true
     end
 
-    record_start_blocked!(workflow, ADMISSION_BLOCK_REASON, backoff: backoff, details: details)
+    pause_reason = hard_pause ? PAUSE_REASON_RESOURCE_SAFETY : PAUSE_REASON_ADMISSION
+    record_pause!(workflow, pause_reason, backoff: backoff, details: details)
     append_phase_deferral_log!(workflow, step, admission)
     WorkflowPhaseAdmissionJob.set(wait: backoff, priority: workflow.job.solid_queue_priority).perform_later(workflow.id, step.id)
     true
+  end
+
+  def self.whole_workflow_policy_ignores_phase_delay?(admission)
+    !AppSetting.workflow_admission_phase_aware? && !hard_resource_pause?(admission)
+  end
+
+  def self.hard_resource_pause?(admission)
+    admission.requires_override? && admission.reason.to_s.in?(%w[worker_memory_exhausted worker_disk_exhausted])
+  end
+
+  def self.record_pause!(workflow, reason, backoff:, details: nil)
+    now = Time.current
+    current = workflow.artifacts || {}
+    started_at = current["pause_reason"] == reason ? current["pause_started_at"] : nil
+    artifacts = current.merge(
+      "pause_reason" => reason,
+      "pause_kind" => reason == PAUSE_REASON_RESOURCE_SAFETY ? "hard_resource_pressure" : "workflow_admission",
+      "pause_started_at" => started_at.presence || now.iso8601,
+      "pause_last_seen_at" => now.iso8601,
+      "pause_next_check_at" => (now + backoff).iso8601,
+      "start_blocked_reason" => reason,
+      "start_blocked_at" => current["start_blocked_at"].presence || now.iso8601,
+      "start_blocked_last_seen_at" => now.iso8601,
+      "start_blocked_next_check_at" => (now + backoff).iso8601
+    )
+    if details.present?
+      artifacts["pause_details"] = details
+      artifacts["start_blocked_details"] = details
+    else
+      artifacts.delete("pause_details")
+      artifacts.delete("start_blocked_details")
+    end
+    workflow.update!(artifacts: artifacts)
   end
 
   def self.append_phase_deferral_log!(workflow, step, admission)
@@ -373,10 +417,11 @@ class StepDispatcher
       Run.joins(:step).where(steps: { workflow_id: workflow.id }).order(:created_at).last
     return unless run
 
+    label = hard_resource_pause?(admission) ? "resource safety paused" : "workflow admission delayed"
     JobLog.append!(
       run: run,
       kind: "system",
-      chunk: "workflow admission delayed before #{step.kind}: #{admission.reason}"
+      chunk: "#{label} before #{step.kind}: #{admission.reason}"
     )
   end
 

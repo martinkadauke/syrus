@@ -123,6 +123,18 @@ When the GitHub App was registered. Informational; does not affect runtime behav
 
 When the latest GitHub App installation sync attempt started. Used by the admin installation diagnostic and chat MCP diagnostic tool to distinguish a stale or never-run sync from a missing App installation.
 
+### workflow_admission_policy
+
+**Type:** string (`whole_workflow` or `phase_aware`)
+
+Controls how `WorkflowAdmissionBudget` applies after a Workflow has started.
+`whole_workflow` is the default: admission happens before start and the
+Workflow keeps advancing through normal phase boundaries once admitted.
+`phase_aware` keeps the tighter optimizer and may pause between phases when
+predicted pressure is high. Hard worker memory/disk exhaustion can pause an
+in-flight Workflow under either policy; paused Workflows keep their persisted
+state but expose an apparent `paused` state in the dashboard.
+
 ### github_app_installation_sync_succeeded_at
 
 **Type:** datetime

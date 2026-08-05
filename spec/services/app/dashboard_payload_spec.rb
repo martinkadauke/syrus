@@ -487,6 +487,34 @@ RSpec.describe App::DashboardPayload do
 
       expect(item).to include(start_blocked_reason: nil)
     end
+
+    it "shows running workflows with deferred progress as paused instead of in progress" do
+      job = Factories.job_record(user: user, repository: repo, state: "running")
+      Workflow.create!(
+        job: job,
+        trigger_kind: "initial",
+        state: "running",
+        artifacts: {
+          "pause_reason" => "workflow_admission_budget",
+          "start_blocked_reason" => "workflow_admission_budget",
+          "start_blocked_next_check_at" => 5.minutes.from_now.iso8601
+        }
+      )
+
+      rows = call(subject: "job", section: "rows")
+      item = rows[:items].find { |i| i[:id] == job.id }
+      expect(item[:summary_state]).to eq("paused")
+      expect(item[:start_blocked_reason]).to eq("workflow_admission_budget")
+
+      paused_folder = SmartFolder.find_builtin_by_attention("paused")
+      in_progress_folder = SmartFolder.find_builtin_by_attention("in_progress")
+
+      paused = call(subject: "job", smart_folder_id: paused_folder.id, section: "rows")
+      in_progress = call(subject: "job", smart_folder_id: in_progress_folder.id, section: "rows")
+
+      expect(paused[:items].map { |row| row[:id] }).to include(job.id)
+      expect(in_progress[:items].map { |row| row[:id] }).not_to include(job.id)
+    end
   end
 
   describe "blocked_count on queued smart folder" do

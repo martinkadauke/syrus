@@ -15,7 +15,7 @@ module Filters
         operators :is
 
         PRESETS = %w[
-          pinned in_progress queued inbox awaiting_approval just_failed
+          pinned in_progress paused queued inbox awaiting_approval just_failed
           stale blocked merged_this_week awaiting_epic needs_review landing_queue
         ].freeze
 
@@ -40,6 +40,7 @@ module Filters
               chip_node("latest_workflow_state", "is", "running")
             )
           },
+          "paused"             => -> { chip_node("has_start_blocked_reason", "is_true", nil) },
           "queued"             => -> {
             or_node(
               chip_node("state", "is", "queued"),
@@ -152,6 +153,11 @@ module Filters
 
           scope.where(state: "running")
                .or(scope.open_threads.where(id: running_workflow_job_ids))
+               .where.not(id: paused_workflow_job_ids)
+        end
+
+        def apply_paused
+          scope.open_threads.where(id: paused_workflow_job_ids)
         end
 
         def apply_queued
@@ -257,6 +263,20 @@ module Filters
             )
           SQL
             .select(:job_id)
+        end
+
+        def paused_workflow_job_ids
+          Workflow.where(state: "running")
+                  .where("artifacts LIKE ? OR artifacts LIKE ?", '%"pause_reason"%', '%"start_blocked_reason"%')
+                  .where(<<~SQL.squish)
+                    workflows.id = (
+                      SELECT latest_workflows.id FROM workflows latest_workflows
+                      WHERE latest_workflows.job_id = workflows.job_id
+                      ORDER BY (latest_workflows.finished_at IS NULL) DESC, latest_workflows.finished_at DESC, latest_workflows.id DESC
+                      LIMIT 1
+                    )
+                  SQL
+                  .select(:job_id)
         end
 
         def awaiting_epic_ids

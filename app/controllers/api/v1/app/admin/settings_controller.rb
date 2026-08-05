@@ -52,6 +52,7 @@ module Api
                 proactive_rebase_commit_threshold: setting.proactive_rebase_commit_threshold,
                 rebase_failure_cooldown_minutes: setting.rebase_failure_cooldown_minutes,
                 workflow_admission_control_enabled: setting.workflow_admission_control_enabled,
+                workflow_admission_policy: setting.workflow_admission_policy,
                 workflow_admission_control_changed_at: setting.workflow_admission_control_changed_at&.iso8601,
                 workflow_admission_control_changed_by: setting.workflow_admission_control_changed_by_user&.then { |user|
                   {
@@ -73,7 +74,7 @@ module Api
           end
 
           def settings_params
-            permitted_settings = [ :signups_open, :video_retention_days, :video_storage_budget_mb, :max_concurrent_agent_runs, :proactive_rebase_commit_threshold, :rebase_failure_cooldown_minutes, :workflow_admission_control_enabled, :mode ] +
+            permitted_settings = [ :signups_open, :video_retention_days, :video_storage_budget_mb, :max_concurrent_agent_runs, :proactive_rebase_commit_threshold, :rebase_failure_cooldown_minutes, :workflow_admission_control_enabled, :workflow_admission_policy, :mode ] +
                                  AppSetting.clearable_secrets.keys.map(&:to_sym)
 
             params

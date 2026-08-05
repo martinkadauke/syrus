@@ -80,6 +80,7 @@
       "all_jobs": "Alle Aufgaben",
       "pinned": "Angeheftet",
       "in_progress": "In Bearbeitung",
+      "paused": "Pausiert",
       "queued": "In Warteschlange",
       "invalid": "Ungültig",
       "awaiting_epic": "Wartet auf Epic",

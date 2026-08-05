@@ -268,11 +268,14 @@ module App
 
       def start_blocked_data_by_job_id
         @start_blocked_data_by_job_id ||= begin
-          queued_scope = jobs_base_scope.where(state: "queued").select(:id)
-          Workflow.where(job_id: queued_scope, state: "queued")
+          active_scope = jobs_base_scope.where(state: %w[queued running landing]).select(:id)
+          Workflow.where(job_id: active_scope, state: %w[queued running])
                   .where("artifacts LIKE ?", '%"start_blocked_reason"%')
+                  .reorder(id: :desc)
                   .select(:job_id, :artifacts)
                   .each_with_object({}) do |wf, map|
+            next if map.key?(wf.job_id)
+
             reason = wf.artifacts&.dig("start_blocked_reason")
             map[wf.job_id] = {
               reason: reason,

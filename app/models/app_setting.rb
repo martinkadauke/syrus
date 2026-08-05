@@ -4,6 +4,7 @@ class AppSetting < ApplicationRecord
   CLEARABLE_SECRETS = {}.freeze
 
   MODES = %w[advanced simple].freeze
+  WORKFLOW_ADMISSION_POLICIES = %w[whole_workflow phase_aware].freeze
 
   validates :grade_max_iterations, numericality: {
     only_integer: true,
@@ -59,6 +60,7 @@ class AppSetting < ApplicationRecord
     greater_than_or_equal_to: 0
   }
   validates :workflow_admission_control_enabled, inclusion: { in: [ true, false ] }
+  validates :workflow_admission_policy, inclusion: { in: WORKFLOW_ADMISSION_POLICIES }
   validates :mode, inclusion: { in: MODES }
 
   belongs_to :workflow_admission_control_changed_by_user, class_name: "User", optional: true
@@ -129,6 +131,14 @@ class AppSetting < ApplicationRecord
 
   def self.workflow_admission_control_enabled?
     current.workflow_admission_control_enabled
+  end
+
+  def self.workflow_admission_policy
+    current.workflow_admission_policy.presence_in(WORKFLOW_ADMISSION_POLICIES) || "whole_workflow"
+  end
+
+  def self.workflow_admission_phase_aware?
+    workflow_admission_policy == "phase_aware"
   end
 
   def self.max_job_failures

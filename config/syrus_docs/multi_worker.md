@@ -262,3 +262,19 @@ estimates. Hard worker memory/disk exhaustion and the non-admission blockers
 above still win. Admission artifacts include the healthy worker count, active
 agentic run count, floor capacity, whether the floor override was used, and the
 soft gates that were present.
+
+`AppSetting.workflow_admission_policy` chooses how far that admission decision
+extends:
+
+- `whole_workflow` (default) admits or delays before a Workflow starts. Once a
+  Workflow is running, Syrus keeps advancing through normal phase boundaries so
+  "In progress" means work is actually expected to continue.
+- `phase_aware` preserves the tighter optimizer: Syrus may pause between
+  phases when predicted pressure is high. These paused Workflows stay in the
+  persisted `running` state but expose an apparent `paused` state in dashboard
+  payloads and smart folders until the recheck resumes them.
+
+Both policies still pause in-flight Workflows for hard worker memory or disk
+exhaustion. Those pauses write `pause_reason`, `pause_kind`,
+`pause_started_at`, `pause_next_check_at`, and `pause_details` artifacts, and a
+`WorkflowPhaseAdmissionJob` retries the next queued step after the backoff.

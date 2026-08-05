@@ -596,8 +596,19 @@ module App
     def summary_state(job)
       return "preempted" if job.closure_reason == "preempted"
       return "preempted" if job.closure_reason&.start_with?("external_pr_")
+      return "paused" if job_apparently_paused?(job)
 
       job.state
+    end
+
+    def job_apparently_paused?(job)
+      return false if job.any_active_run?
+
+      workflow = job.latest_workflow
+      workflow&.running? && (
+        workflow.artifact("pause_reason").present? ||
+          workflow.artifact("start_blocked_reason").present?
+      )
     end
 
     def pr_url(number)
