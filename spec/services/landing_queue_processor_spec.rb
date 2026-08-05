@@ -70,6 +70,42 @@ RSpec.describe LandingQueueProcessor do
     )
   end
 
+  it "uses the newest landing-start blocker when deciding whether to skip a retry" do
+    blocked = queue_job(issue_number: 1, approved_at: 2.minutes.ago)
+    ready = queue_job(issue_number: 2, approved_at: 1.minute.ago)
+    retry_at = 10.minutes.from_now
+    blocked.update!(landing_failure_reason: "landing start blocked: workflow admission budget")
+    Workflow.create!(
+      job: blocked,
+      trigger_kind: "auto_merge",
+      state: "failed",
+      failure_reason: "landing start blocked: workflow admission budget",
+      artifacts: {
+        "start_blocked_reason" => "landing start blocked: workflow admission budget",
+        "start_blocked_next_check_at" => 1.minute.ago.iso8601
+      }
+    )
+    Workflow.create!(
+      job: blocked,
+      trigger_kind: "auto_merge",
+      state: "failed",
+      failure_reason: "landing start blocked: workflow admission budget",
+      artifacts: {
+        "start_blocked_reason" => "landing start blocked: workflow admission budget",
+        "start_blocked_next_check_at" => retry_at.iso8601
+      }
+    )
+
+    workflow = described_class.call
+
+    expect(workflow.job).to eq(ready)
+    expect(blocked.reload).to be_approved
+    entry = described_class.entries(Job.where(id: blocked.id)).first
+    expect(entry.blocked_reason).to eq(
+      { key: "landing_start_blocked_retrying", params: { retry_at: retry_at.iso8601 } }
+    )
+  end
+
   it "retries a landing-start blocker after its backoff expires" do
     job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
     job.update!(landing_failure_reason: "landing start blocked: workflow admission budget")

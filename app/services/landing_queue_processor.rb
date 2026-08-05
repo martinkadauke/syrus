@@ -595,7 +595,7 @@ class LandingQueueProcessor
 
     workflow = job.workflows
       .where(trigger_kind: Workflow::LANDING_TRIGGER_KINDS)
-      .order(id: :desc)
+      .reorder(id: :desc)
       .detect { |wf| LandingQueueReentry.landing_start_blocker?(wf.artifact("start_blocked_reason")) }
     retry_after = parse_time(workflow&.artifact("start_blocked_next_check_at"))
     retry_after if retry_after&.future?

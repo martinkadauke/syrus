@@ -51,6 +51,19 @@ RSpec.describe LandingQueueReentry do
     expect(job.reload.landing_failure_reason).to eq("landing start blocked: workflow admission budget")
   end
 
+  it "uses the newest landing admission blocker when older blockers are already due" do
+    job = approved_job
+    blocked_landing_workflow(job, next_check_at: 1.minute.ago)
+    blocked_landing_workflow(job, next_check_at: 8.minutes.from_now)
+
+    expect {
+      result = described_class.call(job)
+      expect(result.cleared_job_ids).to eq([])
+    }.not_to have_enqueued_job(LandingQueueProcessorJob)
+
+    expect(job.reload.landing_failure_reason).to eq("landing start blocked: workflow admission budget")
+  end
+
   it "clears a landing admission blocker once its next check time is due" do
     job = approved_job
     blocked_landing_workflow(job, next_check_at: 1.minute.ago)
