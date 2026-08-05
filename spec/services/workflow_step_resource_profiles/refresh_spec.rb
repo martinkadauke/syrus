@@ -146,12 +146,12 @@ RSpec.describe WorkflowStepResourceProfiles::Refresh do
     expect(profile.host_pressure_sample_count).to eq(10)
     expect(profile.attribution_quality).to eq("process_attributed")
     expect(profile.p90_process_attributed_duration_seconds).to eq(28.0)
-    expect(profile.p90_process_attributed_cpu_percent).to eq(46.429)
+    expect(profile.p90_process_attributed_cpu_percent).to eq(46.4)
     expect(profile.p90_host_pressure_cpu).to eq(90.0)
     expect(profile.conservative_prediction).to include(
       prediction_basis: "process_attributed",
       duration_seconds: 28.0,
-      cpu_pressure: 46.429,
+      cpu_pressure: 46.4,
       io_pressure: 0.0,
       memory_used_percent: 0.0,
       process_attributed_duration_seconds: 28.0,
