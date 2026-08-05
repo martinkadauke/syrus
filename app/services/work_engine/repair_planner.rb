@@ -623,6 +623,24 @@ module WorkEngine
         end
       end
 
+      class LandingStartBlocked < Base
+        def plan
+          automatic_plan(
+            "defer_landing_start_blocked_workflow",
+            primary_workflow,
+            "The landing workflow is queued without a first Run but still holds the repository landing slot; failing it through the landing-start blocker path releases the Job back to approved.",
+            execution_steps: [ "StepDispatcher.fail_unstartable_landing_workflow!" ],
+            preconditions: {
+              job_state: "landing",
+              workflow_state: "queued",
+              landing_workflow: true,
+              first_step_has_no_runs: true,
+              start_blocked_reason_present: true
+            }
+          )
+        end
+      end
+
       class RunningWorkflowWithoutActiveDescendants < Base
         def plan
           automatic_plan(

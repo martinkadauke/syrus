@@ -294,6 +294,76 @@ RSpec.describe StepDispatcher do
       )
       expect(candidate.artifact("start_blocked_details").dig("pressure", "projected", "cpu_pressure")).to be >= 100.0
     end
+
+    it "fails and defers landing workflows when first-run admission is delayed" do
+      landing_job = Factories.job_record(
+        user: job.user,
+        repository: job.repository,
+        state: "landing",
+        issue_number: 77,
+        pr_number: 77,
+        branch_name: "syrus/issue-77",
+        approved_at: 1.minute.ago,
+        approved_via: "operator"
+      )
+      auto_merge = Workflows::AutoMerge.instantiate(job: landing_job)
+      first_step = auto_merge.first_step
+      delay_until = 10.minutes.from_now
+      decision = WorkflowAdmissionBudget::Decision.new(
+        action: "delay_until",
+        reason: "predicted_budget_pressure_high",
+        pressure: { "projected" => { "cpu_pressure" => 105.0 } },
+        delay_until: delay_until,
+        override: false,
+        details: { "candidate_seconds" => 1800 }
+      )
+      allow(WorkflowAdmissionBudget).to receive(:call).and_return(decision)
+
+      expect {
+        described_class.start_workflow(auto_merge)
+      }.not_to change { first_step.runs.count }
+
+      expect(auto_merge.reload).to be_failed
+      expect(auto_merge.failure_reason).to eq("landing start blocked: workflow admission budget")
+      expect(auto_merge.artifact("start_blocked_reason")).to eq("landing start blocked: workflow admission budget")
+      expect(auto_merge.artifact("start_blocked_details")).to include(
+        "action" => "delay_until",
+        "reason" => "predicted_budget_pressure_high"
+      )
+      expect(auto_merge.artifact("workflow_admission_decision")).to include(
+        "action" => "delay_until",
+        "reason" => "predicted_budget_pressure_high"
+      )
+      expect(landing_job.reload).to be_approved
+      expect(landing_job.landing_failure_reason).to eq("landing start blocked: workflow admission budget")
+      expect(enqueued_jobs.map { |entry| entry[:job] }).to include(LandingQueueProcessorJob)
+      expect(enqueued_jobs.select { |entry| entry[:job] == LandingQueueProcessorJob }.last[:at]).to be_within(2.seconds).of(delay_until.to_f)
+    end
+
+    it "leaves non-landing workflows queued when first-run admission is delayed" do
+      delay_until = 10.minutes.from_now
+      decision = WorkflowAdmissionBudget::Decision.new(
+        action: "delay_until",
+        reason: "predicted_budget_pressure_high",
+        pressure: { "projected" => { "cpu_pressure" => 105.0 } },
+        delay_until: delay_until,
+        override: false,
+        details: nil
+      )
+      allow(WorkflowAdmissionBudget).to receive(:call).and_return(decision)
+
+      expect {
+        described_class.start_workflow(workflow)
+      }.not_to change { s1.runs.count }
+
+      expect(workflow.reload).to be_queued
+      expect(workflow.artifact("start_blocked_reason")).to eq(StepDispatcher::ADMISSION_BLOCK_REASON)
+      expect(workflow.artifact("start_blocked_details")).to include(
+        "action" => "delay_until",
+        "reason" => "predicted_budget_pressure_high"
+      )
+      expect(enqueued_jobs.map { |entry| entry[:job] }).not_to include(LandingQueueProcessorJob)
+    end
   end
 
   describe ".advance_from" do
