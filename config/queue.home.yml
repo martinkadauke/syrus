@@ -19,9 +19,9 @@
     Heavy agent compute (`runs`) and landing (`merges`) live on the compute
     tier, which never touches the search index and can spread across nodes.
 
-    Because this worker consumes `default`, it is also the tier that SCHEDULES
-    recurring tasks — leave SOLID_QUEUE_SKIP_RECURRING unset here and set it to
-    `1` on compute pods so recurring jobs are scheduled exactly once.
+    Because this worker consumes the home-tier queues, it is also the tier that
+    SCHEDULES recurring tasks — leave SOLID_QUEUE_SKIP_RECURRING unset here and
+    set it to `1` on compute pods so recurring jobs are scheduled exactly once.
 
     `Socket` isn't autoloaded when this file is rendered outside Rails
     (bin/check-thread-budget); require it so the ERB is self-contained. %>

@@ -84,6 +84,23 @@ RSpec.describe "queue partitioning" do
     expect(queues_for("config/queue.yml")[:regular].uniq).to match_array(APP_QUEUES)
   end
 
+  it "does not leave job classes on queues no worker consumes" do
+    job_files = Dir.glob(ROOT.join("app/jobs/**/*.rb").to_s)
+    declarations = job_files.flat_map do |path|
+      File.readlines(path).filter_map do |line|
+        match = line.match(/\bqueue_as\s+:(\w+)/)
+        next unless match
+
+        [ path.delete_prefix("#{ROOT}/"), match[1] ]
+      end
+    end
+
+    unknown = declarations.reject { |_path, queue| APP_QUEUES.include?(queue) }
+    message = "job classes declare unconsumed queues: " \
+              "#{unknown.map { |path, queue| "#{path} => #{queue}" }.join(", ")}"
+    expect(unknown).to be_empty, message
+  end
+
   it "routes only the search-bound + light queues to the home worker" do
     expect(queues_for("config/queue.home.yml")[:regular].uniq).to match_array(HOME_QUEUES)
   end

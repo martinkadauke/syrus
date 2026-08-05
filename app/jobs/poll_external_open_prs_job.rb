@@ -1,7 +1,7 @@
 class PollExternalOpenPrsJob < ApplicationJob
   include GithubPrPollHelpers
 
-  queue_as :default
+  queue_as :polling
 
   limits_concurrency to: 1, key: ->(repository_id, *) { "external_open_prs_poll:#{repository_id}" }
 

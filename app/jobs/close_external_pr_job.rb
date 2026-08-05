@@ -1,5 +1,5 @@
 class CloseExternalPrJob < ApplicationJob
-  queue_as :default
+  queue_as :control_plane
 
   CLOSE_COMMENT = "This PR was closed because the associated Syrus Job was closed.".freeze
 
