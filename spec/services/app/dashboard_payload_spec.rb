@@ -576,7 +576,7 @@ RSpec.describe App::DashboardPayload do
   describe "smart folder count caching" do
     before { SmartFolder.ensure_builtins_for_subject!("job") }
 
-    it "caches all sidebar counts as one snapshot instead of one cache entry per folder" do
+    it "caches stable sidebar counts as one snapshot and recomputes volatile counts" do
       cache_store = ActiveSupport::Cache::MemoryStore.new
       fetch_keys = []
       computed_folder_ids = []
@@ -593,17 +593,21 @@ RSpec.describe App::DashboardPayload do
 
       first = call(subject: "job", section: "chrome")
       second = call(subject: "job", section: "chrome")
+      volatile_ids = SmartFolder.builtins(:job)
+                                .select { |folder| folder.builtin_key.in?(%w[in_progress paused queued landing_queue]) }
+                                .map(&:id)
+      stable_ids = SmartFolder.for_subject("job")
+                              .where("user_id IS NULL OR user_id = ?", user.id)
+                              .where.not(id: volatile_ids)
+                              .pluck(:id)
 
       expect(second[:smart_folders].map { |folder| [ folder[:id], folder[:count] ] }).to eq(
         first[:smart_folders].map { |folder| [ folder[:id], folder[:count] ] }
       )
       expect(fetch_keys.select { |key| Array(key).first == "dashboard_smart_folder_counts" }.size).to eq(2)
       expect(fetch_keys).not_to include(a_collection_including("dashboard_smart_folder_count"))
-      expect(computed_folder_ids).to match_array(
-        SmartFolder.for_subject("job")
-                   .where("user_id IS NULL OR user_id = ?", user.id)
-                   .pluck(:id)
-      )
+      expect(computed_folder_ids.tally).to include(stable_ids.index_with(1))
+      expect(computed_folder_ids.tally).to include(volatile_ids.index_with(2))
     end
   end
 

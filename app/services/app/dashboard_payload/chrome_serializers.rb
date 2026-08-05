@@ -70,9 +70,10 @@ module App
       def smart_folder_counts(folders)
         return {} if folders.empty?
 
-        Rails.cache.fetch(smart_folder_counts_cache_key(folders), expires_in: 2.minutes) do
+        volatile, cacheable = folders.partition { |folder| volatile_smart_folder_count?(folder) }
+        cached_counts = cacheable.empty? ? {} : Rails.cache.fetch(smart_folder_counts_cache_key(cacheable), expires_in: 2.minutes) do
           PerformanceLogging.phase("dashboard_smart_folders.counts", subject: subject, count: folders.size) do
-            folders.to_h do |folder|
+            cacheable.to_h do |folder|
               count = PerformanceLogging.phase("dashboard_smart_folders.count", subject: subject, folder_id: folder.id, builtin_key: folder.builtin_key) do
                 smart_folder_count_uncached(folder)
               end
@@ -80,6 +81,19 @@ module App
             end
           end
         end
+        live_counts = volatile.to_h do |folder|
+          count = PerformanceLogging.phase("dashboard_smart_folders.volatile_count", subject: subject, folder_id: folder.id, builtin_key: folder.builtin_key) do
+            smart_folder_count_uncached(folder)
+          end
+          [ folder.id, count ]
+        end
+        cached_counts.merge(live_counts)
+      end
+
+      def volatile_smart_folder_count?(folder)
+        return false unless subject == "job" && folder.builtin?
+
+        folder.builtin_key.in?(%w[in_progress paused queued landing_queue])
       end
 
       def smart_folder_counts_cache_key(folders)
