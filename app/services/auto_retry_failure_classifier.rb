@@ -20,6 +20,8 @@ class AutoRetryFailureClassifier
   }.freeze
 
   RETRYABLE_ERROR_CLASSES = %w[
+    ActiveRecord::ConnectionNotEstablished
+    ActiveRecord::ConnectionTimeoutError
     Timeout::Error
     Net::OpenTimeout
     Net::ReadTimeout
@@ -60,6 +62,10 @@ class AutoRetryFailureClassifier
     /temporar(?:y|ily)/i,
     /rate[_ -]?limit/i,
     /too many requests/i,
+    /too many connections/i,
+    /could not obtain a connection/i,
+    /ConnectionNotEstablished/i,
+    /ConnectionTimeoutError/i,
     /5\d\d/
   ].freeze
 

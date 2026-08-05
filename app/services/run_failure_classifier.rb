@@ -62,7 +62,7 @@ class RunFailureClassifier
     when provider_transient?
       result("provider_transient", 0.75, true, "The provider failed transiently.")
     when database_lock?
-      result("database_lock", 0.80, true, "The run failed during a transient database lock or timeout.")
+      result("database_lock", 0.80, true, "The run failed during transient database contention, timeout, or connection exhaustion.")
     when git_failure?
       result("git_failure", 0.70, false, "A git operation failed.")
     else
@@ -190,8 +190,8 @@ class RunFailureClassifier
   end
 
   def database_lock?
-    diagnostic&.error_class.to_s.match?(/Deadlocked|LockWaitTimeout|StatementTimeout/) ||
-      text_match?(/database is locked|SQLite3::BusyException|Deadlocked|LockWaitTimeout|StatementTimeout/i)
+    diagnostic&.error_class.to_s.match?(/Deadlocked|LockWaitTimeout|StatementTimeout|ConnectionNotEstablished|ConnectionTimeoutError/) ||
+      text_match?(/database is locked|SQLite3::BusyException|Deadlocked|LockWaitTimeout|StatementTimeout|ConnectionNotEstablished|ConnectionTimeoutError|too many connections|could not obtain a connection/i)
   end
 
   def mcp_sidecar?

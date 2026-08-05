@@ -67,6 +67,18 @@ RSpec.describe AutoRetryFailureClassifier do
     expect(result.classification).to eq("Timeout::Error")
   end
 
+  it "classifies database connection exhaustion diagnostics as retryable" do
+    fail_run!(
+      error_class: "ActiveRecord::ConnectionNotEstablished",
+      error_message: "Mysql2::Error: Too many connections"
+    )
+
+    result = described_class.call(workflow: workflow)
+
+    expect(result).to be_retryable
+    expect(result.classification).to eq("ActiveRecord::ConnectionNotEstablished")
+  end
+
   it "classifies mcp_sidecar_failed as retryable" do
     fail_run!(agent_outcome: "mcp_sidecar_failed")
 

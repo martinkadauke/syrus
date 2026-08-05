@@ -277,6 +277,20 @@ RSpec.describe RunFailureClassifier do
     expect(classification.classification).to eq("timeout")
   end
 
+  it "classifies ActiveRecord connection exhaustion as retryable database contention" do
+    run.update!(state: "failed")
+    diagnostic(
+      "ActiveRecord::ConnectionNotEstablished",
+      "Mysql2::Error: Too many connections"
+    )
+
+    result = classification
+
+    expect(result.classification).to eq("database_lock")
+    expect(result.retryable).to eq(true)
+    expect(result.reason).to include("connection exhaustion")
+  end
+
   it "classifies worker and agent process death" do
     run.update!(state: "failed", agent_outcome: "worker_died")
     process("orphaned")
