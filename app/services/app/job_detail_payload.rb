@@ -605,7 +605,7 @@ module App
       return false if job.any_active_run?
 
       workflow = job.latest_workflow
-      workflow&.running? && (
+      workflow&.running? && !workflow.landing_workflow? && (
         workflow.artifact("pause_reason").present? ||
           workflow.artifact("start_blocked_reason").present?
       )

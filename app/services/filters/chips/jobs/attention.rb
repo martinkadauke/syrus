@@ -152,7 +152,7 @@ module Filters
           running_workflow_job_ids = latest_workflow_job_ids("running")
 
           scope.where(state: "running")
-               .or(scope.open_threads.where(id: running_workflow_job_ids))
+               .or(scope.open_threads.where.not(state: "landing").where(id: running_workflow_job_ids))
                .where.not(id: paused_workflow_job_ids)
         end
 
@@ -166,7 +166,7 @@ module Filters
           running_infra_ids = Workflow.where(state: "running", trigger_kind: Workflow::INFRASTRUCTURE_TRIGGER_KINDS).select(:job_id)
           scope.where(state: "queued")
                .where.not(id: running_infra_ids)
-               .or(scope.open_threads.where(id: queued_workflow_job_ids))
+               .or(scope.open_threads.where.not(state: "landing").where(id: queued_workflow_job_ids))
         end
 
         def apply_inbox
@@ -267,6 +267,7 @@ module Filters
 
         def paused_workflow_job_ids
           Workflow.where(state: "running")
+                  .where.not(trigger_kind: Workflow::LANDING_TRIGGER_KINDS)
                   .where("artifacts LIKE ? OR artifacts LIKE ?", '%"pause_reason"%', '%"start_blocked_reason"%')
                   .where(<<~SQL.squish)
                     workflows.id = (

@@ -579,7 +579,7 @@ module App
 
       latest_by_job = @job_runtime_latest_workflows_by_job_id || latest_workflows_by_job_id(job_ids)
       latest_by_job.values.select do |workflow|
-        workflow.running? && workflow_pause_artifact?(workflow)
+        workflow.running? && !workflow.landing_workflow? && workflow_pause_artifact?(workflow)
       end.map(&:job_id) - @job_runtime_active_job_ids.keys
     end
 
@@ -684,7 +684,7 @@ module App
       return false if job.any_active_run?
 
       workflow = job.latest_workflow
-      workflow&.running? && workflow_pause_artifact?(workflow)
+      workflow&.running? && !workflow.landing_workflow? && workflow_pause_artifact?(workflow)
     end
 
     def workflow_pause_artifact?(workflow)

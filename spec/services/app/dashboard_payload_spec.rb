@@ -515,6 +515,34 @@ RSpec.describe App::DashboardPayload do
       expect(paused[:items].map { |row| row[:id] }).to include(job.id)
       expect(in_progress[:items].map { |row| row[:id] }).not_to include(job.id)
     end
+
+    it "keeps admission-blocked landing workflows in landing queue instead of paused" do
+      job = Factories.job_record(
+        user: user,
+        repository: repo,
+        state: "landing",
+        pr_number: 77,
+        branch_name: "syrus/issue-77",
+        approved_at: 1.minute.ago
+      )
+      Workflow.create!(
+        job: job,
+        trigger_kind: "auto_merge",
+        state: "queued",
+        artifacts: {
+          "start_blocked_reason" => "landing start blocked: workflow admission budget",
+          "start_blocked_next_check_at" => 5.minutes.from_now.iso8601
+        }
+      )
+      paused_folder = SmartFolder.find_builtin_by_attention("paused")
+      landing_folder = SmartFolder.find_builtin_by_attention("landing_queue")
+
+      paused = call(subject: "job", smart_folder_id: paused_folder.id, section: "rows")
+      landing = call(subject: "job", smart_folder_id: landing_folder.id, section: "rows")
+
+      expect(paused[:items].map { |row| row[:id] }).not_to include(job.id)
+      expect(landing[:items].map { |row| row[:id] }).to include(job.id)
+    end
   end
 
   describe "blocked_count on queued smart folder" do

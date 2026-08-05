@@ -133,7 +133,6 @@ RSpec.describe "Filters::Chips" do
 
       expect(run(field: "attention", op: "is", value: "in_progress")).to contain_exactly(
         running,
-        landing_running,
         running_rebase,
         running_merge_train
       )
@@ -155,8 +154,7 @@ RSpec.describe "Filters::Chips" do
 
       expect(run(field: "attention", op: "is", value: "queued")).to contain_exactly(
         queued,
-        queued_rebase,
-        queued_landing
+        queued_rebase
       )
     end
 

@@ -295,7 +295,7 @@ RSpec.describe StepDispatcher do
       expect(candidate.artifact("start_blocked_details").dig("pressure", "projected", "cpu_pressure")).to be >= 100.0
     end
 
-    it "fails and defers landing workflows when first-run admission is delayed" do
+    it "keeps landing workflows in the landing queue when first-run admission is delayed" do
       landing_job = Factories.job_record(
         user: job.user,
         repository: job.repository,
@@ -323,9 +323,10 @@ RSpec.describe StepDispatcher do
         described_class.start_workflow(auto_merge)
       }.not_to change { first_step.runs.count }
 
-      expect(auto_merge.reload).to be_failed
-      expect(auto_merge.failure_reason).to eq("landing start blocked: workflow admission budget")
+      expect(auto_merge.reload).to be_queued
+      expect(auto_merge.failure_reason).to be_nil
       expect(auto_merge.artifact("start_blocked_reason")).to eq("landing start blocked: workflow admission budget")
+      expect(auto_merge.artifact("pause_reason")).to be_nil
       expect(auto_merge.artifact("start_blocked_details")).to include(
         "action" => "delay_until",
         "reason" => "predicted_budget_pressure_high"
@@ -334,8 +335,10 @@ RSpec.describe StepDispatcher do
         "action" => "delay_until",
         "reason" => "predicted_budget_pressure_high"
       )
-      expect(landing_job.reload).to be_approved
-      expect(landing_job.landing_failure_reason).to eq("landing start blocked: workflow admission budget")
+      expect(landing_job.reload).to be_landing
+      expect(landing_job.landing_failure_reason).to be_nil
+      expect(enqueued_jobs.map { |entry| entry[:job] }).to include(WorkflowPhaseAdmissionJob)
+      expect(enqueued_jobs.select { |entry| entry[:job] == WorkflowPhaseAdmissionJob }.last[:at]).to be_within(2.seconds).of(delay_until.to_f)
       expect(enqueued_jobs.map { |entry| entry[:job] }).to include(LandingQueueProcessorJob)
       expect(enqueued_jobs.select { |entry| entry[:job] == LandingQueueProcessorJob }.last[:at]).to be_within(2.seconds).of(delay_until.to_f)
     end
@@ -1218,9 +1221,10 @@ RSpec.describe StepDispatcher, "phase admission gate" do
       described_class.advance_from(preflight)
     }.not_to change { prepare.runs.count }
 
-    expect(landing_workflow.reload).to be_failed
-    expect(landing_workflow.failure_reason).to eq("landing start blocked: workflow admission budget")
+    expect(landing_workflow.reload).to be_running
+    expect(landing_workflow.failure_reason).to be_nil
     expect(landing_workflow.artifact("start_blocked_reason")).to eq("landing start blocked: workflow admission budget")
+    expect(landing_workflow.artifact("pause_reason")).to be_nil
     expect(landing_workflow.artifact("start_blocked_details")).to include(
       "action" => "delay_until",
       "reason" => "minimum_progress_floor",
@@ -1232,9 +1236,10 @@ RSpec.describe StepDispatcher, "phase admission gate" do
       "reason" => "minimum_progress_floor",
       "phase_step_id" => prepare.id
     )
-    expect(landing_job.reload).to be_approved
-    expect(landing_job.landing_failure_reason).to eq("landing start blocked: workflow admission budget")
-    expect(enqueued_jobs.map { |entry| entry[:job] }).not_to include(WorkflowPhaseAdmissionJob)
+    expect(landing_job.reload).to be_landing
+    expect(landing_job.landing_failure_reason).to be_nil
+    expect(enqueued_jobs.map { |entry| entry[:job] }).to include(WorkflowPhaseAdmissionJob)
+    expect(enqueued_jobs.select { |entry| entry[:job] == WorkflowPhaseAdmissionJob }.last[:at]).to be_within(2.seconds).of(delay_until.to_f)
     expect(enqueued_jobs.select { |entry| entry[:job] == LandingQueueProcessorJob }.last[:at]).to be_within(2.seconds).of(delay_until.to_f)
   end
 

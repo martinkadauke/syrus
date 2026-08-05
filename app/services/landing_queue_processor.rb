@@ -474,7 +474,13 @@ class LandingQueueProcessor
   end
 
   def blockage_for(job, consume_override: false)
-    return { blocked_reason: nil, waiting_for: nil, waiting_for_jobs: [] } if job.landing?
+    if job.landing?
+      if (retry_after = active_landing_start_blocker_retry_after(job))
+        return blocked({ key: "landing_start_blocked_retrying", params: { retry_at: retry_after.iso8601 } })
+      end
+
+      return { blocked_reason: nil, waiting_for: nil, waiting_for_jobs: [] }
+    end
     return override_or_block(job, { key: "landing_paused" }, consume: consume_override) if job.user.landing_paused?
     if job.repository.main_branch_health_enabled? &&
        job.repository.landing_paused? &&
@@ -594,6 +600,16 @@ class LandingQueueProcessor
     return unless LandingQueueReentry.landing_start_blocker?(job.landing_failure_reason)
 
     workflow = job.workflows
+      .where(trigger_kind: Workflow::LANDING_TRIGGER_KINDS)
+      .reorder(id: :desc)
+      .detect { |wf| LandingQueueReentry.landing_start_blocker?(wf.artifact("start_blocked_reason")) }
+    retry_after = parse_time(workflow&.artifact("start_blocked_next_check_at"))
+    retry_after if retry_after&.future?
+  end
+
+  def active_landing_start_blocker_retry_after(job)
+    workflow = job.workflows
+      .active
       .where(trigger_kind: Workflow::LANDING_TRIGGER_KINDS)
       .reorder(id: :desc)
       .detect { |wf| LandingQueueReentry.landing_start_blocker?(wf.artifact("start_blocked_reason")) }

@@ -108,20 +108,16 @@ class StepDispatcher
       backoff = admission.delay_until ? admission_backoff(admission) : START_BLOCKED_BACKOFF
 
       if workflow.landing_workflow?
-        landing_reason = "landing start blocked: workflow admission budget"
         details = admission.artifact
-        next_check_at = Time.current + backoff
-        fail_unstartable_landing_workflow!(
+        block_landing_for_admission!(
           workflow,
-          landing_reason,
+          backoff: backoff,
           details: details,
-          next_check_at: next_check_at,
           extra_artifacts: {
             "workflow_admission_decision" => details,
             "workflow_admission_decided_at" => Time.current.iso8601
           }
         )
-        schedule_landing_queue_recheck!(workflow, backoff)
         warn_if_stuck_queued(workflow, "#{reason}: #{admission.reason}")
         return
       end
@@ -301,6 +297,22 @@ class StepDispatcher
     nil
   end
 
+  def self.block_landing_for_admission!(workflow, backoff:, details: nil, extra_artifacts: {})
+    now = Time.current
+    reason = "landing start blocked: workflow admission budget"
+    artifacts = (workflow.artifacts || {}).merge(
+      "start_blocked_reason" => reason,
+      "start_blocked_at" => workflow.artifact("start_blocked_at").presence || now.iso8601,
+      "start_blocked_last_seen_at" => now.iso8601,
+      "start_blocked_next_check_at" => (now + backoff).iso8601
+    ).merge(extra_artifacts)
+    artifacts["start_blocked_details"] = details if details.present?
+    workflow.update!(artifacts: artifacts)
+    WorkflowPhaseAdmissionJob.set(wait: backoff, priority: workflow.job.solid_queue_priority).perform_later(workflow.id)
+    schedule_landing_queue_recheck!(workflow, backoff)
+    nil
+  end
+
   def self.schedule_landing_queue_recheck!(workflow, backoff)
     LandingQueueProcessorJob
       .set(wait: backoff, priority: workflow.job.solid_queue_priority)
@@ -355,20 +367,16 @@ class StepDispatcher
     )
     hard_pause = hard_resource_pause?(admission)
     if workflow.landing_workflow? && !hard_pause
-      landing_reason = "landing start blocked: workflow admission budget"
-      next_check_at = Time.current + backoff
       append_phase_deferral_log!(workflow, step, admission)
-      fail_unstartable_landing_workflow!(
+      block_landing_for_admission!(
         workflow,
-        landing_reason,
+        backoff: backoff,
         details: details,
-        next_check_at: next_check_at,
         extra_artifacts: {
           "workflow_admission_decision" => details,
           "workflow_admission_decided_at" => Time.current.iso8601
         }
       )
-      schedule_landing_queue_recheck!(workflow, backoff)
       return true
     end
 
