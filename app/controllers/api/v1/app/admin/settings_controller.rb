@@ -11,8 +11,15 @@ module Api
             setting = AppSetting.current
             update_params = settings_params
             update_params["mode_configured_at"] = Time.current if update_params.key?("mode") && setting.mode_configured_at.nil?
+            admission_control_changed = update_params.key?("workflow_admission_control_enabled") &&
+              ActiveModel::Type::Boolean.new.cast(update_params["workflow_admission_control_enabled"]) != setting.workflow_admission_control_enabled
+            if admission_control_changed
+              update_params["workflow_admission_control_changed_at"] = Time.current
+              update_params["workflow_admission_control_changed_by_user_id"] = Current.user.id
+            end
 
             if setting.update(update_params)
+              audit_workflow_admission_control_change!(setting) if admission_control_changed
               render json: settings_payload.merge(message: I18n.t("api.admin_settings.updated"))
             else
               render_error("validation_failed", setting.errors.full_messages.to_sentence,
@@ -44,6 +51,15 @@ module Api
                 max_concurrent_agent_runs: setting.max_concurrent_agent_runs,
                 proactive_rebase_commit_threshold: setting.proactive_rebase_commit_threshold,
                 rebase_failure_cooldown_minutes: setting.rebase_failure_cooldown_minutes,
+                workflow_admission_control_enabled: setting.workflow_admission_control_enabled,
+                workflow_admission_control_changed_at: setting.workflow_admission_control_changed_at&.iso8601,
+                workflow_admission_control_changed_by: setting.workflow_admission_control_changed_by_user&.then { |user|
+                  {
+                    id: user.id,
+                    email_address: user.email_address,
+                    display_name: user.display_name
+                  }
+                },
                 mode: setting.mode,
                 clearable_secrets: AppSetting.clearable_secrets.map do |key, label|
                   {
@@ -57,7 +73,7 @@ module Api
           end
 
           def settings_params
-            permitted_settings = [ :signups_open, :video_retention_days, :video_storage_budget_mb, :max_concurrent_agent_runs, :proactive_rebase_commit_threshold, :rebase_failure_cooldown_minutes, :mode ] +
+            permitted_settings = [ :signups_open, :video_retention_days, :video_storage_budget_mb, :max_concurrent_agent_runs, :proactive_rebase_commit_threshold, :rebase_failure_cooldown_minutes, :workflow_admission_control_enabled, :mode ] +
                                  AppSetting.clearable_secrets.keys.map(&:to_sym)
 
             params
@@ -69,7 +85,21 @@ module Api
           # signups_open is a boolean (false must survive the blank-reject);
           # everything else is only applied when a value is actually sent.
           def booleanish?(key)
-            key == "signups_open"
+            key.in?(%w[signups_open workflow_admission_control_enabled])
+          end
+
+          def audit_workflow_admission_control_change!(setting)
+            enabled = setting.workflow_admission_control_enabled
+            AdminAction.log!(
+              user: Current.user,
+              action: enabled ? :enable_workflow_admission_control : :disable_workflow_admission_control,
+              params: { source: "app_admin_settings" }
+            )
+            Rails.logger.warn(
+              "[AdminSettings] workflow admission control #{enabled ? "enabled" : "disabled"} " \
+              "by user_id=#{Current.user.id}"
+            )
+            WorkflowAdmissionControlWakeup.call
           end
         end
       end

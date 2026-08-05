@@ -604,6 +604,14 @@ pressure, and IO pressure. Only fresh heartbeat rows appear in the primary
 current-worker tables; hosts that stopped heartbeating remain chartable while
 their samples are in the selected range and are labeled historical, and stale
 Solid Queue process rows are labeled stale in the process inventory.
+Admins can temporarily disable workflow admission control from Admin Settings
+during incidents where predicted capacity is blocking useful work. This is a
+resource-risk kill switch: it bypasses soft worker pressure and prediction
+throttles, but provider circuits, dependencies, landing pauses, archived
+repositories, missing PRs, and hard worker memory/disk exhaustion still block
+starts. Syrus audits the operator and timestamp, records which admission gates
+were bypassed on each admitted Workflow, and wakes delayed Workflows when the
+switch changes.
 State-changing admin tools, such as pausing runs, killing a
 process, clearing the GitHub cache, or refreshing installations, create pending
 actions and wait for operator confirmation before applying. Non-admin chats do

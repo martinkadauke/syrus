@@ -125,6 +125,43 @@ RSpec.describe "API: /api/v1/app/admin/settings", type: :request do
     expect(AppSetting.current.reload.rebase_failure_cooldown_minutes).to eq(15)
   end
 
+  it "exposes, audits, and wakes work when workflow admission control changes" do
+    sign_in_as(admin)
+    AppSetting.current.update!(workflow_admission_control_enabled: true)
+
+    get "/api/v1/app/admin/settings"
+    expect(parse_body.dig("settings", "workflow_admission_control_enabled")).to be true
+
+    expect(WorkflowAdmissionControlWakeup).to receive(:call)
+    expect {
+      patch "/api/v1/app/admin/settings", params: {
+        app_setting: { workflow_admission_control_enabled: false }
+      }
+    }.to change { AdminAction.where(action: "disable_workflow_admission_control").count }.by(1)
+
+    expect(response).to have_http_status(:ok)
+    setting = AppSetting.current.reload
+    expect(setting.workflow_admission_control_enabled).to be false
+    expect(setting.workflow_admission_control_changed_at).to be_present
+    expect(setting.workflow_admission_control_changed_by_user).to eq(admin)
+    expect(parse_body.dig("settings", "workflow_admission_control_changed_by", "email_address")).to eq(admin.email_address)
+  end
+
+  it "audits enabling workflow admission control" do
+    sign_in_as(admin)
+    AppSetting.current.update!(workflow_admission_control_enabled: false)
+    allow(WorkflowAdmissionControlWakeup).to receive(:call)
+
+    expect {
+      patch "/api/v1/app/admin/settings", params: {
+        app_setting: { workflow_admission_control_enabled: true }
+      }
+    }.to change { AdminAction.where(action: "enable_workflow_admission_control").count }.by(1)
+
+    expect(AppSetting.current.reload.workflow_admission_control_enabled).to be true
+    expect(WorkflowAdmissionControlWakeup).to have_received(:call)
+  end
+
   it "rejects a proactive_rebase_commit_threshold below 1" do
     sign_in_as(admin)
     AppSetting.current.update!(proactive_rebase_commit_threshold: 20)

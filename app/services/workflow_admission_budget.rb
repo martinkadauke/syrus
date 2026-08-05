@@ -61,6 +61,10 @@ class WorkflowAdmissionBudget
       return decision("requires_override", hard_reason, pressure, details: details_payload(candidate, active, decision_basis: "ambient_pressure"))
     end
 
+    unless AppSetting.workflow_admission_control_enabled?
+      return admission_control_disabled(candidate, active, pressure)
+    end
+
     if soft_host_pressure? && !urgent?
       return low_risk_or_delay("worker_host_pressure_high", candidate, active, pressure, decision_basis: "ambient_pressure")
     end
@@ -494,6 +498,43 @@ class WorkflowAdmissionBudget
         decision_basis: "urgent_priority_override"
       )
     )
+  end
+
+  def admission_control_disabled(candidate, active, pressure)
+    decision(
+      "admit_now",
+      "admission_control_disabled",
+      pressure,
+      override: true,
+      details: details_payload(
+        candidate,
+        active,
+        decision_basis: "admission_control_disabled"
+      ).merge(admission_control_disabled_details(candidate, active, pressure))
+    )
+  end
+
+  def admission_control_disabled_details(candidate, active, pressure)
+    setting = AppSetting.current
+    {
+      "admission_control_disabled" => true,
+      "admission_control_disabled_at" => setting.workflow_admission_control_changed_at&.iso8601,
+      "admission_control_disabled_by_user_id" => setting.workflow_admission_control_changed_by_user_id,
+      "admission_control_disabled_by" => setting.workflow_admission_control_changed_by_user&.email_address,
+      "bypassed_gates" => disabled_bypassed_gates(candidate, active, pressure)
+    }.compact
+  end
+
+  def disabled_bypassed_gates(candidate, active, pressure)
+    gates = []
+    gates << "worker_host_pressure_high" if soft_host_pressure?
+    gates << "bootstrap_missing_profiles" if bootstrap_missing_profiles?(candidate)
+    gates << "predicted_budget_pressure_high" if over_budget?(pressure)
+    gates << "pending_high_cost_work" if pending_high_cost_work?(active) && high_cost?(candidate) && medium_or_lower?
+    if repository_active_workflow_count >= MAX_REPOSITORY_ACTIVE_WORKFLOWS && pending_high_cost_work?(active)
+      gates << "repository_concurrency_budget_exhausted"
+    end
+    gates.uniq
   end
 
   def admit(reason, pressure = nil)

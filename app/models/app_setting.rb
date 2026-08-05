@@ -58,7 +58,10 @@ class AppSetting < ApplicationRecord
     only_integer: true,
     greater_than_or_equal_to: 0
   }
+  validates :workflow_admission_control_enabled, inclusion: { in: [ true, false ] }
   validates :mode, inclusion: { in: MODES }
+
+  belongs_to :workflow_admission_control_changed_by_user, class_name: "User", optional: true
 
   encrypts :github_app_private_key_pem
 
@@ -122,6 +125,10 @@ class AppSetting < ApplicationRecord
 
   def self.rebase_failure_cooldown_minutes
     current.rebase_failure_cooldown_minutes
+  end
+
+  def self.workflow_admission_control_enabled?
+    current.workflow_admission_control_enabled
   end
 
   def self.max_job_failures

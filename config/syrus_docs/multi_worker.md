@@ -234,3 +234,21 @@ when available, then conservative defaults. `attribution_quality` records
 whether a profile is process-attributed, host-correlated, mixed, or defaults
 only so Admin and Supervisor surfaces can audit top command consumers without
 conflating host pressure with process-owned cost.
+
+## Workflow Admission Control Kill Switch
+
+`AppSetting.workflow_admission_control_enabled` is the global operator kill
+switch for the soft workflow admission budget. It defaults to `true`. When an
+admin disables it from Admin Settings, `WorkflowAdmissionBudget` still blocks
+hard worker memory/disk exhaustion but bypasses soft worker pressure,
+conservative/default-only predictions, pending high-cost work, and repository
+concurrency throttles. Other start blockers remain outside this switch:
+provider circuits, explicit landing pauses, dependency blockers, archived
+repositories, missing PRs, and Job readiness checks still apply.
+
+Every disabled admission decision records `admission_control_disabled=true`,
+the last changed timestamp/user, and the `bypassed_gates` list in the Workflow
+admission artifact. Admin changes are audited as `AdminAction` rows
+(`disable_workflow_admission_control` / `enable_workflow_admission_control`),
+and toggling either direction wakes admission-delayed Workflows plus the
+landing queue so existing sleepers are reconsidered promptly.

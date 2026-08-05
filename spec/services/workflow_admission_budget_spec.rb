@@ -181,6 +181,53 @@ RSpec.describe WorkflowAdmissionBudget do
     expect(decision.pressure.dig("host", "headroom", "memory_used_percent")).to eq(0.0)
   end
 
+  it "does not bypass hard worker exhaustion when admission control is disabled" do
+    AppSetting.current.update!(workflow_admission_control_enabled: false)
+    WorkerHostHealthSample.create!(
+      hostname: "worker-1",
+      role: "worker",
+      version: "test",
+      observed_at: Time.current,
+      memory_used_percent: 97.0,
+      raw_metrics: {}
+    )
+    workflow = workflow_for
+
+    decision = described_class.call(workflow: workflow)
+
+    expect(decision.action).to eq("requires_override")
+    expect(decision.reason).to eq("worker_memory_exhausted")
+  end
+
+  it "bypasses soft host pressure when admission control is disabled" do
+    actor = Factories.user(email_address: "admin@example.com")
+    AppSetting.current.update!(
+      workflow_admission_control_enabled: false,
+      workflow_admission_control_changed_at: Time.current,
+      workflow_admission_control_changed_by_user: actor
+    )
+    WorkerHostHealthSample.create!(
+      hostname: "worker-1",
+      role: "worker",
+      version: "test",
+      observed_at: Time.current,
+      cpu_pressure_some: 90.0,
+      raw_metrics: {}
+    )
+    workflow = workflow_for
+
+    decision = described_class.call(workflow: workflow)
+
+    expect(decision.action).to eq("admit_now")
+    expect(decision.reason).to eq("admission_control_disabled")
+    expect(decision.override).to be(true)
+    expect(decision.details).to include(
+      "admission_control_disabled" => true,
+      "admission_control_disabled_by" => "admin@example.com"
+    )
+    expect(decision.details.fetch("bypassed_gates")).to include("worker_host_pressure_high")
+  end
+
   it "does not let urgent priority bypass hard worker exhaustion" do
     WorkerHostHealthSample.create!(
       hostname: "worker-1",
@@ -250,6 +297,50 @@ RSpec.describe WorkflowAdmissionBudget do
     )
     expect(decision.details.fetch("fallback_reasons")).to include("command_attributed_profile_unavailable")
     expect(decision.pressure.dig("candidate", "attribution_confidence_levels")).to eq([ "defaults_only" ])
+  end
+
+  it "bypasses conservative default prediction delays when admission control is disabled" do
+    AppSetting.current.update!(workflow_admission_control_enabled: false)
+    WorkflowStepResourceProfile.delete_all
+    workflow_for(state: "running")
+    candidate = workflow_for(trigger_kind: "retry")
+
+    decision = described_class.call(workflow: candidate)
+
+    expect(decision.action).to eq("admit_now")
+    expect(decision.reason).to eq("admission_control_disabled")
+    expect(decision.details.fetch("bypassed_gates")).to include(
+      "bootstrap_missing_profiles",
+      "predicted_budget_pressure_high"
+    )
+  end
+
+  it "bypasses pending high-cost and repository concurrency throttles when admission control is disabled" do
+    AppSetting.current.update!(workflow_admission_control_enabled: false)
+    profile(step_kind: "grader", grader_name: "production-build-boot", duration: 2_400, cpu: 20.0, io: 10.0, memory: 40.0)
+    2.times { workflow_for(state: "running") }
+    candidate = workflow_for
+
+    decision = described_class.call(workflow: candidate)
+
+    expect(decision.action).to eq("admit_now")
+    expect(decision.reason).to eq("admission_control_disabled")
+    expect(decision.details.fetch("bypassed_gates")).to include(
+      "pending_high_cost_work",
+      "repository_concurrency_budget_exhausted"
+    )
+  end
+
+  it "re-enabling admission restores normal budgeting behavior" do
+    AppSetting.current.update!(workflow_admission_control_enabled: true)
+    profile(step_kind: "grader", grader_name: "production-build-boot", duration: 2_400, cpu: 70.0, io: 40.0, memory: 70.0)
+    workflow_for(state: "running")
+    candidate = workflow_for
+
+    decision = described_class.call(workflow: candidate)
+
+    expect(decision.action).to eq("delay_until")
+    expect(decision.reason).to eq("predicted_budget_pressure_high")
   end
 
   it "labels mixed-source pressure by the source that drives the budget decision" do

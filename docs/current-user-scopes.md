@@ -85,6 +85,7 @@ admin-only:
   - app/controllers/api/v1/app/admin/installations_controller.rb
   - app/controllers/api/v1/app/admin/invitations_controller.rb
   - app/controllers/api/v1/app/admin/queue_controller.rb
+  - app/controllers/api/v1/app/admin/settings_controller.rb
   - app/controllers/api/v1/app/admin/spawned_processes_controller.rb
   - app/controllers/api/v1/app/admin/supervisor_chats_controller.rb
   - app/controllers/api/v1/app/admin/users_controller.rb
@@ -130,6 +131,7 @@ instead of broader model scopes.
 | `app/controllers/concerns/chat_search.rb` | per-user/private | Chat-search helpers (extracted from `ChatsController`) search and filter `Current.user`'s chats and serialize the results. |
 | `app/controllers/concerns/performance_logging_context.rb` | per-user/private | Performance log request diagnostics include the current user's id/admin flag when a signed-in user is available. |
 | `app/controllers/api/v1/app/credentials/documents_controller.rb` | per-user/private | Personal credential documents are listed, created, and deleted through `Current.user.documents`. |
+| `app/controllers/api/v1/app/admin/settings_controller.rb` | admin-only | App-wide settings are admin-only; `Current.user` stamps the actor for workflow-admission-control audit metadata and `AdminAction` rows. |
 | `app/controllers/api/v1/app/cron_templates_controller.rb` | per-user/private | Cron templates and selectable repositories are scoped to the current user. |
 | `app/controllers/api/v1/app/dashboard_controller.rb` | per-user/private | Dashboard payload, preferences, bulk job actions, tags, approvals, and broadcasts operate on `Current.user` jobs/epics/tags. |
 | `app/controllers/api/v1/app/direct_jobs_controller.rb` | per-user/private | Direct jobs can only be created in active repositories owned by the current user, using that user's configured agent providers. |

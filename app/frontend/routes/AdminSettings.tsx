@@ -106,6 +106,7 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
   const [maxConcurrentAgentRuns, setMaxConcurrentAgentRuns] = useState(String(payload.settings.max_concurrent_agent_runs))
   const [proactiveRebaseThreshold, setProactiveRebaseThreshold] = useState(String(payload.settings.proactive_rebase_commit_threshold))
   const [rebaseFailureCooldown, setRebaseFailureCooldown] = useState(String(payload.settings.rebase_failure_cooldown_minutes))
+  const [workflowAdmissionControlEnabled, setWorkflowAdmissionControlEnabled] = useState(payload.settings.workflow_admission_control_enabled)
   const [mode, setMode] = useState<"advanced" | "simple">(payload.settings.mode)
   const update = useMutation({
     mutationFn: () => updateAdminSettings({
@@ -115,6 +116,7 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
       max_concurrent_agent_runs: Number(maxConcurrentAgentRuns),
       proactive_rebase_commit_threshold: Number(proactiveRebaseThreshold),
       rebase_failure_cooldown_minutes: Number(rebaseFailureCooldown),
+      workflow_admission_control_enabled: workflowAdmissionControlEnabled,
       mode
     }),
     onSuccess: (updated) => {
@@ -131,8 +133,9 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
     setMaxConcurrentAgentRuns(String(payload.settings.max_concurrent_agent_runs))
     setProactiveRebaseThreshold(String(payload.settings.proactive_rebase_commit_threshold))
     setRebaseFailureCooldown(String(payload.settings.rebase_failure_cooldown_minutes))
+    setWorkflowAdmissionControlEnabled(payload.settings.workflow_admission_control_enabled)
     setMode(payload.settings.mode)
-  }, [payload.settings.signups_open, payload.settings.video_retention_days, payload.settings.video_storage_budget_mb, payload.settings.max_concurrent_agent_runs, payload.settings.proactive_rebase_commit_threshold, payload.settings.rebase_failure_cooldown_minutes, payload.settings.mode])
+  }, [payload.settings.signups_open, payload.settings.video_retention_days, payload.settings.video_storage_budget_mb, payload.settings.max_concurrent_agent_runs, payload.settings.proactive_rebase_commit_threshold, payload.settings.rebase_failure_cooldown_minutes, payload.settings.workflow_admission_control_enabled, payload.settings.mode])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -228,6 +231,31 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
           type="number"
           value={rebaseFailureCooldown}
         />
+      </div>
+
+      <div className={`rounded border px-3 py-3 ${workflowAdmissionControlEnabled ? "border-gray-200 dark:border-gray-700" : "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30"}`}>
+        <div className="flex items-start gap-3">
+          <input
+            id="admin-settings-workflow-admission-control"
+            checked={workflowAdmissionControlEnabled}
+            className="mt-1 rounded border-gray-400"
+            onChange={(event) => setWorkflowAdmissionControlEnabled(event.target.checked)}
+            type="checkbox"
+          />
+          <span>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="admin-settings-workflow-admission-control">{t("settings.workflow_admission_control_label")}</label>
+            <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">{t("settings.workflow_admission_control_help")}</span>
+            {!workflowAdmissionControlEnabled ? <span className="mt-2 block text-xs font-medium text-amber-800 dark:text-amber-200">{t("settings.workflow_admission_control_warning")}</span> : null}
+            {payload.settings.workflow_admission_control_changed_at ? (
+              <span className="mt-2 block text-xs text-gray-500 dark:text-gray-400">
+                {t("settings.workflow_admission_control_changed", {
+                  at: payload.settings.workflow_admission_control_changed_at,
+                  actor: payload.settings.workflow_admission_control_changed_by?.display_name || payload.settings.workflow_admission_control_changed_by?.email_address || t("settings.workflow_admission_control_unknown_actor")
+                })}
+              </span>
+            ) : null}
+          </span>
+        </div>
       </div>
 
       <div>

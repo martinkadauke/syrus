@@ -14,6 +14,13 @@ export type AdminSettingsPayload = {
     max_concurrent_agent_runs: number
     proactive_rebase_commit_threshold: number
     rebase_failure_cooldown_minutes: number
+    workflow_admission_control_enabled: boolean
+    workflow_admission_control_changed_at: string | null
+    workflow_admission_control_changed_by: {
+      id: number
+      email_address: string
+      display_name?: string | null
+    } | null
     mode: "advanced" | "simple"
     clearable_secrets: ClearableSecret[]
   }
@@ -27,6 +34,7 @@ export type AdminSettingsUpdate = {
   max_concurrent_agent_runs?: number
   proactive_rebase_commit_threshold?: number
   rebase_failure_cooldown_minutes?: number
+  workflow_admission_control_enabled?: boolean
   mode?: "advanced" | "simple"
 }
 
