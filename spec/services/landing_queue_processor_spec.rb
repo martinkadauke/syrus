@@ -43,6 +43,54 @@ RSpec.describe LandingQueueProcessor do
     expect(child.reload).to be_approved
   end
 
+  it "skips a landing-start blocker while its retry backoff is active" do
+    blocked = queue_job(issue_number: 1, approved_at: 2.minutes.ago)
+    ready = queue_job(issue_number: 2, approved_at: 1.minute.ago)
+    retry_at = 10.minutes.from_now
+    blocked.update!(landing_failure_reason: "landing start blocked: workflow admission budget")
+    Workflow.create!(
+      job: blocked,
+      trigger_kind: "auto_merge",
+      state: "failed",
+      failure_reason: "landing start blocked: workflow admission budget",
+      artifacts: {
+        "start_blocked_reason" => "landing start blocked: workflow admission budget",
+        "start_blocked_next_check_at" => retry_at.iso8601
+      }
+    )
+
+    workflow = described_class.call
+
+    expect(workflow.job).to eq(ready)
+    expect(blocked.reload).to be_approved
+    expect(ready.reload).to be_landing
+    entry = described_class.entries(Job.where(id: blocked.id)).first
+    expect(entry.blocked_reason).to eq(
+      { key: "landing_start_blocked_retrying", params: { retry_at: retry_at.iso8601 } }
+    )
+  end
+
+  it "retries a landing-start blocker after its backoff expires" do
+    job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+    job.update!(landing_failure_reason: "landing start blocked: workflow admission budget")
+    Workflow.create!(
+      job: job,
+      trigger_kind: "auto_merge",
+      state: "failed",
+      failure_reason: "landing start blocked: workflow admission budget",
+      artifacts: {
+        "start_blocked_reason" => "landing start blocked: workflow admission budget",
+        "start_blocked_next_check_at" => 1.minute.ago.iso8601
+      }
+    )
+
+    workflow = described_class.call
+
+    expect(workflow.job).to eq(job)
+    expect(job.reload).to be_landing
+    expect(job.landing_failure_reason).to be_nil
+  end
+
   it "places stack parents before children in landing queue positions" do
     child = queue_job(issue_number: 2, approved_at: 2.minutes.ago)
     parent = queue_job(issue_number: 1, approved_at: 1.minute.ago)

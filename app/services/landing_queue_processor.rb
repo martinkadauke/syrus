@@ -492,6 +492,9 @@ class LandingQueueProcessor
     # them in :approved with a clear reason; MergeTrainDispatcher picks
     # the Epic up once every child is approved.
     return override_or_block(job, { key: "waiting_epic_merge_train" }, consume: consume_override) if merge_train_for_epic_child?(job)
+    if (retry_after = landing_start_blocker_retry_after(job))
+      return blocked({ key: "landing_start_blocked_retrying", params: { retry_at: retry_after.iso8601 } })
+    end
     # Don't burn a fail_landing cycle on a Job whose repo isn't set
     # up for auto-merge — that wipes the operator's approval without
     # surfacing the real misconfiguration. Keep the Job in :approved
@@ -585,6 +588,23 @@ class LandingQueueProcessor
     return false if job.mergeability_checked_at.blank?
 
     job.mergeability_checked_at > MERGEABILITY_RECHECK_DELAY.ago
+  end
+
+  def landing_start_blocker_retry_after(job)
+    return unless LandingQueueReentry.landing_start_blocker?(job.landing_failure_reason)
+
+    workflow = job.workflows
+      .where(trigger_kind: Workflow::LANDING_TRIGGER_KINDS)
+      .order(id: :desc)
+      .detect { |wf| LandingQueueReentry.landing_start_blocker?(wf.artifact("start_blocked_reason")) }
+    retry_after = parse_time(workflow&.artifact("start_blocked_next_check_at"))
+    retry_after if retry_after&.future?
+  end
+
+  def parse_time(value)
+    Time.iso8601(value.to_s)
+  rescue ArgumentError, TypeError
+    nil
   end
 
   def unrelated_urgent_job_active_for_repository?(job)

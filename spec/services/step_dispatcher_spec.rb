@@ -1166,6 +1166,76 @@ RSpec.describe StepDispatcher, "phase admission gate" do
     expect(recheck_jobs.last[:priority]).to eq(job_model.solid_queue_priority)
   end
 
+  it "fails and defers landing workflows instead of holding the landing lane at a phase boundary" do
+    landing_job = Factories.job_record(
+      user: job_model.user,
+      repository: job_model.repository,
+      state: "landing",
+      issue_number: 77,
+      pr_number: 77,
+      branch_name: "syrus/issue-77",
+      approved_at: 1.minute.ago,
+      approved_via: "operator"
+    )
+    landing_workflow = Workflow.create!(
+      job: landing_job,
+      trigger_kind: "auto_merge",
+      state: "running",
+      started_at: 1.minute.ago
+    )
+    preflight = Step.create!(
+      workflow: landing_workflow,
+      kind: "mergeability_preflight",
+      position: 0,
+      state: "succeeded",
+      started_at: 1.minute.ago,
+      finished_at: Time.current
+    )
+    prepare = Step.create!(workflow: landing_workflow, kind: "prepare", position: 1)
+    preflight.update!(next_step_id: prepare.id)
+    preflight.runs.create!(
+      job: landing_job,
+      trigger_kind: landing_workflow.trigger_kind,
+      agent_provider: landing_workflow.agent_provider,
+      state: "succeeded",
+      started_at: 1.minute.ago,
+      finished_at: Time.current
+    )
+    delay_until = 10.minutes.from_now
+    decision = WorkflowAdmissionBudget::Decision.new(
+      action: "delay_until",
+      reason: "minimum_progress_floor",
+      pressure: { "projected" => { "cpu_pressure" => 105.0 } },
+      delay_until: delay_until,
+      override: false,
+      details: { "candidate_seconds" => 1800 }
+    )
+    allow(WorkflowAdmissionBudget).to receive(:call).with(workflow: landing_workflow, step: prepare).and_return(decision)
+
+    expect {
+      described_class.advance_from(preflight)
+    }.not_to change { prepare.runs.count }
+
+    expect(landing_workflow.reload).to be_failed
+    expect(landing_workflow.failure_reason).to eq("landing start blocked: workflow admission budget")
+    expect(landing_workflow.artifact("start_blocked_reason")).to eq("landing start blocked: workflow admission budget")
+    expect(landing_workflow.artifact("start_blocked_details")).to include(
+      "action" => "delay_until",
+      "reason" => "minimum_progress_floor",
+      "phase_step_id" => prepare.id,
+      "phase_step_kind" => "prepare"
+    )
+    expect(landing_workflow.artifact("workflow_admission_decision")).to include(
+      "action" => "delay_until",
+      "reason" => "minimum_progress_floor",
+      "phase_step_id" => prepare.id
+    )
+    expect(landing_job.reload).to be_approved
+    expect(landing_job.landing_failure_reason).to eq("landing start blocked: workflow admission budget")
+    expect(enqueued_jobs.map { |entry| entry[:job] }).not_to include(WorkflowPhaseAdmissionJob)
+    expect(enqueued_jobs.select { |entry| entry[:job] == LandingQueueProcessorJob }.last[:at]).to be_within(2.seconds).of(delay_until.to_f)
+  end
+
   it "admits a deferred grader phase when pressure falls" do
     worker_pressure!
     resource_profile(step_kind: "grader", grader_name: "production-build-boot")

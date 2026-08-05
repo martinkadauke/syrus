@@ -344,6 +344,24 @@ class StepDispatcher
       "phase_step_kind" => step.kind,
       "phase_step_position" => step.position
     )
+    if workflow.landing_workflow?
+      landing_reason = "landing start blocked: workflow admission budget"
+      next_check_at = Time.current + backoff
+      append_phase_deferral_log!(workflow, step, admission)
+      fail_unstartable_landing_workflow!(
+        workflow,
+        landing_reason,
+        details: details,
+        next_check_at: next_check_at,
+        extra_artifacts: {
+          "workflow_admission_decision" => details,
+          "workflow_admission_decided_at" => Time.current.iso8601
+        }
+      )
+      schedule_landing_queue_recheck!(workflow, backoff)
+      return true
+    end
+
     record_start_blocked!(workflow, ADMISSION_BLOCK_REASON, backoff: backoff, details: details)
     append_phase_deferral_log!(workflow, step, admission)
     WorkflowPhaseAdmissionJob.set(wait: backoff, priority: workflow.job.solid_queue_priority).perform_later(workflow.id, step.id)
