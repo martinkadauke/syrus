@@ -1136,6 +1136,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_162000) do
     t.index ["job_id"], name: "index_pr_review_comments_on_job_id"
   end
 
+  create_table "provider_availability_evidences", force: :cascade do |t|
+    t.string "account_id", limit: 128
+    t.integer "chat_message_id"
+    t.integer "chat_session_id"
+    t.datetime "created_at", null: false
+    t.json "details"
+    t.integer "http_status"
+    t.string "model", limit: 100
+    t.datetime "observed_at", null: false
+    t.string "provider", limit: 32, null: false
+    t.integer "run_id"
+    t.string "source", limit: 64, null: false
+    t.string "status", limit: 64, null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["chat_message_id"], name: "index_provider_availability_evidences_on_chat_message_id"
+    t.index ["chat_session_id"], name: "index_provider_availability_evidences_on_chat_session_id"
+    t.index ["provider", "status", "observed_at"], name: "idx_provider_evidence_status_observed"
+    t.index ["run_id"], name: "index_provider_availability_evidences_on_run_id"
+    t.index ["user_id", "provider", "account_id", "model", "observed_at"], name: "idx_provider_evidence_scope_observed"
+    t.index ["user_id"], name: "index_provider_availability_evidences_on_user_id"
+  end
+
   create_table "repositories", force: :cascade do |t|
     t.string "agent_provider"
     t.boolean "approval_propagates_to_github", default: true
@@ -1905,6 +1928,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_162000) do
   add_foreign_key "notifications", "users"
   add_foreign_key "pr_review_comments", "jobs"
   add_foreign_key "pr_review_comments", "workflows", column: "handling_workflow_id"
+  add_foreign_key "provider_availability_evidences", "chat_messages"
+  add_foreign_key "provider_availability_evidences", "chat_sessions"
+  add_foreign_key "provider_availability_evidences", "runs"
+  add_foreign_key "provider_availability_evidences", "users"
   add_foreign_key "repositories", "installations"
   add_foreign_key "repositories", "repositories", column: "upstream_repository_id"
   add_foreign_key "repositories", "users"

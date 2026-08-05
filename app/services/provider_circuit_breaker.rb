@@ -27,8 +27,8 @@ class ProviderCircuitBreaker
     /timeout/i
   ].freeze
 
-  Decision = Data.define(:provider, :open, :reason, :retry_after, :failure_count, :job_count, :signature, :model, :usage_limit) do
-    def initialize(provider:, open:, reason:, retry_after:, failure_count:, job_count:, signature:, model: nil, usage_limit: false)
+  Decision = Data.define(:provider, :open, :reason, :retry_after, :failure_count, :job_count, :signature, :model, :usage_limit, :evidence) do
+    def initialize(provider:, open:, reason:, retry_after:, failure_count:, job_count:, signature:, model: nil, usage_limit: false, evidence: nil)
       super
     end
 
@@ -45,13 +45,14 @@ class ProviderCircuitBreaker
         job_count: job_count,
         signature: signature,
         model: model,
-        usage_limit: usage_limit?
+        usage_limit: usage_limit?,
+        evidence: evidence
       }
     end
   end
 
   FailureSignal = Data.define(:run, :signature, :retryable)
-  UsageLimitSignal = Data.define(:run, :signature, :model)
+  UsageLimitSignal = Data.define(:run, :signature, :model, :evidence)
 
   def self.call(provider, now: Time.current, include_logs: true) = new(provider, now: now, include_logs: include_logs).call
 
@@ -104,7 +105,8 @@ class ProviderCircuitBreaker
       job_count: job_count || signals.map { |signal| signal.run.job_id }.uniq.size,
       signature: nil,
       model: nil,
-      usage_limit: false
+      usage_limit: false,
+      evidence: nil
     )
   end
 
@@ -119,13 +121,15 @@ class ProviderCircuitBreaker
       job_count: job_count,
       signature: signature,
       model: nil,
-      usage_limit: false
+      usage_limit: false,
+      evidence: latest_provider_evidence_payload
     )
   end
 
   def open_usage_limit(signal)
-    latest_finished_at = signal.run.finished_at || signal.run.updated_at || now
-    retry_after = ProviderQuotaReset.retry_after_for_run(signal.run, now: now) || latest_finished_at + USAGE_LIMIT_OPEN_FOR
+    latest_finished_at = signal.run ? (signal.run.finished_at || signal.run.updated_at || now) : (signal.evidence&.observed_at || now)
+    retry_after = signal.run ? ProviderQuotaReset.retry_after_for_run(signal.run, now: now) : nil
+    retry_after ||= latest_finished_at + USAGE_LIMIT_OPEN_FOR
     Decision.new(
       provider: provider,
       open: true,
@@ -135,7 +139,8 @@ class ProviderCircuitBreaker
       job_count: 1,
       signature: signal.signature,
       model: signal.model,
-      usage_limit: true
+      usage_limit: true,
+      evidence: usage_signal_summary(signal) || latest_provider_evidence_payload
     )
   end
 
@@ -154,18 +159,56 @@ class ProviderCircuitBreaker
   end
 
   def usage_limit_signals
+    current_usage_limit_evidence&.then do |evidence|
+      return [
+        UsageLimitSignal.new(
+          run: evidence.run,
+          signature: evidence.source,
+          model: evidence.model,
+          evidence: evidence
+        )
+      ]
+    end
+
     usage_limit_failed_runs.filter_map do |run|
       text = diagnostic_text(run)
       next unless usage_limit?(run, text)
       retry_after = ProviderQuotaReset.retry_after_for_run(run, now: now)
       next if retry_after && retry_after <= now
+      model = ProviderUsageLimit.extract_model(text)
+      next if provider == "codex" && ProviderAvailabilityEvidence.latest_positive_after?(
+        user: run.user,
+        provider: provider,
+        account_id: CodexAccountScope.for_user(run.user),
+        model: model,
+        observed_at: run.finished_at || run.updated_at || now
+      )
 
       UsageLimitSignal.new(
         run: run,
         signature: signature_for(run),
-        model: ProviderUsageLimit.extract_model(text)
+        model: model,
+        evidence: nil
       )
     end
+  end
+
+  def current_usage_limit_evidence
+    return unless provider == "codex"
+
+    ProviderAvailabilityEvidence
+      .where(provider: provider, status: "exhausted")
+      .where("observed_at >= ?", now - USAGE_LIMIT_WINDOW)
+      .recent
+      .detect do |evidence|
+        !ProviderAvailabilityEvidence.latest_positive_after?(
+          user: evidence.user,
+          provider: provider,
+          account_id: evidence.account_id,
+          model: evidence.model,
+          observed_at: evidence.observed_at
+        )
+      end
   end
 
   def usage_limit_failed_runs
@@ -243,5 +286,26 @@ class ProviderCircuitBreaker
 
   def include_logs?
     @include_logs
+  end
+
+  def latest_provider_evidence_payload
+    return unless provider == "codex"
+
+    ProviderAvailabilityEvidence.latest_positive_negative_for_provider(provider)
+  end
+
+  def usage_signal_summary(signal)
+    return signal.evidence.summary if signal.evidence
+    return unless signal.run
+
+    {
+      status: "exhausted",
+      source: "failed_run",
+      observed_at: (signal.run.finished_at || signal.run.updated_at)&.iso8601,
+      provider: provider,
+      account_id: CodexAccountScope.for_user(signal.run.user),
+      model: signal.model,
+      run_id: signal.run.id
+    }.compact
   end
 end

@@ -130,6 +130,58 @@ RSpec.describe App::ProviderAvailability do
     expect(described_class.for_user(user, "claude", now: now, cached: false)).to be_nil
   end
 
+  it "treats newer Codex run success evidence as superseding older matching usage-limit failures" do
+    failed_run(provider: "codex", message: "Codex API error: model gpt-5.5 weekly usage limit exhausted")
+
+    ProviderAvailabilityEvidence.record_codex_success!(
+      user: user,
+      source: "run_success",
+      model: "gpt-5.5",
+      observed_at: now
+    )
+
+    status = described_class.for_user(user, "codex", now: now, cached: false)
+
+    expect(status).to include(state: "available", open: false, usage_exhausted: false)
+    expect(status.dig(:evidence, :latest_positive)).to include(
+      status: "available",
+      source: "run_success",
+      model: "gpt-5.5"
+    )
+  end
+
+  it "does not let a different Codex model success clear model-specific exhaustion" do
+    failed_run(provider: "codex", message: "Codex API error: model gpt-5.5 weekly usage limit exhausted")
+
+    ProviderAvailabilityEvidence.record_codex_success!(
+      user: user,
+      source: "chat_turn_success",
+      model: "gpt-5.4",
+      observed_at: now
+    )
+
+    status = described_class.for_user(user, "codex", now: now, cached: false)
+
+    expect(status).to include(state: "exhausted", open: true, usage_exhausted: true, model: "gpt-5.5")
+    expect(status.dig(:evidence, :latest_positive)).to include(model: "gpt-5.4")
+  end
+
+  it "does not show exhausted availability for inconclusive Codex probe evidence" do
+    ProviderAvailabilityEvidence.record_codex_probe!(
+      user: user,
+      status: "probe_inconclusive",
+      snapshot: { "http_status" => 429, "error" => "too many requests" },
+      message: "Codex usage probe returned HTTP 429.",
+      http_status: 429,
+      observed_at: now
+    )
+
+    status = described_class.for_user(user, "codex", now: now, cached: false)
+
+    expect(status).to include(state: "available", open: false, usage_exhausted: false)
+    expect(status.dig(:usage, :evidence)).to include(status: "probe_inconclusive", source: "usage_probe")
+  end
+
   it "does not trust stale rate-limit classifications without direct provider evidence" do
     failed_run(
       provider: "codex",

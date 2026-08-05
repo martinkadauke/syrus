@@ -86,6 +86,57 @@ RSpec.describe ProviderCircuitBreaker do
     expect(decision.retry_after).to be_within(1.second).of(now + 23.hours + 59.minutes)
   end
 
+  it "closes Codex usage-limit circuit when newer matching success evidence exists" do
+    run = failed_agent_run(
+      outcome: "provider_usage_limit",
+      message: "Codex API error: model gpt-5.5 weekly usage limit exhausted"
+    )
+    run.create_run_failure_classification!(
+      classification: "provider_usage_limit",
+      confidence: 0.95,
+      retryable: false,
+      reason: "usage exhausted",
+      classified_at: now - 1.minute
+    )
+    ProviderAvailabilityEvidence.record_codex_success!(
+      user: user,
+      source: "run_success",
+      model: "gpt-5.5",
+      observed_at: now
+    )
+
+    decision = described_class.call("codex", now: now)
+
+    expect(decision).not_to be_open
+    expect(decision).not_to be_usage_limit
+  end
+
+  it "keeps Codex usage-limit circuit open when success evidence is for a different model" do
+    run = failed_agent_run(
+      outcome: "provider_usage_limit",
+      message: "Codex API error: model gpt-5.5 weekly usage limit exhausted"
+    )
+    run.create_run_failure_classification!(
+      classification: "provider_usage_limit",
+      confidence: 0.95,
+      retryable: false,
+      reason: "usage exhausted",
+      classified_at: now - 1.minute
+    )
+    ProviderAvailabilityEvidence.record_codex_success!(
+      user: user,
+      source: "chat_turn_success",
+      model: "gpt-5.4",
+      observed_at: now
+    )
+
+    decision = described_class.call("codex", now: now)
+
+    expect(decision).to be_open
+    expect(decision).to be_usage_limit
+    expect(decision.model).to eq("gpt-5.5")
+  end
+
   it "uses known usage reset times and closes once that reset has passed" do
     run = failed_agent_run(
       provider: "claude",

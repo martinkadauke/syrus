@@ -90,7 +90,7 @@ class CodexUsageProbe
       when Net::HTTPUnauthorized, Net::HTTPForbidden
         "auth_error"
       when Net::HTTPTooManyRequests
-        "exhausted"
+        "probe_inconclusive"
       else
         "error"
       end
@@ -188,11 +188,21 @@ class CodexUsageProbe
   end
 
   def persist(status:, snapshot:, message:)
+    observed_at = Time.current
     @user.update!(
       codex_usage_status: status,
-      codex_usage_observed_at: Time.current,
+      codex_usage_observed_at: observed_at,
       codex_usage_snapshot: snapshot
     )
+    ProviderAvailabilityEvidence.record_codex_probe!(
+      user: @user,
+      status: status,
+      snapshot: snapshot,
+      message: message,
+      http_status: snapshot["http_status"],
+      observed_at: observed_at
+    )
+    App::ProviderAvailability.clear_cache!(user: @user, provider: "codex")
     Result.new(status: status, snapshot: snapshot, message: message)
   end
 
