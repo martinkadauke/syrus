@@ -481,6 +481,7 @@ class LandingQueueProcessor
 
       return { blocked_reason: nil, waiting_for: nil, waiting_for_jobs: [] }
     end
+    return blocked({ key: "manual_pause" }) if job.manual_paused?
     return override_or_block(job, { key: "landing_paused" }, consume: consume_override) if job.user.landing_paused?
     if job.repository.main_branch_health_enabled? &&
        job.repository.landing_paused? &&

@@ -126,6 +126,7 @@ RSpec.describe "Filters::Chips" do
       running_ci_failure = Factories.job_record(repository: repo, issue_number: 10, state: "implemented")
       old_running_workflow = Factories.job_record(repository: repo, issue_number: 11, state: "approved")
       paused_running = Factories.job_record(repository: repo, issue_number: 12, state: "running")
+      manually_paused_running = Factories.job_record(repository: repo, issue_number: 13, state: "running", manual_paused: true, manual_paused_at: Time.current, manual_paused_by_user: user)
       Factories.job_record(repository: repo, issue_number: 7, state: "approved")
 
       Workflow.create!(job: queued_rebase, trigger_kind: "rebase", state: "queued")
@@ -154,6 +155,7 @@ RSpec.describe "Filters::Chips" do
         running_ci_failure,
         old_running_workflow
       )
+      expect(run(field: "attention", op: "is", value: "in_progress")).not_to include(manually_paused_running)
     end
 
     it "queued: returns queued jobs and jobs whose latest workflow is queued" do
@@ -163,6 +165,7 @@ RSpec.describe "Filters::Chips" do
       Factories.job_record(repository: repo, issue_number: 24, state: "approved")
       running_rebase = Factories.job_record(repository: repo, issue_number: 25, state: "approved")
       superseded_queue = Factories.job_record(repository: repo, issue_number: 26, state: "approved")
+      Factories.job_record(repository: repo, issue_number: 27, state: "queued", manual_paused: true, manual_paused_at: Time.current, manual_paused_by_user: user)
 
       Workflow.create!(job: queued_rebase, trigger_kind: "rebase", state: "queued")
       Workflow.create!(job: queued_landing, trigger_kind: "auto_merge", state: "queued")
@@ -174,6 +177,20 @@ RSpec.describe "Filters::Chips" do
         queued,
         queued_rebase
       )
+    end
+
+    it "paused: returns manually paused jobs and workflow-paused jobs" do
+      manual = Factories.job_record(repository: repo, issue_number: 28, state: "queued", manual_paused: true, manual_paused_at: Time.current, manual_paused_by_user: user)
+      workflow_paused = Factories.job_record(repository: repo, issue_number: 29, state: "running")
+      Factories.job_record(repository: repo, issue_number: 30, state: "queued")
+      Workflow.create!(
+        job: workflow_paused,
+        trigger_kind: "initial",
+        state: "running",
+        artifacts: { "pause_reason" => "workflow_admission_budget" }
+      )
+
+      expect(run(field: "attention", op: "is", value: "paused")).to contain_exactly(manual, workflow_paused)
     end
 
     it "queued: excludes jobs with a running infrastructure workflow (e.g. main_grader)" do

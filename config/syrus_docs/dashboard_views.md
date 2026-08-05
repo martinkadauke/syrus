@@ -16,6 +16,17 @@ Queued Job cards can carry a start-blocked badge when Syrus has deferred the fir
 
 When the blocked reason is workflow admission budgeting, the Workflow artifact stores the admission decision payload. The payload separates predicted command cost from current host headroom: command-attributed step profiles are used when they have enough samples, host-correlated profiles are included as fallback/context, and live worker host pressure is still checked immediately before starting work. The details also record attribution confidence, fallback reasons, active run/repository counts, Job priority, and whether the delay was caused by ambient host pressure or by predicted command cost not fitting the budget.
 
+Manual Job pause is different from admission/resource pauses: it is a persistent
+Job flag set by an operator. Pausing a Job does not kill the current Run. Syrus
+lets the active Step finish, then records `pause_reason: manual_pause` on the
+active Workflow and stops before creating the next Run. A manually paused Job
+stays paused until an operator unpauses it; scheduled rechecks and admission
+wakeups do not override it. Unpause clears the manual Workflow pause marker and
+asks the normal dispatcher or landing queue to resume, so the Job still remains
+subject to dependency gates, provider circuits, and workflow admission control.
+The dashboard includes manually paused Jobs in the Paused smart folder and
+shows a direct Unpause control on paused rows.
+
 ## dependencies
 
 Topological dependency graph showing jobs (or epics) as nodes and their `Depends-on` / `Blocked-by` relationships as directed edges. Nodes are placed in columns by dependency depth: Layer 0 has no blockers, Layer N is blocked by Layer N-1 work. Clicking a node navigates to the job or epic detail page.

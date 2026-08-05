@@ -35,6 +35,13 @@ class StepDispatcher
       return
     end
 
+    if manually_paused?(workflow)
+      record_manual_pause!(workflow)
+      warn_if_stuck_queued(workflow, MANUAL_PAUSE_REASON)
+      return
+    end
+    clear_start_blocked!(workflow, MANUAL_PAUSE_REASON)
+
     if workflow.job.dependencies_failed_for_execution?
       return fail_unstartable_landing_workflow!(workflow, "landing start blocked: dependency failed") if workflow.landing_workflow?
 
@@ -159,8 +166,13 @@ class StepDispatcher
   ADMISSION_BLOCK_REASON = "workflow_admission_budget"
   PAUSE_REASON_ADMISSION = ADMISSION_BLOCK_REASON
   PAUSE_REASON_RESOURCE_SAFETY = "resource_safety"
+  MANUAL_PAUSE_REASON = "manual_pause"
   PHASE_ADMISSION_RECHECK_DELAY = 10.minutes
   START_BLOCKED_BACKOFF = 5.minutes
+
+  def self.manually_paused?(workflow)
+    workflow.job.manual_paused?
+  end
 
   def self.main_health_blocking?(workflow)
     return false if MAIN_HEALTH_EXEMPT_TRIGGERS.include?(workflow.trigger_kind)
@@ -420,6 +432,31 @@ class StepDispatcher
     workflow.update!(artifacts: artifacts)
   end
 
+  def self.record_manual_pause!(workflow, step: nil)
+    now = Time.current
+    current = workflow.artifacts || {}
+    details = {
+      "action" => "manual_unpause_required",
+      "reason" => MANUAL_PAUSE_REASON
+    }
+    details["phase_step_id"] = step.id if step
+    details["phase_step_kind"] = step.kind if step
+    details["phase_step_position"] = step.position if step
+
+    artifacts = current.merge(
+      "pause_reason" => MANUAL_PAUSE_REASON,
+      "pause_kind" => "manual",
+      "pause_started_at" => current["pause_reason"] == MANUAL_PAUSE_REASON ? current["pause_started_at"] : now.iso8601,
+      "pause_last_seen_at" => now.iso8601,
+      "pause_details" => details,
+      "start_blocked_reason" => MANUAL_PAUSE_REASON,
+      "start_blocked_at" => current["start_blocked_reason"] == MANUAL_PAUSE_REASON ? current["start_blocked_at"] : now.iso8601,
+      "start_blocked_last_seen_at" => now.iso8601,
+      "start_blocked_details" => details
+    ).except("pause_next_check_at", "start_blocked_next_check_at")
+    workflow.update!(artifacts: artifacts)
+  end
+
   def self.append_phase_deferral_log!(workflow, step, admission)
     run = step.previous_step&.latest_run ||
       Run.joins(:step).where(steps: { workflow_id: workflow.id }).order(:created_at).last
@@ -436,6 +473,7 @@ class StepDispatcher
   def self.resume_deferred_phase(workflow_id, step_id = nil)
     workflow = Workflow.find_by(id: workflow_id)
     return unless workflow&.queued? || workflow&.running?
+    return if manually_paused?(workflow)
 
     step = step_id ? workflow.steps.find_by(id: step_id) : next_queued_step_without_run(workflow)
     return unless step&.queued?
@@ -487,6 +525,7 @@ class StepDispatcher
       # advance-on-fail, both calls would try to create a Run on
       # the same next_step. Skip if already materialized.
       return if next_step.runs.any?
+      return if manually_paused_before_next_step?(next_step)
 
       self.class.create_run_and_enqueue(next_step, @workflow)
     else
@@ -550,7 +589,7 @@ class StepDispatcher
         end
       end
 
-      if continuation&.queued? && continuation.runs.none?
+      if continuation&.queued? && continuation.runs.none? && !manually_paused_before_next_step?(continuation)
         self.class.create_run_and_enqueue(continuation, @workflow)
       end
     end
@@ -578,6 +617,7 @@ class StepDispatcher
       # advance-on-fail, both calls would try to create a Run on
       # the same next_step. Skip if already materialized.
       return if next_step.runs.any?
+      return if manually_paused_before_next_step?(next_step)
 
       self.class.create_run_and_enqueue(next_step, @workflow)
     else
@@ -675,7 +715,7 @@ class StepDispatcher
           "try_branch_failure_code" => failure_code
         )
       )
-      self.class.create_run_and_enqueue(new_steps.first, @workflow)
+      self.class.create_run_and_enqueue(new_steps.first, @workflow) unless manually_paused_before_next_step?(new_steps.first)
     end
   end
 
@@ -764,8 +804,17 @@ class StepDispatcher
       ([ previous ] + new_steps).each_cons(2) { |step, next_step| step.update!(next_step_id: next_step.id) }
       new_steps.last.update!(next_step_id: continuation&.id)
 
-      self.class.create_run_and_enqueue(new_steps.first, @workflow, parent_session_id: prior_iteration_session_id)
+      unless manually_paused_before_next_step?(new_steps.first)
+        self.class.create_run_and_enqueue(new_steps.first, @workflow, parent_session_id: prior_iteration_session_id)
+      end
     end
+  end
+
+  def manually_paused_before_next_step?(step)
+    return false unless self.class.manually_paused?(@workflow)
+
+    self.class.record_manual_pause!(@workflow, step: step)
+    true
   end
 
   def next_loop_iteration_already_materialized?(current_grade)

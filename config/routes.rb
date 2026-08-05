@@ -101,6 +101,8 @@ Rails.application.routes.draw do
         post "jobs/:job_id/restart", to: "job_lifecycle#restart", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/cancel", to: "job_lifecycle#cancel", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/force_fail", to: "job_lifecycle#force_fail", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
+        post "jobs/:job_id/pause", to: "job_lifecycle#pause", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
+        post "jobs/:job_id/unpause", to: "job_lifecycle#unpause", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/approve", to: "job_lifecycle#approve", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/unapprove", to: "job_lifecycle#unapprove", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/reopen", to: "job_lifecycle#reopen", constraints: { job_id: /[a-zA-Z0-9_-]+/ }

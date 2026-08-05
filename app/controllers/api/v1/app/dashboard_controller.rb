@@ -104,6 +104,10 @@ module Api
             bulk_claim_jobs(jobs)
           when "release_claim"
             bulk_release_claims(jobs)
+          when "pause"
+            bulk_pause_jobs(jobs)
+          when "unpause"
+            bulk_unpause_jobs(jobs)
           when "review_approve"
             bulk_review_approval(jobs)
           when "commit_review_approval"
@@ -288,6 +292,42 @@ module Api
               "Released #{helpers.pluralize(released_ids.size, 'claim')}.",
               affected_job_ids: released_ids,
               action: "release_claim"
+            )
+          end
+        end
+
+        def bulk_pause_jobs(jobs)
+          paused_ids = []
+          jobs.open_threads.where(manual_paused: false).find_each do |job|
+            JobManualPause.pause!(job, by_user: Current.user)
+            paused_ids << job.id
+          end
+
+          if paused_ids.empty?
+            render_error("validation_failed", "No selected jobs were available to pause.", status: :unprocessable_content)
+          else
+            render_bulk_success(
+              "Paused #{helpers.pluralize(paused_ids.size, 'job')}. Active steps will finish before the pause takes effect.",
+              affected_job_ids: paused_ids,
+              action: "pause"
+            )
+          end
+        end
+
+        def bulk_unpause_jobs(jobs)
+          unpaused_ids = []
+          jobs.open_threads.where(manual_paused: true).find_each do |job|
+            JobManualPause.unpause!(job)
+            unpaused_ids << job.id
+          end
+
+          if unpaused_ids.empty?
+            render_error("validation_failed", "No selected jobs were manually paused.", status: :unprocessable_content)
+          else
+            render_bulk_success(
+              "Unpaused #{helpers.pluralize(unpaused_ids.size, 'job')}. Eligible workflows will resume subject to admission control.",
+              affected_job_ids: unpaused_ids,
+              action: "unpause"
             )
           end
         end

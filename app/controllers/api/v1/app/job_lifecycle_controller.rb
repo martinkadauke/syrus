@@ -175,6 +175,32 @@ module Api
           render_job(job.reload, message: reopen_notice(prior_reason), changed: [ "state" ])
         end
 
+        def pause
+          job = find_job
+          if job.closed?
+            render_error("validation_failed", "Closed Jobs cannot be paused.", status: :unprocessable_content)
+            return
+          end
+          if job.manual_paused?
+            render_job(job.reload, message: "Job is already manually paused.", changed: [ "manual_pause" ])
+            return
+          end
+
+          JobManualPause.pause!(job, by_user: Current.user)
+          render_job(job.reload, message: "Job paused. Any active step will finish before Syrus stops advancing it.", changed: [ "manual_pause" ])
+        end
+
+        def unpause
+          job = find_job
+          unless job.manual_paused?
+            render_job(job.reload, message: "Job is not manually paused.", changed: [ "manual_pause" ])
+            return
+          end
+
+          JobManualPause.unpause!(job)
+          render_job(job.reload, message: "Job unpaused. It will resume subject to admission control.", changed: [ "manual_pause", "workflows", "runs" ])
+        end
+
         def open_in_local_mode
           unless Feature.local_mode_enabled?
             render_error("forbidden", "Local mode is not enabled.", status: :forbidden)

@@ -294,6 +294,7 @@
   "blocked_reasons": {
     "landing_paused": "Landing suspensa",
     "landing_paused_main_broken": "Landing suspensa: ramus principalis fractus",
+    "manual_pause": "Manu intermissum",
     "repository_archived": "Repositorium archivatum",
     "waiting_epic_merge_train": "Exspectatur agmen Epici coniungendi",
     "legacy_epic_reconciliation_pending": "Waiting for historical reconciliation Job",

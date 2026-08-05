@@ -145,21 +145,24 @@ module Filters
         end
 
         def apply_in_progress
-          scope.where(state: "running").where.not(id: paused_workflow_job_ids)
-               .or(scope.open_threads.where(id: unpaused_running_workflow_job_ids))
+          active = scope.where(manual_paused: false)
+          active.where(state: "running").where.not(id: paused_workflow_job_ids)
+                .or(active.open_threads.where(id: unpaused_running_workflow_job_ids))
         end
 
         def apply_paused
-          scope.open_threads.where(id: paused_workflow_job_ids)
+          scope.open_threads.where(manual_paused: true)
+               .or(scope.open_threads.where(id: paused_workflow_job_ids))
         end
 
         def apply_queued
           queued_workflow_job_ids = latest_workflow_job_ids("queued")
           # Infrastructure workflows skip propagate_start_to_job!, leaving the job :queued while the workflow runs; exclude them so they appear in_progress instead.
           running_infra_ids = Workflow.where(state: "running", trigger_kind: Workflow::INFRASTRUCTURE_TRIGGER_KINDS).select(:job_id)
-          scope.where(state: "queued")
+          active = scope.where(manual_paused: false)
+          active.where(state: "queued")
                .where.not(id: running_infra_ids)
-               .or(scope.open_threads.where.not(state: "landing").where(id: queued_workflow_job_ids))
+               .or(active.open_threads.where.not(state: "landing").where(id: queued_workflow_job_ids))
         end
 
         def apply_inbox

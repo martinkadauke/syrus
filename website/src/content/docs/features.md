@@ -622,6 +622,11 @@ floor of one controlled workflow per healthy worker while running agentic work
 is below that floor. Soft pressure and conservative predictions can slow the
 queue, but they cannot starve all landing or merge progress; hard worker
 memory/disk exhaustion still stops starts.
+Operators can also manually pause any Job from the dashboard, including in bulk.
+Manual pause lets the current workflow step finish and then prevents Syrus from
+starting the next step or workflow for that Job. The Job remains paused until an
+operator unpauses it; unpause returns it to normal scheduling, where dependency
+checks, provider availability, landing gates, and admission control still apply.
 State-changing admin tools, such as pausing runs, killing a
 process, clearing the GitHub cache, or refreshing installations, create pending
 actions and wait for operator confirmation before applying. Non-admin chats do

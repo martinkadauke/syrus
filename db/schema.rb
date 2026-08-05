@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_05_103000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_05_170000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -897,6 +897,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_05_103000) do
     t.string "local_mergeability_head_sha"
     t.boolean "local_mergeable"
     t.string "local_mergeable_state"
+    t.boolean "manual_paused", default: false, null: false
+    t.datetime "manual_paused_at"
+    t.integer "manual_paused_by_user_id"
     t.string "mergeability_base_ref"
     t.string "mergeability_base_sha"
     t.datetime "mergeability_checked_at"
@@ -943,6 +946,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_05_103000) do
     t.index ["landing_blocker_override_requested_by_user_id"], name: "index_jobs_on_landing_blocker_override_requested_by_user_id"
     t.index ["landing_queue_entry_key"], name: "index_jobs_on_landing_queue_entry_key"
     t.index ["linked_chat_id"], name: "index_jobs_on_linked_chat_id"
+    t.index ["manual_paused", "state", "id"], name: "index_jobs_on_manual_paused_state_id"
+    t.index ["manual_paused_by_user_id"], name: "index_jobs_on_manual_paused_by_user_id"
     t.index ["needs_attention"], name: "index_jobs_on_needs_attention"
     t.index ["owner_user_id"], name: "index_jobs_on_owner_user_id"
     t.index ["parent_job_id"], name: "index_jobs_on_parent_job_id"
@@ -1937,6 +1942,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_05_103000) do
   add_foreign_key "jobs", "users", column: "approved_by_user_id"
   add_foreign_key "jobs", "users", column: "claimed_by_user_id"
   add_foreign_key "jobs", "users", column: "dependencies_overridden_by_user_id"
+  add_foreign_key "jobs", "users", column: "manual_paused_by_user_id"
   add_foreign_key "jobs", "users", column: "owner_user_id"
   add_foreign_key "local_daemon_sessions", "chat_sessions"
   add_foreign_key "local_daemon_sessions", "users"

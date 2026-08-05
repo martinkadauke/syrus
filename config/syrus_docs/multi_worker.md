@@ -277,4 +277,13 @@ extends:
 Both policies still pause in-flight Workflows for hard worker memory or disk
 exhaustion. Those pauses write `pause_reason`, `pause_kind`,
 `pause_started_at`, `pause_next_check_at`, and `pause_details` artifacts, and a
+scheduled admission wakeup can resume them when pressure clears.
 `WorkflowPhaseAdmissionJob` retries the next queued step after the backoff.
+
+Manual Job pause is operator-controlled and is not an admission-control signal.
+It persists on the Job (`manual_paused`) and takes effect at the next Step
+boundary: the current Run finishes, then the dispatcher records
+`pause_reason: manual_pause` on the Workflow and does not enqueue another Run.
+Manual pauses have no automatic `next_check_at`; only an operator unpause clears
+the flag and lets normal admission/dependency/provider checks decide when the
+workflow can proceed.

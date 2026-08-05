@@ -43,6 +43,19 @@ RSpec.describe StepDispatcher do
       expect(run.prompt).to eq("carry-over")
     end
 
+    it "does not create the first Run while the job is manually paused" do
+      job.pause_manually!(by_user: job.user)
+
+      expect {
+        described_class.start_workflow(workflow)
+      }.not_to change { Run.count }
+
+      expect(workflow.reload.artifact("pause_reason")).to eq(StepDispatcher::MANUAL_PAUSE_REASON)
+      expect(workflow.artifact("pause_kind")).to eq("manual")
+      expect(workflow.artifact("start_blocked_reason")).to eq(StepDispatcher::MANUAL_PAUSE_REASON)
+      expect(workflow.artifact("start_blocked_next_check_at")).to be_nil
+    end
+
     it "cancels an unstarted workflow when the job closed after workflow creation" do
       job.update_columns(state: "closed", finished_at: Time.current, closure_reason: "operator_cancelled")
 
@@ -370,6 +383,39 @@ RSpec.describe StepDispatcher do
   end
 
   describe ".advance_from" do
+    it "finishes the current step and then stops before the next step while manually paused" do
+      workflow.update!(state: "running", started_at: 1.minute.ago)
+      s1.update_columns(state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
+      job.pause_manually!(by_user: job.user)
+
+      expect {
+        described_class.advance_from(s1)
+      }.not_to change { s2.runs.count }
+
+      expect(s2.reload).to be_queued
+      expect(workflow.reload).to be_running
+      expect(workflow.artifact("pause_reason")).to eq(StepDispatcher::MANUAL_PAUSE_REASON)
+      expect(workflow.artifact("start_blocked_details")).to include(
+        "phase_step_id" => s2.id,
+        "phase_step_kind" => "summarize"
+      )
+    end
+
+    it "resumes a manually paused workflow after unpause" do
+      workflow.update!(state: "running", started_at: 1.minute.ago)
+      s1.update_columns(state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
+      job.pause_manually!(by_user: job.user)
+      described_class.advance_from(s1)
+
+      expect {
+        JobManualPause.unpause!(job)
+      }.to change { s2.runs.count }.by(1)
+
+      expect(job.reload.manual_paused?).to be(false)
+      expect(workflow.reload.artifact("pause_reason")).to be_nil
+      expect(workflow.artifact("start_blocked_reason")).to be_nil
+    end
+
     it "creates a Run on the next runnable step" do
       expect {
         described_class.advance_from(s1)

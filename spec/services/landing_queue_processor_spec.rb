@@ -280,6 +280,19 @@ RSpec.describe LandingQueueProcessor do
     expect(described_class.call.job).to eq(job)
   end
 
+  it "does not transition manually paused approved Jobs into landing" do
+    paused = queue_job(issue_number: 1, approved_at: 2.minutes.ago)
+    ready = queue_job(issue_number: 2, approved_at: 1.minute.ago)
+    paused.pause_manually!(by_user: user)
+
+    workflow = described_class.call
+
+    expect(workflow.job).to eq(ready)
+    expect(paused.reload).to be_approved
+    entry = described_class.entries(Job.where(id: paused.id)).first
+    expect(entry.blocked_reason).to eq({ key: "manual_pause" })
+  end
+
   it "blocks approved Jobs when the repository has landing_paused set and main is broken" do
     job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
     repository.update!(ci_health: "broken", landing_paused: true)

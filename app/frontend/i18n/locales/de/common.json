@@ -294,6 +294,7 @@
   "blocked_reasons": {
     "landing_paused": "Landing pausiert",
     "landing_paused_main_broken": "Landing pausiert: Hauptbranch defekt",
+    "manual_pause": "Manuell pausiert",
     "repository_archived": "Repository archiviert",
     "waiting_epic_merge_train": "Warte auf Epic-Merge-Train",
     "legacy_epic_reconciliation_pending": "Waiting for historical reconciliation Job",

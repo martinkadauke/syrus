@@ -15,7 +15,7 @@ import { NoticeToast } from "../../components/NoticeToast"
 import { StartBlockedReasonPill } from "../../components/StartBlockedReasonPill"
 import { ProviderAvailabilityWarning } from "../../components/ProviderAvailabilityWarning"
 import { StatusPill, TonePill } from "../../components/StatusPill"
-import { bulkDashboardJobs, type DashboardBulkJobAction, type DashboardJobItem, type DashboardLandingQueueEntry } from "../../api/dashboard"
+import { bulkDashboardJobs, unpauseDashboardJob, type DashboardBulkJobAction, type DashboardJobItem, type DashboardLandingQueueEntry } from "../../api/dashboard"
 import type { LandingQueueBlockerJob } from "../../api/jobs"
 import { errorMessage } from "../../lib/errorMessage"
 import { useConfirm } from "../../hooks/useConfirm"
@@ -109,6 +109,8 @@ function BulkJobActions({ selectedIds, onClear }: { selectedIds: number[]; onCle
       </div>
       <div className="flex flex-wrap gap-2">
         <button className={bulkButtonClass(disabled)} disabled={disabled} onClick={() => run("retry")} type="button">{t("retry")}</button>
+        <button className={bulkButtonClass(disabled)} disabled={disabled} onClick={() => run("pause")} type="button">{t("pause")}</button>
+        <button className={bulkButtonClass(disabled)} disabled={disabled} onClick={() => run("unpause")} type="button">{t("unpause")}</button>
         <button className={bulkButtonClass(disabled)} disabled={disabled} onClick={() => run("claim")} type="button">{t("claim")}</button>
         <button className={bulkButtonClass(disabled)} disabled={disabled} onClick={() => run("release_claim")} type="button">{t("release")}</button>
         <button className={bulkButtonClass(disabled)} disabled={disabled} onClick={() => run("approve")} type="button">{t("approve")}</button>
@@ -590,6 +592,7 @@ function MobileJobRow({ job, selected, onToggleOne, prefix, topSeparator = false
         </div>
         <MetadataLine className="mt-1 flex flex-wrap gap-x-1.5 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
           <JobSlugMetadata job={job} prefix={prefix} />
+          {job.manual_paused ? <ManualPauseInline job={job} /> : null}
           {job.pr_number ? (
               <PrHoverCard jobId={job.id} prNumber={job.pr_number} prUrl={job.pr_url ?? ""}>
                 <ExternalMetadataLink href={job.pr_url}>PR #{job.pr_number}</ExternalMetadataLink>
@@ -630,6 +633,7 @@ function JobCell({ job, column, selected, onToggleOne, prefix }: { job: Dashboar
         </div>
         <MetadataLine className="mt-1 flex flex-wrap gap-x-1.5 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
           <JobSlugMetadata job={job} prefix={prefix} />
+          {job.manual_paused ? <ManualPauseInline job={job} /> : null}
           {job.pr_number ? (
               <PrHoverCard jobId={job.id} prNumber={job.pr_number} prUrl={job.pr_url ?? ""}>
                 <ExternalMetadataLink href={job.pr_url}>PR #{job.pr_number}</ExternalMetadataLink>
@@ -762,6 +766,51 @@ function JobSlugMetadata({ job, prefix }: { job: DashboardJobItem; prefix: strin
   }
 
   return <IssueMetadata job={job} />
+}
+
+function ManualPauseInline({ job }: { job: DashboardJobItem }) {
+  const { t } = useT("dashboard")
+  const queryClient = useQueryClient()
+  const [notice, setNotice] = useState<string | null>(null)
+  const unpauseMutation = useMutation({
+    mutationFn: () => {
+      if (!job.paths.app_unpause_path) throw new Error(t("manual_pause_error"))
+
+      return unpauseDashboardJob(job.paths.app_unpause_path)
+    },
+    onSuccess: (payload) => {
+      setNotice(payload.message ?? t("job_unpaused"))
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    }
+  })
+
+  if (!job.manual_paused) return null
+
+  const pausedBy = job.manual_paused_by_user?.name || job.manual_paused_by_user?.email_address
+  const title = pausedBy ? t("manual_paused_by", { user: pausedBy }) : t("manual_paused")
+  const canUnpause = Boolean(job.paths.app_unpause_path)
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/50 dark:text-amber-200 dark:ring-amber-800" title={title}>
+      <span>{t("manual_paused")}</span>
+      <span aria-hidden="true" className="select-none">·</span>
+      <button
+        className="rounded border border-amber-300 bg-white px-1 py-0 text-[11px] font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-700 dark:bg-gray-950 dark:text-amber-100 dark:hover:bg-amber-900/50"
+        disabled={!canUnpause || unpauseMutation.isPending}
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          if (!job.paths.app_unpause_path) return
+          unpauseMutation.mutate()
+        }}
+        type="button"
+      >
+        {t("unpause")}
+      </button>
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
+      {unpauseMutation.isError ? <span className="text-red-700 dark:text-red-300" role="alert">{errorMessage(unpauseMutation.error, t("manual_pause_error"))}</span> : null}
+    </span>
+  )
 }
 
 function IssueMetadata({ job }: { job: DashboardJobItem }) {

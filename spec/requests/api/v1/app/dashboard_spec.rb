@@ -84,6 +84,9 @@ RSpec.describe "App API dashboard commands", type: :request do
         "issue_url" => "https://github.com/acme/widgets/issues/1",
         "pr_url" => "https://github.com/acme/widgets/pull/17",
         "active_workflow_trigger_kind" => nil,
+        "manual_paused" => false,
+        "manual_paused_at" => nil,
+        "manual_paused_by_user" => nil,
         "repository" => include("slug" => "acme/widgets", "repository_path" => repository_path(repo)),
         "source_chat" => include(
           "chat_id" => chat.id,
@@ -101,7 +104,12 @@ RSpec.describe "App API dashboard commands", type: :request do
           "landed_jobs_count" => 0
         },
         "tags" => [ include("name" => "aqueduct", "color" => "blue") ],
-        "paths" => include("job_path" => job_path(first), "source_path" => source_job_path(first))
+        "paths" => include(
+          "job_path" => job_path(first),
+          "source_path" => source_job_path(first),
+          "app_pause_path" => "/api/v1/app/jobs/#{first.id}/pause",
+          "app_unpause_path" => "/api/v1/app/jobs/#{first.id}/unpause"
+        )
       )
       expect(body["items"].first["retry_state"]).to include(
         "classification_label" => "Unclassified",
@@ -1917,6 +1925,44 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(first.claimed_at).to be_present
       expect(parse_body["message"]).to eq("Claimed 2 jobs.")
       expect(parse_body["affected_job_ids"]).to contain_exactly(first.id, second.id)
+    end
+
+    it "manually pauses selected open jobs" do
+      first = Factories.job_record(repository: repo, issue_number: 51, state: "queued")
+      second = Factories.job_record(repository: repo, issue_number: 52, state: "running")
+      closed = Factories.job_record(repository: repo, issue_number: 53, state: "closed")
+      allow(AppEvents).to receive(:broadcast)
+
+      post "/api/v1/app/dashboard/jobs/bulk",
+           params: { job_ids: [ first.id, second.id, closed.id ], bulk_action: "pause" },
+           as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(first.reload.manual_paused?).to be(true)
+      expect(second.reload.manual_paused?).to be(true)
+      expect(first.manual_paused_by_user).to eq(user)
+      expect(closed.reload.manual_paused?).to be(false)
+      expect(parse_body["message"]).to include("Paused 2 jobs")
+      expect(parse_body["affected_job_ids"]).to contain_exactly(first.id, second.id)
+    end
+
+    it "manually unpauses selected jobs and wakes queued workflow phases" do
+      job = Factories.job_record(repository: repo, issue_number: 54, state: "queued", manual_paused: true, manual_paused_at: Time.current, manual_paused_by_user: user)
+      workflow = Workflow.create!(job: job, trigger_kind: "initial", state: "queued", artifacts: { "pause_reason" => StepDispatcher::MANUAL_PAUSE_REASON, "start_blocked_reason" => StepDispatcher::MANUAL_PAUSE_REASON })
+      step = Step.create!(workflow: workflow, kind: "implement", position: 0)
+      allow(AppEvents).to receive(:broadcast)
+
+      expect {
+        post "/api/v1/app/dashboard/jobs/bulk",
+             params: { job_ids: [ job.id ], bulk_action: "unpause" },
+             as: :json
+      }.to change { step.runs.count }.by(1)
+
+      expect(response).to have_http_status(:ok)
+      expect(job.reload.manual_paused?).to be(false)
+      expect(workflow.reload.artifact("pause_reason")).to be_nil
+      expect(parse_body["message"]).to include("Unpaused 1 job")
+      expect(parse_body["affected_job_ids"]).to eq([ job.id ])
     end
 
     it "releases only the current user's selected claims" do

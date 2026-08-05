@@ -42,6 +42,9 @@ module App
           start_blocked_reason: job_start_blocked_reason(job),
           start_blocked_at: job_start_blocked_at(job),
           start_blocked_details: job_start_blocked_details(job),
+          manual_paused: job.manual_paused?,
+          manual_paused_at: job.manual_paused_at&.iso8601,
+          manual_paused_by_user: owner_user_json(job.manual_paused_by_user),
           retry_state: retry_state_for(job),
           created_at: job.created_at&.iso8601,
           updated_at: job.updated_at&.iso8601,
@@ -68,7 +71,9 @@ module App
           needs_attention_reason: job.needs_attention_reason,
           paths: {
             job_path: job_path(job),
-            source_path: source_job_path(job)
+            source_path: source_job_path(job),
+            app_pause_path: "/api/v1/app/jobs/#{job.id}/pause",
+            app_unpause_path: "/api/v1/app/jobs/#{job.id}/unpause"
           }
         }
 

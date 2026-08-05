@@ -294,6 +294,7 @@
   "blocked_reasons": {
     "landing_paused": "Landing paused",
     "landing_paused_main_broken": "Landing paused: main branch broken",
+    "manual_pause": "Manually paused",
     "repository_archived": "Repository archived",
     "waiting_epic_merge_train": "Waiting for Epic merge-train",
     "legacy_epic_reconciliation_pending": "Waiting for historical reconciliation Job",

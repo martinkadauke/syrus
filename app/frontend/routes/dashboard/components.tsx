@@ -56,7 +56,7 @@ export function workflowTriggerClassName(triggerKind: string) {
 }
 
 export function MetadataLine({ children, className }: { children: ReactNode; className: string }) {
-  const items = Children.toArray(children)
+  const items = Children.toArray(children).filter((item) => item !== null && item !== undefined)
   return (
     <div className={className}>
       {items.map((item, index) => (

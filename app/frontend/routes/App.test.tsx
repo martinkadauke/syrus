@@ -3539,6 +3539,20 @@ describe("App", () => {
           pr_url: null,
           tags: [],
           source_chat: null
+        }),
+        dashboardJobItem({
+          id: 604,
+          kind: "direct",
+          title: "Paused direct",
+          issue_number: null,
+          issue_url: null,
+          pr_number: null,
+          pr_url: null,
+          manual_paused: true,
+          manual_paused_at: "2026-05-30T11:00:00Z",
+          manual_paused_by_user: { id: 1, name: "Operator", email_address: "operator@example.com" },
+          tags: [],
+          source_chat: null
         })
       ]
     }))
@@ -3563,6 +3577,10 @@ describe("App", () => {
     const standaloneCell = screen.getByRole("link", { name: "Direct standalone" }).closest("td")
     expect(standaloneCell).toHaveTextContent("JOB-603")
     expect(within(standaloneCell!).queryByText("·")).not.toBeInTheDocument()
+
+    const pausedCell = screen.getByRole("link", { name: "Paused direct" }).closest("td")
+    expect(pausedCell).toHaveTextContent("JOB-604·Manually paused·Unpause")
+    expect(within(pausedCell!).getByRole("button", { name: "Unpause" })).toBeEnabled()
   })
 
   it("surfaces readiness failures on the dashboard", async () => {
@@ -15613,6 +15631,15 @@ function dashboardJobItem(overrides: Record<string, unknown> = {}) {
     pr_url: "https://github.com/acme/widgets/pull/34",
     latest_workflow_state: "running",
     landing_queue_position: null,
+    landing_queue_blocked_reason: null,
+    landing_queue_entry_key: null,
+    blocked_reason: null,
+    start_blocked_reason: null,
+    start_blocked_at: null,
+    start_blocked_details: null,
+    manual_paused: false,
+    manual_paused_at: null,
+    manual_paused_by_user: null,
     created_at: "2026-05-30T10:00:00Z",
     updated_at: "2026-05-30T12:00:00Z",
     started_at: "2026-05-30T10:01:00Z",
@@ -15632,7 +15659,7 @@ function dashboardJobItem(overrides: Record<string, unknown> = {}) {
     owner_badge: null,
     tags: [{ id: 5, name: "urgent", color: "red" }],
     source_chat: null,
-    paths: { job_path: "/jobs/42", source_path: "/jobs/42/source" },
+    paths: { job_path: "/jobs/42", source_path: "/jobs/42/source", app_pause_path: "/api/v1/app/jobs/42/pause", app_unpause_path: "/api/v1/app/jobs/42/unpause" },
     ...overrides
   }
 }

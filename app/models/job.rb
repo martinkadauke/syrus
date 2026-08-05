@@ -45,6 +45,7 @@ class Job < ApplicationRecord
   belongs_to :dependencies_overridden_by_user, class_name: "User", optional: true
   belongs_to :approved_by_user, class_name: "User", optional: true
   belongs_to :claimed_by_user, class_name: "User", optional: true
+  belongs_to :manual_paused_by_user, class_name: "User", optional: true
   belongs_to :target_repository, class_name: "Repository", optional: true
   belongs_to :pr_repository, class_name: "Repository", optional: true
   belongs_to :linked_chat, class_name: "ChatSession", optional: true
@@ -131,6 +132,7 @@ class Job < ApplicationRecord
 
   scope :open_threads, -> { where.not(state: TERMINAL_STATES) }
   scope :closed_threads, -> { where(state: "closed") }
+  scope :not_manually_paused, -> { where(manual_paused: false) }
   # Effective ownership: owner_user_id when set, else the creating user.
   # Mirrors the `owner_user_id.presence || user_id` convention so a job
   # with a NULL owner still counts as its creator's for owner-scoped
@@ -514,6 +516,22 @@ class Job < ApplicationRecord
   # uses (`open_threads` scope, GitHub API's "state=open" filter).
   def open?
     !closed?
+  end
+
+  def pause_manually!(by_user:)
+    update!(
+      manual_paused: true,
+      manual_paused_at: Time.current,
+      manual_paused_by_user: by_user
+    )
+  end
+
+  def unpause_manually!
+    update!(
+      manual_paused: false,
+      manual_paused_at: nil,
+      manual_paused_by_user: nil
+    )
   end
 
   def ready_for_execution?

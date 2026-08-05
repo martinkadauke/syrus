@@ -161,9 +161,14 @@ export type DashboardJobItem = {
   start_blocked_reason: string | null
   start_blocked_at: string | null
   start_blocked_details: StartBlockedDetails | null
+  manual_paused?: boolean
+  manual_paused_at?: string | null
+  manual_paused_by_user?: DashboardOwnerUser | null
   paths: {
     job_path: string
     source_path: string
+    app_pause_path?: string
+    app_unpause_path?: string
   }
 }
 
@@ -396,7 +401,7 @@ export type DashboardPreferencesPayload = {
   dashboard_preferences: Record<string, unknown>
 }
 
-export type DashboardBulkJobAction = "retry" | "close" | "approve" | "claim" | "release_claim"
+export type DashboardBulkJobAction = "retry" | "close" | "approve" | "claim" | "release_claim" | "pause" | "unpause"
 export type DashboardBulkEpicAction = "start"
 
 export type DashboardBulkJobsInput = {
@@ -571,6 +576,14 @@ export function updateDashboardPreferences(input: DashboardPreferencesInput) {
 
 export function bulkDashboardJobs(input: DashboardBulkJobsInput) {
   return postJson<DashboardBulkJobsPayload>("/api/v1/app/dashboard/jobs/bulk", input)
+}
+
+export function pauseDashboardJob(path: string) {
+  return postJson<{ message?: string }>(path, {})
+}
+
+export function unpauseDashboardJob(path: string) {
+  return postJson<{ message?: string }>(path, {})
 }
 
 export function bulkDashboardEpics(input: DashboardBulkEpicsInput) {
