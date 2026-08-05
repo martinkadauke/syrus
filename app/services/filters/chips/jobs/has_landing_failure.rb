@@ -7,8 +7,13 @@ module Filters
         bucket :boolean
         operators :is_true, :is_false
 
+        def self.failed_landing_scope(base = Job.open_threads)
+          base.where.not(landing_failure_reason: nil)
+              .where.not("landing_failure_reason LIKE ?", "#{LandingQueueReentry::START_BLOCKER_PREFIX}%")
+        end
+
         def apply
-          failed_landing = Job.open_threads.where.not(landing_failure_reason: nil).select(:id)
+          failed_landing = self.class.failed_landing_scope.select(:id)
 
           case op
           when :is_true  then scope.where(id: failed_landing)

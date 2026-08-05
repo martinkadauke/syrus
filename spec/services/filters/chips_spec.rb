@@ -297,6 +297,12 @@ RSpec.describe "Filters::Chips" do
         state: "approved",
         landing_failure_reason: "merge_train failed"
       )
+      landing_retrying = Factories.job_record(
+        repository: repo,
+        issue_number: 6,
+        state: "approved",
+        landing_failure_reason: "landing start blocked: workflow admission budget"
+      )
       Factories.job_record(
         repository: repo,
         issue_number: 5,
@@ -310,9 +316,10 @@ RSpec.describe "Filters::Chips" do
         landing_failed,
         merge_train_failed
       )
+      expect(run(field: "attention", op: "is", value: "just_failed")).not_to include(landing_retrying)
     end
 
-    it "has_landing_failure: returns open jobs with a landing failure reason" do
+    it "has_landing_failure: returns open jobs with a substantive landing failure reason" do
       landing_failed = Factories.job_record(
         repository: repo,
         issue_number: 41,
@@ -325,11 +332,18 @@ RSpec.describe "Filters::Chips" do
         state: "closed",
         landing_failure_reason: "old landing failure"
       )
+      landing_retrying = Factories.job_record(
+        repository: repo,
+        issue_number: 44,
+        state: "approved",
+        landing_failure_reason: "landing start blocked: workflow admission budget"
+      )
       healthy = Factories.job_record(repository: repo, issue_number: 43, state: "approved")
 
       expect(run(field: "has_landing_failure", op: "is_true", value: nil)).to contain_exactly(landing_failed)
       expect(run(field: "has_landing_failure", op: "is_false", value: nil)).to contain_exactly(
         closed_landing_failure,
+        landing_retrying,
         healthy
       )
     end

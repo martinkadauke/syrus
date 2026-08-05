@@ -181,7 +181,7 @@ module Filters
           open = scope.effectively_owned_by(user).open_threads.without_active_workflows
           open.where(id: actionable_unread_feedback_ids(owner_jobs))
               .or(open.where(state: "failed"))
-              .or(open.where.not(landing_failure_reason: nil))
+              .or(open.where(id: landing_failure_ids(owner_jobs)))
               .or(open.where(id: needs_review_ids(owner_jobs)))
               .or(open.where(id: awaiting_approval_ids(owner_jobs)))
         end
@@ -195,7 +195,7 @@ module Filters
           # to Job.state = :failed (Workflow#fail's after-callback),
           # so we can read the Job state directly instead of joining
           # workflows.
-          scope.where(state: "failed").or(scope.open_threads.where.not(landing_failure_reason: nil))
+          scope.where(state: "failed").or(scope.open_threads.where(id: landing_failure_ids))
         end
 
         def apply_stale
@@ -286,6 +286,10 @@ module Filters
 
         def needs_review_ids(base = Job.all)
           base.where(validity: %w[ duplicate already_implemented ]).select(:id)
+        end
+
+        def landing_failure_ids(base = Job.open_threads)
+          HasLandingFailure.failed_landing_scope(base.open_threads).select(:id)
         end
 
         def awaiting_approval_ids(base = Job.all)
