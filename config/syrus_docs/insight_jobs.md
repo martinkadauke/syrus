@@ -51,7 +51,7 @@ Returns the standard repository detail payload with a notice that the job was st
 
 ## What the Agent Analyzes
 
-The agent receives a read-only view of the repository's workspace and recent job history (last 14 days, up to 50 `issue`-kind jobs). It uses the `submit_insight` MCP tool to record findings — one call per distinct pattern. It can also call `read_run_worker_health(run_id:)` to inspect retained CPU, memory, disk, CPU pressure, and IO pressure samples for a specific Run window, including whether the Run's history was clipped by the worker-health retention window. Grader and preflight grader Runs may include `command_spans`, which let the agent attribute pressure or latency to phases like dependency checks, installs, database preparation, backend tests, or frontend builds instead of only the full Run window.
+The agent receives a read-only view of the repository's workspace and recent job history (last 14 days, up to 50 `issue`-kind jobs). It uses the `submit_insight` MCP tool to record findings — one call per distinct pattern. It can also call `read_run_worker_health(run_id:)` to inspect retained CPU, memory, disk, CPU pressure, and IO pressure samples for a specific Run window, including whether the Run's history was clipped by the worker-health retention window. Grader and preflight grader Runs may include `command_spans`, which let the agent attribute pressure or latency to phases like dependency checks, installs, database preparation, backend tests, or frontend builds instead of only the full Run window. Durable `run_resource_summaries` retain this Run-level view for 30 days and keep host-correlated pressure fields separate from process-attributed command metrics, with explicit low-confidence fallback markers when command attribution is unavailable.
 
 Each `InsightSuggestion` captures:
 - **title** — concise description of the finding (≤ 200 chars)
@@ -194,4 +194,4 @@ Both the sweep and the immediate trigger call `InsightScheduler.enqueue_if_idle!
 - **Branch:** Insight jobs do not create a branch — they operate on a shallow clone of the default branch read-only.
 - **Auto-close:** The anchor Job is automatically closed once the insight workflow finishes (success or failure), so insight jobs do not accumulate in the dashboard.
 - **Retries:** Insight jobs do not retry automatically. Trigger a new run manually if needed.
-- **Queue:** Insight workflows use the `:default` queue.
+- **Queue:** Insight workflows use the `:runs` queue with low Job priority.

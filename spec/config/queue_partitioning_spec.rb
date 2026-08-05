@@ -18,12 +18,30 @@ RSpec.describe "queue partitioning" do
   ROOT = Rails.root
 
   # The app's full queue vocabulary. Sources of truth:
-  #   :runs / :merges / :default  — Workflows::*.queue_name (workflow templates)
-  #   :chat / :videos / :default  — queue_as on ChatTurnJob / video jobs / etc.
-  APP_QUEUES = %w[runs merges chat default videos].freeze
+  #   :runs / :merges             — Workflows::*.queue_name (workflow templates)
+  #   :chat / :videos / etc.      — queue_as on non-workflow ActiveJob classes.
+  APP_QUEUES = %w[
+    runs
+    merges
+    chat
+    videos
+    control_plane
+    polling
+    indexing
+    cleanup
+    low_priority_maintenance
+  ].freeze
 
   # Where each non-resume queue must run in the multi-node split.
-  HOME_QUEUES    = %w[chat default videos].freeze
+  HOME_QUEUES = %w[
+    chat
+    videos
+    control_plane
+    polling
+    indexing
+    cleanup
+    low_priority_maintenance
+  ].freeze
   COMPUTE_QUEUES = %w[runs merges].freeze
 
   def load_config(relative)
@@ -64,6 +82,23 @@ RSpec.describe "queue partitioning" do
 
   it "keeps queue.yml a complete single-worker config (Compose / single-host)" do
     expect(queues_for("config/queue.yml")[:regular].uniq).to match_array(APP_QUEUES)
+  end
+
+  it "does not leave job classes on queues no worker consumes" do
+    job_files = Dir.glob(ROOT.join("app/jobs/**/*.rb").to_s)
+    declarations = job_files.flat_map do |path|
+      File.readlines(path).filter_map do |line|
+        match = line.match(/\bqueue_as\s+:(\w+)/)
+        next unless match
+
+        [ path.delete_prefix("#{ROOT}/"), match[1] ]
+      end
+    end
+
+    unknown = declarations.reject { |_path, queue| APP_QUEUES.include?(queue) }
+    message = "job classes declare unconsumed queues: " \
+              "#{unknown.map { |path, queue| "#{path} => #{queue}" }.join(", ")}"
+    expect(unknown).to be_empty, message
   end
 
   it "routes only the search-bound + light queues to the home worker" do

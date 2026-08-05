@@ -2,15 +2,15 @@
     with SOLID_QUEUE_CONFIG=config/queue.compute.yml. Do NOT point single-host /
     Compose deployments at this file — they use the full config/queue.yml so one
     worker covers every queue. This split only makes sense when a SEPARATE home
-    worker (config/queue.home.yml) consumes `chat` + `default` + `videos` on the
-    node that holds the search index.
+    worker (config/queue.home.yml) consumes the chat, video, control-plane,
+    polling, indexing, cleanup, and low-priority maintenance queues.
 
     The compute worker runs the heavy, search-FREE queues so they can spread
     across worker nodes on local disk, away from the search/web node:
       - `runs`   — heavy workflow RunJobs (implement / respond / graders /
-                   main_grader / …), minutes each. Never touch the search
-                   index (they enqueue Index*Job onto `default`, which the home
-                   worker consumes).
+                   main_grader / ...), minutes each. Never touch the search
+                   index (they enqueue Index*Job onto `indexing`, which the
+                   home worker consumes).
       - `merges` — deterministic landing / rebase / stack-rebase Workflows.
     Each pod also consumes its own `resume-<hostname>` queue: a workspace lives
     on the local disk of the pod that ran it, so "Retry from failed step" and
@@ -19,7 +19,7 @@
     the compute tier can use fast per-node local disk instead of a shared PVC.
 
     Set SOLID_QUEUE_SKIP_RECURRING=1 on compute pods: recurring tasks enqueue to
-    `default` (home tier), so only the home worker should schedule them.
+    home-tier queues, so only the home worker should schedule them.
 
     `Socket` isn't autoloaded when this file is rendered outside Rails
     (bin/check-thread-budget); require it so the ERB is self-contained. %>

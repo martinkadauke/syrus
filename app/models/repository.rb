@@ -49,6 +49,8 @@ class Repository < ApplicationRecord
   has_many :repository_final_approvers, dependent: :destroy
   has_many :final_approvers, through: :repository_final_approvers, source: :user
   has_many :jobs, dependent: :destroy
+  has_many :run_resource_summaries, dependent: :destroy
+  has_many :workflow_step_resource_profiles, dependent: :destroy
   has_many :epics, dependent: :destroy
   has_many :scheduled_tasks, dependent: :destroy
   has_many :chat_attachments, as: :attachable, dependent: :destroy

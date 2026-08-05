@@ -449,6 +449,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_162000) do
     t.json "metadata", null: false
     t.string "name", limit: 128, null: false
     t.string "outcome", limit: 32
+    t.json "resource_attribution"
     t.bigint "run_id", null: false
     t.integer "sequence", null: false
     t.bigint "spawned_process_id"
@@ -1276,6 +1277,66 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_162000) do
     t.index ["run_id"], name: "index_run_health_snapshots_on_run_id"
   end
 
+  create_table "run_resource_summaries", force: :cascade do |t|
+    t.string "agent_provider", limit: 64, null: false
+    t.integer "command_span_count", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.float "duration_seconds"
+    t.datetime "finished_at"
+    t.string "grader_name", limit: 128
+    t.float "host_pressure_avg_cpu_some_percent"
+    t.float "host_pressure_avg_io_some_percent"
+    t.string "host_pressure_level", limit: 32, null: false
+    t.float "host_pressure_max_cpu_some_percent"
+    t.float "host_pressure_max_io_some_percent"
+    t.json "host_pressure_reasons", null: false
+    t.string "host_sample_confidence", limit: 32, null: false
+    t.integer "host_sample_count", default: 0, null: false
+    t.float "host_usage_avg_cpu_used_percent"
+    t.float "host_usage_avg_memory_used_percent"
+    t.float "host_usage_max_cpu_used_percent"
+    t.float "host_usage_max_data_root_used_percent"
+    t.float "host_usage_max_memory_used_percent"
+    t.string "hostname", limit: 255
+    t.bigint "job_id", null: false
+    t.string "process_attribution_confidence", limit: 32, default: "unknown", null: false
+    t.string "process_attribution_method", limit: 64, default: "unknown", null: false
+    t.string "process_attribution_unavailable_reason", limit: 255
+    t.integer "process_attribution_version", default: 1, null: false
+    t.float "process_attributed_cpu_percent"
+    t.float "process_attributed_cpu_seconds"
+    t.float "process_attributed_duration_seconds"
+    t.bigint "process_attributed_io_bytes"
+    t.bigint "process_attributed_memory_bytes"
+    t.integer "process_attributed_sample_count", default: 0, null: false
+    t.float "process_cpu_time_seconds"
+    t.integer "process_descendant_process_count", default: 0, null: false
+    t.json "process_exit_statuses"
+    t.bigint "process_max_rss_bytes"
+    t.bigint "process_read_io_bytes"
+    t.boolean "process_resource_fallback", default: false, null: false
+    t.integer "process_sample_count", default: 0, null: false
+    t.float "process_wall_time_seconds"
+    t.bigint "process_write_io_bytes"
+    t.bigint "repository_id"
+    t.boolean "retention_limited", default: false, null: false
+    t.bigint "run_id", null: false
+    t.integer "spawned_process_count", default: 0, null: false
+    t.datetime "started_at"
+    t.bigint "step_id"
+    t.string "step_kind", limit: 64
+    t.integer "summary_version", null: false
+    t.string "trigger_kind", limit: 64, null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.bigint "workflow_id"
+    t.index ["hostname", "started_at"], name: "idx_run_resource_summaries_host_started"
+    t.index ["job_id"], name: "index_run_resource_summaries_on_job_id"
+    t.index ["repository_id", "step_kind", "created_at"], name: "idx_run_resource_summaries_repo_step_created"
+    t.index ["run_id"], name: "index_run_resource_summaries_on_run_id", unique: true
+    t.index ["workflow_id"], name: "index_run_resource_summaries_on_workflow_id"
+  end
+
   create_table "runs", force: :cascade do |t|
     t.text "agent_diff", limit: 16777215
     t.string "agent_outcome"
@@ -1401,6 +1462,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_162000) do
     t.string "outcome", limit: 32
     t.integer "pgid"
     t.integer "pid"
+    t.json "resource_attribution"
     t.integer "run_id"
     t.integer "silent_timeout_s"
     t.datetime "started_at", null: false
@@ -1619,6 +1681,77 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_162000) do
     t.index ["observed_at"], name: "index_worker_host_health_samples_on_observed_at"
   end
 
+  create_table "workflow_step_resource_profiles", force: :cascade do |t|
+    t.string "agent_provider", limit: 64, null: false
+    t.string "attribution_quality", limit: 32, default: "host_correlated", null: false
+    t.datetime "created_at", null: false
+    t.float "failure_rate", default: 0.0, null: false
+    t.string "grader_name", limit: 128, default: "", null: false
+    t.integer "host_pressure_sample_count", default: 0, null: false
+    t.string "job_kind", limit: 64, default: "", null: false
+    t.datetime "last_observed_at"
+    t.integer "attributed_sample_count", default: 0, null: false
+    t.float "p50_attributed_cpu_pressure"
+    t.float "p50_attributed_duration_seconds"
+    t.float "p50_attributed_io_pressure"
+    t.float "p50_attributed_memory_used_percent"
+    t.float "p50_cpu_pressure"
+    t.float "p50_duration_seconds"
+    t.float "p50_host_pressure_cpu"
+    t.float "p50_host_pressure_io"
+    t.float "p50_host_pressure_memory_used_percent"
+    t.float "p50_io_pressure"
+    t.float "p50_memory_used_percent"
+    t.float "p50_process_attributed_cpu_percent"
+    t.float "p50_process_attributed_cpu_seconds"
+    t.float "p50_process_attributed_duration_seconds"
+    t.bigint "p50_process_attributed_io_bytes"
+    t.bigint "p50_process_attributed_memory_bytes"
+    t.float "p90_attributed_cpu_pressure"
+    t.float "p90_attributed_duration_seconds"
+    t.float "p90_attributed_io_pressure"
+    t.float "p90_attributed_memory_used_percent"
+    t.float "p90_cpu_pressure"
+    t.float "p90_duration_seconds"
+    t.float "p90_host_pressure_cpu"
+    t.float "p90_host_pressure_io"
+    t.float "p90_host_pressure_memory_used_percent"
+    t.float "p90_io_pressure"
+    t.float "p90_memory_used_percent"
+    t.float "p90_process_attributed_cpu_percent"
+    t.float "p90_process_attributed_cpu_seconds"
+    t.float "p90_process_attributed_duration_seconds"
+    t.bigint "p90_process_attributed_io_bytes"
+    t.bigint "p90_process_attributed_memory_bytes"
+    t.float "p99_attributed_cpu_pressure"
+    t.float "p99_attributed_duration_seconds"
+    t.float "p99_attributed_io_pressure"
+    t.float "p99_attributed_memory_used_percent"
+    t.float "p99_cpu_pressure"
+    t.float "p99_duration_seconds"
+    t.float "p99_host_pressure_cpu"
+    t.float "p99_host_pressure_io"
+    t.float "p99_host_pressure_memory_used_percent"
+    t.float "p99_io_pressure"
+    t.float "p99_memory_used_percent"
+    t.float "p99_process_attributed_cpu_percent"
+    t.float "p99_process_attributed_cpu_seconds"
+    t.float "p99_process_attributed_duration_seconds"
+    t.bigint "p99_process_attributed_io_bytes"
+    t.bigint "p99_process_attributed_memory_bytes"
+    t.integer "process_attributed_sample_count", default: 0, null: false
+    t.integer "profile_version", null: false
+    t.integer "repository_id", null: false
+    t.integer "sample_count", default: 0, null: false
+    t.string "step_kind", limit: 64, null: false
+    t.float "timeout_rate", default: 0.0, null: false
+    t.string "trigger_kind", limit: 64, null: false
+    t.datetime "updated_at", null: false
+    t.index ["last_observed_at"], name: "idx_workflow_step_resource_profiles_observed"
+    t.index ["repository_id", "agent_provider", "trigger_kind", "step_kind", "grader_name", "job_kind"], name: "idx_workflow_step_resource_profiles_key", unique: true
+    t.index ["repository_id"], name: "index_workflow_step_resource_profiles_on_repository_id"
+  end
+
   create_table "workflows", force: :cascade do |t|
     t.string "agent_provider", default: "claude", null: false
     t.text "artifacts", limit: 16777215
@@ -1783,6 +1916,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_162000) do
   add_foreign_key "run_diagnostics", "runs"
   add_foreign_key "run_failure_classifications", "runs"
   add_foreign_key "run_health_snapshots", "runs"
+  add_foreign_key "run_resource_summaries", "jobs"
+  add_foreign_key "run_resource_summaries", "repositories"
+  add_foreign_key "run_resource_summaries", "runs"
+  add_foreign_key "run_resource_summaries", "steps"
+  add_foreign_key "run_resource_summaries", "users"
+  add_foreign_key "run_resource_summaries", "workflows"
   add_foreign_key "runs", "jobs"
   add_foreign_key "runs", "steps"
   add_foreign_key "runs", "users"
@@ -1806,6 +1945,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_162000) do
   add_foreign_key "test_runs", "runs"
   add_foreign_key "whiteboard_snapshots", "chat_sessions"
   add_foreign_key "whiteboards", "chat_sessions"
+  add_foreign_key "workflow_step_resource_profiles", "repositories"
   add_foreign_key "workflows", "jobs"
   add_foreign_key "workflows", "users"
 end
