@@ -60,7 +60,7 @@ module SystemAlerts
   private_class_method :github_token_blocked
 
   def self.codex_usage(user)
-    availability = App::ProviderAvailability.for_user(user, "codex", cached: false)
+    availability = App::ProviderAvailability.for_user(user, "codex")
     status = availability&.dig(:usage, :status).to_s.presence || user.codex_usage_status.to_s
     latest_success_at = availability&.dig(:evidence, :latest_positive, :observed_at)&.then { |value| Time.zone.parse(value) rescue nil }
     stale_exhausted_cache = status == "exhausted" && latest_success_at && user.codex_usage_observed_at && latest_success_at > user.codex_usage_observed_at

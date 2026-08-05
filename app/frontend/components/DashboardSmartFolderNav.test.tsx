@@ -205,6 +205,14 @@ describe("DashboardSmartFolderNav", () => {
     expect(savedRow!.querySelector("svg")).toHaveClass("absolute", "left-0")
   })
 
+  it("omits the count badge when a folder count was intentionally skipped", () => {
+    renderNav([folder({ count: null })])
+
+    const savedLink = screen.getByRole("link", { name: "Saved work" })
+    expect(savedLink).toBeInTheDocument()
+    expect(screen.queryByText("3")).not.toBeInTheDocument()
+  })
+
   it("patches saved folder positions after drag reordering", async () => {
     renderNav([
       folder({ id: 1, name: "Review", position: 0, count: 0 }),
@@ -261,12 +269,12 @@ describe("DashboardSmartFolderNav", () => {
 
   it("does not make builtin folders draggable", () => {
     renderNav([
-      folder({ id: 1, name: "Inbox", key: "inbox", kind: "builtin", visibility: "always", count: 0 }),
+      folder({ id: 1, name: "Inbox", key: "inbox", kind: "builtin", visibility: "always", count: null }),
       folder({ id: 2, name: "Saved review", kind: "user_defined", visibility: "user_defined", position: 0, count: 0 })
     ])
 
     const foldersNav = screen.getByRole("navigation", { name: "Dashboard smart folders" })
-    expect(within(foldersNav).getByRole("link", { name: "Inbox 0" })).toHaveAttribute("draggable", "false")
+    expect(within(foldersNav).getByRole("link", { name: "Inbox" })).toHaveAttribute("draggable", "false")
     expect(screen.getByRole("link", { name: "Saved review 0" }).parentElement).toHaveAttribute("draggable", "true")
   })
 

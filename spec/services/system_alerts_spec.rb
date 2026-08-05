@@ -70,6 +70,16 @@ RSpec.describe SystemAlerts do
       expect(alert.cta).to eq(text: "Open credentials", path: "/credentials")
     end
 
+    it "uses cached provider availability for Codex usage alerts" do
+      user = Factories.user
+      allow(App::ProviderAvailability).to receive(:for_user).and_return(nil)
+      allow(DataRootDiskUsage).to receive(:current).and_return(nil)
+
+      described_class.active_for(user: user)
+
+      expect(App::ProviderAvailability).to have_received(:for_user).with(user, "codex")
+    end
+
     it "surfaces exhausted Codex usage as an alarm" do
       user = Factories.user(codex_usage_status: "exhausted", codex_usage_snapshot: {})
       allow(DataRootDiskUsage).to receive(:current).and_return(nil)

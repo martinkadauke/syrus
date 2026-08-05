@@ -404,7 +404,7 @@ function SmartFolderLink({
               />
             </div>
           ) : (
-            <Link aria-label={`${folder.name} ${folder.count}`} className="flex min-w-0 flex-1 items-center gap-2 rounded-l px-2 py-1.5 text-sm" onClick={onSelect} to={withRoutePrefix(folder.path, prefix)}>
+            <Link aria-label={smartFolderLabel(folder.name, folder.count)} className="flex min-w-0 flex-1 items-center gap-2 rounded-l px-2 py-1.5 text-sm" onClick={onSelect} to={withRoutePrefix(folder.path, prefix)}>
               <span className="truncate">{folder.name}</span>
             </Link>
           )}
@@ -473,7 +473,7 @@ function SmartFolderLink({
     >
       {showDragHandle ? <GripIcon /> : null}
       <Link
-        aria-label={`${displayName} ${folder.count}`}
+        aria-label={smartFolderLabel(displayName, folder.count)}
         className="min-w-0 flex-1 truncate"
         draggable={false}
         onClick={onSelect}
@@ -508,9 +508,15 @@ function FolderCount({ folder, onSelect, prefix }: { folder: DashboardSmartFolde
           {t("smart_folder.queued_blocked_count", { count: blockedCount })}
         </button>
       ) : null}
-      <span className={`inline-flex min-w-6 justify-center rounded-full px-1.5 py-0.5 text-xs ${folder.active ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>{folder.count}</span>
+      {folder.count == null ? null : (
+        <span className={`inline-flex min-w-6 justify-center rounded-full px-1.5 py-0.5 text-xs ${folder.active ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>{folder.count}</span>
+      )}
     </div>
   )
+}
+
+function smartFolderLabel(name: string, count: number | null) {
+  return count == null ? name : `${name} ${count}`
 }
 
 function reorderFolders(folders: DashboardSmartFolder[], sourceIndex: number, targetIndex: number) {

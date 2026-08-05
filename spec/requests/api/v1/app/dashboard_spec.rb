@@ -1101,8 +1101,10 @@ RSpec.describe "App API dashboard commands", type: :request do
         kind: "user_defined",
         filter: { "and" => [ { "field" => "state", "op" => "is", "value" => "running" } ] }
       )
+      SmartFolder.ensure_builtins_for_subject!("job")
+      queued_folder = SmartFolder.find_by!(user_id: nil, subject_type: "job", name: "Queued")
 
-      get "/api/v1/app/dashboard", params: { subject: "job" }
+      get "/api/v1/app/dashboard", params: { subject: "job", smart_folder_id: queued_folder.id }
 
       expect(response).to have_http_status(:ok)
       folders_by_name = parse_body["smart_folders"].index_by { |folder| folder.fetch("name") }
@@ -1117,7 +1119,7 @@ RSpec.describe "App API dashboard commands", type: :request do
         "visibility" => "when_present",
         "count" => 1
       )
-      expect(folders_by_name.fetch("Inbox")).to include("count" => 1, "attention_preset" => "inbox")
+      expect(folders_by_name.fetch("Inbox")).to include("count" => nil, "attention_preset" => "inbox")
       expect(folders_by_name.fetch("Just failed")).to include(
         "kind" => "builtin",
         "visibility" => "when_present",
@@ -1126,16 +1128,16 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(folders_by_name).not_to have_key("Landing queue")
       expect(folders_by_name.fetch("Merged this week")).to include(
         "visibility" => "on_demand",
-        "count" => 0
+        "count" => nil
       )
       expect(folders_by_name.fetch("Stale")).to include(
         "visibility" => "on_demand",
-        "count" => 0
+        "count" => nil
       )
       expect(folders_by_name.fetch("Running jobs")).to include(
         "kind" => "user_defined",
         "visibility" => "user_defined",
-        "count" => 0,
+        "count" => nil,
         "attention_preset" => nil
       )
     end

@@ -20,7 +20,7 @@ module App
         folder_counts = smart_folder_counts(folders)
 
         folders.filter_map do |folder|
-          count = folder_counts.fetch(folder.id, 0)
+          count = folder_counts[folder.id]
           next unless smart_folder_visible?(folder, count)
 
           json = {
@@ -45,7 +45,7 @@ module App
       def smart_folder_visible?(folder, count)
         return true unless folder.builtin?
         return true if active_smart_folder&.id == folder.id
-        return count.positive? if folder.visibility == :when_present
+        return count.to_i.positive? if folder.visibility == :when_present
 
         true
       end
@@ -71,8 +71,9 @@ module App
         return {} if folders.empty?
 
         volatile, cacheable = folders.partition { |folder| volatile_smart_folder_count?(folder) }
+        cacheable = cacheable.select { |folder| smart_folder_count_needed?(folder) }
         cached_counts = cacheable.empty? ? {} : Rails.cache.fetch(smart_folder_counts_cache_key(cacheable), expires_in: 2.minutes) do
-          PerformanceLogging.phase("dashboard_smart_folders.counts", subject: subject, count: folders.size) do
+          PerformanceLogging.phase("dashboard_smart_folders.counts", subject: subject, count: cacheable.size) do
             cacheable.to_h do |folder|
               count = PerformanceLogging.phase("dashboard_smart_folders.count", subject: subject, folder_id: folder.id, builtin_key: folder.builtin_key) do
                 smart_folder_count_uncached(folder)
@@ -94,6 +95,13 @@ module App
         return false unless subject == "job" && folder.builtin?
 
         folder.builtin_key.in?(%w[in_progress paused queued landing_queue])
+      end
+
+      def smart_folder_count_needed?(folder)
+        return true if active_smart_folder&.id == folder.id
+        return false unless folder.builtin?
+
+        folder.visibility == :when_present
       end
 
       def smart_folder_counts_cache_key(folders)
