@@ -11,14 +11,14 @@ RSpec.describe WorkflowAdmissionBudget do
     workflow
   end
 
-  def profile(step_kind:, duration: 60, cpu: 5.0, io: 5.0, memory: 20.0, grader_name: "", attributed_samples: 0, attributed_duration: nil, attributed_cpu: nil, attributed_io: nil, attributed_memory: nil)
+  def profile(step_kind:, duration: 60, cpu: 5.0, io: 5.0, memory: 20.0, grader_name: "", trigger_kind: "initial", job_kind: "issue", attributed_samples: 0, attributed_duration: nil, attributed_cpu: nil, attributed_io: nil, attributed_memory: nil)
     WorkflowStepResourceProfile.create!(
       repository: repository,
       agent_provider: "codex",
-      trigger_kind: "initial",
+      trigger_kind: trigger_kind,
       step_kind: step_kind,
       grader_name: grader_name,
-      job_kind: "issue",
+      job_kind: job_kind,
       sample_count: 40,
       attributed_sample_count: attributed_samples,
       process_attributed_sample_count: attributed_samples,
@@ -40,6 +40,20 @@ RSpec.describe WorkflowAdmissionBudget do
       failure_rate: 0.0,
       last_observed_at: Time.current,
       profile_version: WorkflowStepResourceProfile::PROFILE_VERSION
+    )
+  end
+
+  def worker_sample(hostname: "worker-1", cpu: 5.0, io: 5.0, memory: 40.0, disk: 25.0)
+    WorkerHostHealthSample.create!(
+      hostname: hostname,
+      role: "worker",
+      version: "test",
+      observed_at: Time.current,
+      cpu_pressure_some: cpu,
+      io_pressure_some: io,
+      memory_used_percent: memory,
+      data_root_used_percent: disk,
+      raw_metrics: {}
     )
   end
 
@@ -144,6 +158,69 @@ RSpec.describe WorkflowAdmissionBudget do
     expect(decision.reason).to eq("predicted_budget_pressure_high")
     expect(decision.delay_until).to be_present
     expect(decision.pressure.dig("projected", "cpu_pressure")).to be >= 100.0
+  end
+
+  it "admits a medium-priority auto-merge below the healthy-worker floor despite conservative default pressure" do
+    WorkerHostHealthSample.delete_all
+    worker_sample(hostname: "worker-1")
+    WorkflowStepResourceProfile.delete_all
+    %w[mergeability_preflight grader_fanout grader_collect push auto_merge].each do |step_kind|
+      profile(step_kind: step_kind, trigger_kind: "auto_merge", duration: 20, cpu: 2.0, io: 2.0, memory: 20.0)
+    end
+    landing_job = Factories.job_record(
+      user: user,
+      repository: repository,
+      state: "landing",
+      priority: "medium",
+      issue_number: 77,
+      pr_number: 77,
+      branch_name: "syrus/issue-77"
+    )
+    workflow = Workflows::AutoMerge.instantiate(job: landing_job, agent_provider: "codex")
+
+    decision = described_class.call(workflow: workflow)
+
+    expect(decision.action).to eq("admit_now")
+    expect(decision.reason).to eq("minimum_progress_floor")
+    expect(decision.override).to be(true)
+    expect(decision.details).to include(
+      "decision_basis" => "minimum_progress_floor",
+      "minimum_progress_floor_used" => true,
+      "minimum_progress_floor_reason" => "predicted_budget_pressure_high",
+      "healthy_worker_count" => 1,
+      "active_agentic_run_count" => 0,
+      "minimum_progress_floor_capacity" => 1
+    )
+    expect(decision.details.fetch("soft_pressure_gates_present")).to include("predicted_budget_pressure_high")
+  end
+
+  it "resumes delaying once running agentic work reaches the healthy-worker floor" do
+    WorkerHostHealthSample.delete_all
+    worker_sample(hostname: "worker-1")
+    WorkflowStepResourceProfile.delete_all
+    profile(step_kind: "prepare", trigger_kind: "retry", duration: 20, cpu: 2.0, io: 2.0, memory: 20.0)
+    active = workflow_for(state: "running")
+    active_step = active.steps.find_by!(kind: "implement")
+    active_step.runs.create!(
+      job: active.job,
+      user: active.job.user,
+      trigger_kind: active.trigger_kind,
+      agent_provider: active.agent_provider,
+      state: "running",
+      started_at: Time.current
+    )
+    candidate = workflow_for(trigger_kind: "retry")
+
+    decision = described_class.call(workflow: candidate)
+
+    expect(decision.action).to eq("delay_until")
+    expect(decision.reason).to eq("predicted_budget_pressure_high")
+    expect(decision.details).to include(
+      "healthy_worker_count" => 1,
+      "active_agentic_run_count" => 1,
+      "minimum_progress_floor_capacity" => 1,
+      "minimum_progress_floor_available" => false
+    )
   end
 
   it "records urgent admission as an override instead of delaying for soft pressure" do

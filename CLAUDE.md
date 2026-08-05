@@ -975,6 +975,10 @@ their body. If you create the Epic and child issues in one batch, verify the
 Epic record exists in Syrus before filing children, or create the Epic through
 the admin API first.
 
+For production Syrus inspection or operations, prefer the bearer-token admin API
+before shelling into Kubernetes or running Rails console commands. Local admin
+API credentials are stored in `~/.syrus/credentials`.
+
 Don't run `bin/dev` and stub things to simulate the agent — file a
 real issue and watch the real flow. Test issues should be small
 (single-PR scope), low-stakes, reversible, and describe real (if

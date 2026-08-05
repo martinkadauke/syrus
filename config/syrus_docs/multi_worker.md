@@ -252,3 +252,13 @@ admission artifact. Admin changes are audited as `AdminAction` rows
 (`disable_workflow_admission_control` / `enable_workflow_admission_control`),
 and toggling either direction wakes admission-delayed Workflows plus the
 landing queue so existing sleepers are reconsidered promptly.
+
+While admission control is enabled, Syrus also keeps a minimum-progress floor:
+at least one admission-controlled workflow may start per healthy worker while
+running agentic work is below that floor. This makes soft host pressure and
+conservative/default-only predictions throttling signals instead of a total
+stop, so landing and merge-train progress cannot starve behind uncertain
+estimates. Hard worker memory/disk exhaustion and the non-admission blockers
+above still win. Admission artifacts include the healthy worker count, active
+agentic run count, floor capacity, whether the floor override was used, and the
+soft gates that were present.

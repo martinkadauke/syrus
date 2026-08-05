@@ -65,6 +65,15 @@ class WorkflowAdmissionBudget
       return admission_control_disabled(candidate, active, pressure)
     end
 
+    if urgent? && pressure_detected?(pressure)
+      return urgent_override("urgent_priority_override", pressure)
+    end
+
+    if minimum_progress_floor_available?
+      floor_reason = minimum_progress_floor_reason(candidate, active, pressure)
+      return minimum_progress_floor_admit(floor_reason, candidate, active, pressure) if floor_reason
+    end
+
     if soft_host_pressure? && !urgent?
       return low_risk_or_delay("worker_host_pressure_high", candidate, active, pressure, decision_basis: "ambient_pressure")
     end
@@ -85,7 +94,7 @@ class WorkflowAdmissionBudget
       return low_risk_or_delay("repository_concurrency_budget_exhausted", candidate, active, pressure, decision_basis: prediction_decision_basis(candidate))
     end
 
-    urgent? && pressure_detected?(pressure) ? urgent_override("urgent_priority_override", pressure) : admit("within_budget", pressure)
+    admit("within_budget", pressure)
   end
 
   private
@@ -365,6 +374,53 @@ class WorkflowAdmissionBudget
     @active_run_count ||= Run.running_agent_runs.count
   end
 
+  def active_agentic_run_count
+    @active_agentic_run_count ||= Run
+      .where(state: "running")
+      .joins(step: :workflow)
+      .where(steps: { kind: Step::AGENTIC_KINDS })
+      .where(workflows: { trigger_kind: admission_controlled_trigger_kinds })
+      .count
+  end
+
+  def healthy_worker_count
+    @healthy_worker_count ||= latest_worker_samples.count do |sample|
+      sample.memory_used_percent.to_f < HARD_MEMORY_USED_PERCENT &&
+        sample.data_root_used_percent.to_f < HARD_DATA_ROOT_USED_PERCENT
+    end
+  end
+
+  def minimum_progress_floor_capacity
+    healthy_worker_count
+  end
+
+  def minimum_progress_floor_available?
+    return false if step.present?
+
+    minimum_progress_floor_capacity.positive? &&
+      active_agentic_run_count < minimum_progress_floor_capacity
+  end
+
+  def minimum_progress_floor_reason(candidate, active, pressure)
+    return "worker_host_pressure_high" if soft_host_pressure?
+    return "bootstrap_missing_profiles" if bootstrap_missing_profiles?(candidate)
+    return "predicted_budget_pressure_high" if over_budget?(pressure)
+    return "pending_high_cost_work" if pending_high_cost_work?(active) && high_cost?(candidate) && medium_or_lower?
+    if repository_active_workflow_count >= MAX_REPOSITORY_ACTIVE_WORKFLOWS && pending_high_cost_work?(active)
+      return "repository_concurrency_budget_exhausted"
+    end
+
+    nil
+  end
+
+  def admission_controlled_trigger_kinds
+    @admission_controlled_trigger_kinds ||= Workflow::TriggerKind.values.select do |trigger_kind|
+      Workflow::TriggerKind.template_for(trigger_kind).queue_name.in?(%i[runs merges])
+    rescue ArgumentError
+      true
+    end
+  end
+
   def repository_active_workflow_count
     @repository_active_workflow_count ||= active_workflows_with_runs.joins(:job)
       .where(jobs: { repository_id: repository.id })
@@ -500,6 +556,23 @@ class WorkflowAdmissionBudget
     )
   end
 
+  def minimum_progress_floor_admit(reason, candidate, active, pressure)
+    decision(
+      "admit_now",
+      "minimum_progress_floor",
+      pressure,
+      override: true,
+      details: details_payload(
+        candidate,
+        active,
+        decision_basis: "minimum_progress_floor"
+      ).merge(
+        "minimum_progress_floor_used" => true,
+        "minimum_progress_floor_reason" => reason
+      )
+    )
+  end
+
   def admission_control_disabled(candidate, active, pressure)
     decision(
       "admit_now",
@@ -572,6 +645,14 @@ class WorkflowAdmissionBudget
       "active_high_cost_count" => active.fetch("high_cost_count"),
       "repository_active_workflow_count" => repository_active_workflow_count,
       "active_run_count" => active_run_count,
+      "active_agentic_run_count" => active_agentic_run_count,
+      "healthy_worker_count" => healthy_worker_count,
+      "minimum_progress_floor_capacity" => minimum_progress_floor_capacity,
+      "minimum_progress_floor_available" => minimum_progress_floor_available?,
+      "minimum_progress_floor_used" => false,
+      "hard_pressure_gates_considered" => %w[worker_memory_exhausted worker_disk_exhausted],
+      "soft_pressure_gates_considered" => soft_pressure_gates,
+      "soft_pressure_gates_present" => disabled_bypassed_gates(candidate, active, pressure_payload(candidate: candidate, active: active)),
       "job_priority" => job.priority,
       "trigger_kind" => workflow.trigger_kind,
       "decision_basis" => decision_basis,
@@ -579,5 +660,15 @@ class WorkflowAdmissionBudget
       "attribution_confidence_levels" => candidate.fetch("attribution_confidence_levels"),
       "fallback_reasons" => candidate.fetch("fallback_reasons")
     }.compact
+  end
+
+  def soft_pressure_gates
+    %w[
+      worker_host_pressure_high
+      bootstrap_missing_profiles
+      predicted_budget_pressure_high
+      pending_high_cost_work
+      repository_concurrency_budget_exhausted
+    ]
   end
 end

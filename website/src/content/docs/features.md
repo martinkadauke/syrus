@@ -612,6 +612,11 @@ repositories, missing PRs, and hard worker memory/disk exhaustion still block
 starts. Syrus audits the operator and timestamp, records which admission gates
 were bypassed on each admitted Workflow, and wakes delayed Workflows when the
 switch changes.
+When the switch is enabled, admission control still keeps a minimum-progress
+floor of one controlled workflow per healthy worker while running agentic work
+is below that floor. Soft pressure and conservative predictions can slow the
+queue, but they cannot starve all landing or merge progress; hard worker
+memory/disk exhaustion still stops starts.
 State-changing admin tools, such as pausing runs, killing a
 process, clearing the GitHub cache, or refreshing installations, create pending
 actions and wait for operator confirmation before applying. Non-admin chats do

@@ -38,6 +38,7 @@ class LandingQueueReentry
   end
 
   def ready_to_reenter?(candidate)
+    return false if landing_start_blocker_backoff_active?(candidate)
     return merge_train_ready_to_reenter?(candidate) if AppSetting.merge_train_enabled? && candidate.epic_id.present?
 
     return false if candidate.dependencies_failed_for_execution?
@@ -49,5 +50,21 @@ class LandingQueueReentry
 
   def merge_train_ready_to_reenter?(candidate)
     MergeTrainDispatcher.blocker_reason(candidate.epic).blank?
+  end
+
+  def landing_start_blocker_backoff_active?(candidate)
+    workflow = candidate.workflows
+      .where(trigger_kind: Workflow::LANDING_TRIGGER_KINDS)
+      .order(id: :desc)
+      .detect { |wf| self.class.landing_start_blocker?(wf.artifact("start_blocked_reason")) }
+    next_check_at = parse_time(workflow&.artifact("start_blocked_next_check_at"))
+
+    next_check_at.present? && next_check_at.future?
+  end
+
+  def parse_time(value)
+    Time.iso8601(value.to_s)
+  rescue ArgumentError, TypeError
+    nil
   end
 end
