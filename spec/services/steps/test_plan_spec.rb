@@ -85,6 +85,9 @@ RSpec.describe Steps::TestPlan do
   end
 
   it "retries without provider resume when Codex resume state is unavailable" do
+    job.update!(issue_title: "Add durable test plans", issue_body: "Users need review checks.")
+    workflow.set_artifact!("summary", "Implemented durable fallback context.")
+    implement_run.update!(agent_diff: "diff --git a/app.rb b/app.rb\n+puts 'fallback'\n")
     calls = []
     allow(handler).to receive(:run_agent) do |**kwargs|
       calls << kwargs
@@ -105,6 +108,11 @@ RSpec.describe Steps::TestPlan do
     expect(calls.size).to eq(2)
     expect(calls.first).not_to include(resume_session_id: nil)
     expect(calls.second).to include(resume_session_id: nil)
+    expect(calls.second[:prompt]).to include("original agent session is not available to resume")
+    expect(calls.second[:prompt]).to include("Add durable test plans")
+    expect(calls.second[:prompt]).to include("Users need review checks.")
+    expect(calls.second[:prompt]).to include("Implemented durable fallback context.")
+    expect(calls.second[:prompt]).to include("+puts 'fallback'")
   end
 
   it "resumes from the succeeded implement session" do

@@ -1,0 +1,69 @@
+module Prompts
+  # Fallback test-plan prompt for the rare case where the implementation
+  # session is unavailable to resume. It gives the agent bounded durable job
+  # context and the produced diff, then asks it to call submit_test_plan.
+  class TestPlanFallback
+    MAX_BODY_BYTES = 16 * 1024
+    MAX_DIFF_BYTES = Prompts::PullRequestSummary::MAX_DIFF_BYTES
+
+    def initialize(issue:, summary:, diff:)
+      @issue = issue
+      @summary = summary.to_s
+      @diff = diff.to_s
+    end
+
+    def to_s
+      <<~PROMPT.strip
+        You just finished the implementation for this Syrus job, but the
+        original agent session is not available to resume. Use this bounded
+        durable context instead.
+
+        Produce a concise reviewer-facing test plan by calling the
+        `submit_test_plan` MCP tool:
+
+        - `steps`: an array of exact user flows to exercise, URLs or
+          commands where relevant, and edge cases suggested by the diff.
+        - `notes`: optional short context for reviewers.
+
+        Do not edit files, run commands, or make commits. Just call
+        `submit_test_plan` and exit.
+
+        # Original job
+        Title: #{@issue.title}
+
+        Body:
+        #{trimmed_body}
+
+        # PR summary
+        #{trimmed_summary}
+
+        # Implementation diff
+        ```diff
+        #{trimmed_diff}
+        ```
+      PROMPT
+    end
+
+    private
+
+    def trimmed_body
+      body = @issue.body.to_s.strip
+      return "(empty)" if body.blank?
+      return body if body.bytesize <= MAX_BODY_BYTES
+
+      "#{body.safe_byteslice(0, MAX_BODY_BYTES)}\n...[truncated, #{body.bytesize - MAX_BODY_BYTES} more bytes]"
+    end
+
+    def trimmed_summary
+      summary = @summary.strip
+      summary.presence || "(empty)"
+    end
+
+    def trimmed_diff
+      return "(empty)" if @diff.blank?
+      return @diff if @diff.bytesize <= MAX_DIFF_BYTES
+
+      "#{@diff.safe_byteslice(0, MAX_DIFF_BYTES)}\n...[truncated, #{@diff.bytesize - MAX_DIFF_BYTES} more bytes]"
+    end
+  end
+end

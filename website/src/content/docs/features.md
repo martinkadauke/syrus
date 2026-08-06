@@ -462,7 +462,9 @@ workspace remains available, retry or rebuild landing workflows for landing
 failures, and use a full implementation retry only as the fallback. Bulk retry
 responses include action and skipped-reason counts, including active Runs,
 already-current passing PRs, duplicate retry workflows, and open provider
-circuits.
+circuits. When a short synthesis step cannot resume the provider session,
+Syrus can retry it from durable Job, summary, and diff context instead of
+discarding the completed implementation.
 Proposal cards show dependency status before the title: either dependency
 proposal links with confirmed or pending badges, resolved Epic proposal links,
 or an explicit no-dependencies note.

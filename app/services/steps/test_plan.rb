@@ -80,7 +80,19 @@ module Steps
     end
 
     def fresh_prompt
-      Prompts::TestPlan.new.to_s
+      Prompts::TestPlanFallback.new(
+        issue: fallback_issue,
+        summary: workflow.artifact("summary").presence || workflow.artifact("pr_body").to_s,
+        diff: fallback_diff
+      ).to_s
+    end
+
+    def fallback_issue
+      job.synthetic_issue || Struct.new(:title, :body).new(job.title, job.issue_body.to_s)
+    end
+
+    def fallback_diff
+      successful_implement_run&.agent_diff.presence || diff_against_default
     end
 
     def mcp_sidecar_failure?(error)
