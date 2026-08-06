@@ -109,6 +109,22 @@ class StepDispatcher
     end
     clear_start_blocked!(workflow, URGENT_BLOCK_REASON)
 
+    provider_pause = ProviderAvailabilityPause.call(workflow: workflow)
+    if provider_pause.pause?
+      backoff = provider_pause.retry_at ? provider_pause.retry_at - Time.current : START_BLOCKED_BACKOFF
+      record_pause!(
+        workflow,
+        PROVIDER_AVAILABILITY_BLOCK_REASON,
+        backoff: [ backoff, START_BLOCKED_BACKOFF.to_i ].max.seconds,
+        details: provider_pause.details
+      )
+      WorkflowPhaseAdmissionJob.set(wait_until: provider_pause.retry_at, priority: workflow.job.solid_queue_priority).perform_later(workflow.id)
+      schedule_landing_queue_recheck!(workflow, [ provider_pause.retry_at - Time.current, START_BLOCKED_BACKOFF.to_i ].max.seconds) if workflow.landing_workflow?
+      warn_if_stuck_queued(workflow, "#{PROVIDER_AVAILABILITY_BLOCK_REASON}: #{provider_pause.reason}")
+      return
+    end
+    clear_start_blocked!(workflow, PROVIDER_AVAILABILITY_BLOCK_REASON)
+
     admission = WorkflowAdmissionBudget.call(workflow: workflow)
     unless admission.admit?
       reason = ADMISSION_BLOCK_REASON
@@ -164,6 +180,7 @@ class StepDispatcher
   FAN_IN_BLOCK_REASON = JobStackResolver::FAN_IN_BLOCK_REASON
   JOB_BLOCK_REASON = "job_not_ready_for_execution"
   ADMISSION_BLOCK_REASON = "workflow_admission_budget"
+  PROVIDER_AVAILABILITY_BLOCK_REASON = "provider_availability"
   PAUSE_REASON_ADMISSION = ADMISSION_BLOCK_REASON
   PAUSE_REASON_RESOURCE_SAFETY = "resource_safety"
   MANUAL_PAUSE_REASON = "manual_pause"
@@ -346,6 +363,10 @@ class StepDispatcher
   # explicitly. trigger_kind is denormalized from Workflow until
   # commit 9's cleanup migration drops Run.trigger_kind entirely.
   def self.create_run_and_enqueue(step, workflow, parent_session_id: nil, prompt: nil, check_phase_admission: true)
+    if check_phase_admission && provider_availability_deferred?(step, workflow)
+      return nil
+    end
+
     if check_phase_admission && phase_admission_deferred?(step, workflow)
       return nil
     end
@@ -358,6 +379,32 @@ class StepDispatcher
       parent_session_id: parent_session_id,
       prompt: prompt
     )
+  end
+
+  def self.provider_availability_deferred?(step, workflow)
+    return false if step.runs.any?
+
+    provider_pause = ProviderAvailabilityPause.call(workflow: workflow)
+    unless provider_pause.pause?
+      clear_start_blocked!(workflow, PROVIDER_AVAILABILITY_BLOCK_REASON)
+      return false
+    end
+
+    backoff = provider_pause.retry_at ? provider_pause.retry_at - Time.current : PHASE_ADMISSION_RECHECK_DELAY
+    details = provider_pause.details.merge(
+      "phase_step_id" => step.id,
+      "phase_step_kind" => step.kind,
+      "phase_step_position" => step.position
+    )
+    record_pause!(
+      workflow,
+      PROVIDER_AVAILABILITY_BLOCK_REASON,
+      backoff: [ backoff, PHASE_ADMISSION_RECHECK_DELAY.to_i ].max.seconds,
+      details: details
+    )
+    append_provider_availability_deferral_log!(workflow, step, provider_pause)
+    WorkflowPhaseAdmissionJob.set(wait_until: provider_pause.retry_at, priority: workflow.job.solid_queue_priority).perform_later(workflow.id, step.id)
+    true
   end
 
   def self.phase_admission_deferred?(step, workflow)
@@ -411,9 +458,14 @@ class StepDispatcher
     now = Time.current
     current = workflow.artifacts || {}
     started_at = current["pause_reason"] == reason ? current["pause_started_at"] : nil
+    pause_kind = case reason
+    when PAUSE_REASON_RESOURCE_SAFETY then "hard_resource_pressure"
+    when PROVIDER_AVAILABILITY_BLOCK_REASON then "provider_availability"
+    else "workflow_admission"
+    end
     artifacts = current.merge(
       "pause_reason" => reason,
-      "pause_kind" => reason == PAUSE_REASON_RESOURCE_SAFETY ? "hard_resource_pressure" : "workflow_admission",
+      "pause_kind" => pause_kind,
       "pause_started_at" => started_at.presence || now.iso8601,
       "pause_last_seen_at" => now.iso8601,
       "pause_next_check_at" => (now + backoff).iso8601,
@@ -467,6 +519,18 @@ class StepDispatcher
       run: run,
       kind: "system",
       chunk: "#{label} before #{step.kind}: #{admission.reason}"
+    )
+  end
+
+  def self.append_provider_availability_deferral_log!(workflow, step, provider_pause)
+    run = step.previous_step&.latest_run ||
+      Run.joins(:step).where(steps: { workflow_id: workflow.id }).order(:created_at).last
+    return unless run
+
+    JobLog.append!(
+      run: run,
+      kind: "system",
+      chunk: "provider availability paused before #{step.kind}: #{provider_pause.reason}"
     )
   end
 

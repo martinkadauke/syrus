@@ -707,13 +707,14 @@ RSpec.describe App::DashboardPayload do
 
       first = call(subject: "job", section: "chrome")
       second = call(subject: "job", section: "chrome")
+      active_folder_id = first[:active_smart_folder_id]
       volatile_ids = SmartFolder.builtins(:job)
                                 .select { |folder| folder.builtin_key.in?(%w[in_progress paused queued landing_queue]) }
                                 .map(&:id)
       stable_counted_ids = SmartFolder.for_subject("job")
                                       .where("user_id IS NULL OR user_id = ?", user.id)
                                       .where.not(id: volatile_ids)
-                                      .select { |folder| folder.visibility == :when_present }
+                                      .select { |folder| folder.visibility.in?([ :always, :when_present ]) || folder.id == active_folder_id }
                                       .map(&:id)
       stable_uncounted_ids = SmartFolder.for_subject("job")
                                         .where("user_id IS NULL OR user_id = ?", user.id)

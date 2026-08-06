@@ -12,7 +12,7 @@ Board view grouped by configurable lanes (e.g. Queued, Running, Succeeded). Lane
 
 Kanban payloads are paginated per lane. Each lane includes `total_count`, `loaded_count`, `has_more`, and `next_offset`; when `has_more` is true, the UI shows a lane-specific Load more button. Follow-up lane fetches call `GET /api/v1/app/dashboard` with the existing dashboard filters plus `kanban_lane` and `kanban_offset`, so loading older cards preserves the current smart folder, ownership scope, and other lane state.
 
-Queued Job cards can carry a start-blocked badge when Syrus has deferred the first Run because dependencies are unfinished, a dependency failed or was cancelled, the Job/Epic is not ready for execution, main is broken, an urgent Job is active, or workflow admission budgeting delayed the start. The Queued smart folder also shows a blocked sub-count; selecting that count filters to only queued Jobs with a persisted start-blocked reason.
+Queued Job cards can carry a start-blocked badge when Syrus has deferred the first Run because dependencies are unfinished, a dependency failed or was cancelled, the Job/Epic is not ready for execution, main is broken, an urgent Job is active, provider availability is below the user's per-agent threshold, or workflow admission budgeting delayed the start. The Queued smart folder also shows a blocked sub-count; selecting that count filters to only queued Jobs with a persisted start-blocked reason.
 
 When the blocked reason is workflow admission budgeting, the Workflow artifact stores the admission decision payload. The payload separates predicted command cost from current host headroom: command-attributed step profiles are used when they have enough samples, host-correlated profiles are included as fallback/context, and live worker host pressure is still checked immediately before starting work. The details also record attribution confidence, fallback reasons, active run/repository counts, Job priority, and whether the delay was caused by ambient host pressure or by predicted command cost not fitting the budget.
 
@@ -26,6 +26,19 @@ asks the normal dispatcher or landing queue to resume, so the Job still remains
 subject to dependency gates, provider circuits, and workflow admission control.
 The dashboard includes manually paused Jobs in the Paused smart folder and
 shows a direct Unpause control on paused rows.
+
+Provider-availability pauses are automatic and reversible. Each user has a
+per-agent pause threshold in Agent Settings; the default is 10%, and 0 disables
+automatic provider-availability pauses for that provider. When Codex usage falls
+below the configured threshold, or a configured provider reports exhausted usage,
+Syrus records `pause_reason: provider_availability` /
+`start_blocked_reason: provider_availability` on the active Workflow and stops
+before creating the next Run. Running steps are allowed to finish. A scheduled
+recheck wakes the Workflow after the provider reset or a short probe interval;
+for Codex, the wakeup refreshes the structured usage snapshot before deciding
+whether to resume. The usage banner and Agent Settings both expose "Recheck" and
+"Resume anyway"; the latter stores a per-user/provider override that suppresses
+provider-availability pauses until newer provider evidence arrives.
 
 ## dependencies
 

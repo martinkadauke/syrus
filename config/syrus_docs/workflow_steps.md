@@ -32,6 +32,19 @@ Agentic. The primary coding step: the agent reads the issue, explores the repo, 
 
 **Provider usage-limit outcome:** If the provider reports exhausted usage, quota, credits, billing balance, or a daily/weekly/monthly/model limit, the run records `agent_outcome=provider_usage_limit` and failure classification `provider_usage_limit`. The provider circuit breaker opens immediately for the affected provider/model when known; if the model cannot be determined, Syrus fails closed at provider scope and shows that reason to the operator. When the provider reports a reset time, Syrus schedules the failed Run's auto-retry for five minutes after that reset; Codex structured usage reset windows are preferred over parsing log text, while provider text such as `resets 7am (America/New_York)` is parsed from the failure time. If no reset is known, Syrus uses the conservative provider-circuit backoff. The app projects current-user provider availability into chat and Job payloads: chats using the exhausted effective chat provider and Jobs using the exhausted agent provider show a red triangle warning until the usage-limit window expires/restores or the operator switches that chat/Job to another configured provider. Transient provider circuits remain separate and use the existing non-red treatment.
 
+**Provider availability pause:** Before the first Run and between Steps,
+`StepDispatcher` checks the Workflow's pinned `agent_provider` against the
+current user's per-agent pause threshold. Agent Settings stores these thresholds
+on the user; each provider defaults to 10%, and 0 disables automatic
+provider-availability pauses for that provider. When Codex structured usage is
+below the threshold, or any provider has an active usage-exhausted signal, Syrus
+records `pause_reason: provider_availability` and schedules a recheck instead
+of creating the next Run. Running steps finish first. Codex rechecks refresh the
+usage snapshot when stale so Workflows resume automatically once usage is above
+threshold. Operators can force a recheck or "Resume anyway" from Agent Settings
+or the usage banner; the override is per-user/per-provider and only suppresses
+pauses until newer provider evidence arrives.
+
 ### respond
 
 Agentic. Addresses PR review feedback or chat feedback. Reads the new comments and makes the requested changes.

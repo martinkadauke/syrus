@@ -97,6 +97,77 @@ RSpec.describe "API: /api/v1/app/credentials", type: :request do
     expect(parse_body["message"]).to eq("Credentials updated.")
   end
 
+  it "shows and updates per-provider availability pause thresholds" do
+    sign_in_as(user)
+
+    get "/api/v1/app/credentials"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.dig("user", "provider_availability_pause_thresholds")).to include(
+      "claude" => 10,
+      "codex" => 10
+    )
+
+    patch "/api/v1/app/credentials", params: {
+      user: {
+        provider_availability_pause_thresholds: {
+          claude: 0,
+          codex: 15
+        }
+      }
+    }
+
+    expect(response).to have_http_status(:ok)
+    expect(user.reload.provider_availability_pause_threshold_for("claude")).to eq(0)
+    expect(user.provider_availability_pause_threshold_for("codex")).to eq(15)
+  end
+
+  it "forces a Codex usage recheck and wakes provider-paused workflows" do
+    sign_in_as(user)
+    workflow = Workflow.create!(
+      job: Factories.job_record(user: user, repository: Factories.repository(user: user)),
+      trigger_kind: "initial",
+      agent_provider: "codex",
+      artifacts: {
+        "pause_reason" => StepDispatcher::PROVIDER_AVAILABILITY_BLOCK_REASON,
+        "start_blocked_reason" => StepDispatcher::PROVIDER_AVAILABILITY_BLOCK_REASON
+      }
+    )
+    Step.create!(workflow: workflow, kind: "implement", position: 0)
+    result = CodexUsageProbe::Result.new(status: "ok", snapshot: { "remaining_percent" => 50.0 }, message: "Codex usage has 50% remaining.")
+    allow(CodexUsageProbe).to receive(:refresh_for).and_return(result)
+
+    expect {
+      post "/api/v1/app/credentials/recheck_provider_availability", params: { provider: "codex" }
+    }.to have_enqueued_job(WorkflowPhaseAdmissionJob).with(workflow.id)
+
+    expect(response).to have_http_status(:ok)
+    expect(CodexUsageProbe).to have_received(:refresh_for).with(user: user, force: true)
+    expect(parse_body["message"]).to eq("Codex usage has 50% remaining.")
+  end
+
+  it "records a provider availability override and wakes provider-paused workflows" do
+    sign_in_as(user)
+    workflow = Workflow.create!(
+      job: Factories.job_record(user: user, repository: Factories.repository(user: user)),
+      trigger_kind: "initial",
+      agent_provider: "codex",
+      artifacts: {
+        "pause_reason" => StepDispatcher::PROVIDER_AVAILABILITY_BLOCK_REASON,
+        "start_blocked_reason" => StepDispatcher::PROVIDER_AVAILABILITY_BLOCK_REASON
+      }
+    )
+    Step.create!(workflow: workflow, kind: "implement", position: 0)
+
+    expect {
+      post "/api/v1/app/credentials/override_provider_availability", params: { provider: "codex" }
+    }.to have_enqueued_job(WorkflowPhaseAdmissionJob).with(workflow.id)
+
+    expect(response).to have_http_status(:ok)
+    expect(user.reload.provider_availability_overridden?("codex")).to be(true)
+    expect(parse_body.dig("user", "provider_availability_overrides", "codex")).to be_present
+  end
+
   it "updates desktop notification preferences without replacing the full preferences hash" do
     sign_in_as(user)
     user.update_column(:notification_preferences, { "desktop_job_failed" => true, "epic_completed" => true, "unknown_future_key" => false })

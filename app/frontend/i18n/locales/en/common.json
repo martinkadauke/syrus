@@ -280,7 +280,8 @@
     "job_not_ready_for_execution": "Not ready",
     "main_branch_broken": "Main branch broken",
     "urgent_job_active": "Urgent job in progress",
-    "workflow_admission_budget": "Workflow admission delayed"
+    "workflow_admission_budget": "Workflow admission delayed",
+    "provider_availability": "Provider availability paused"
   },
   "start_blocked_reason_tooltips": {
     "dependency_failed": "A required job or Epic dependency ended without a successful resolution. Override or remove the dependency to continue.",
@@ -289,7 +290,8 @@
     "job_not_ready_for_execution": "The job is not valid for execution yet or its Epic has not released it.",
     "main_branch_broken": "Repository landing is paused because the main branch is unhealthy.",
     "urgent_job_active": "A non-urgent job is waiting while an urgent job in this repository remains active.",
-    "workflow_admission_budget": "Syrus predicted that starting this workflow now would put too much pressure on the worker pool."
+    "workflow_admission_budget": "Syrus predicted that starting this workflow now would put too much pressure on the worker pool.",
+    "provider_availability": "This job is paused until its configured agent provider has enough available usage, or an operator resumes it anyway."
   },
   "blocked_reasons": {
     "landing_paused": "Landing paused",

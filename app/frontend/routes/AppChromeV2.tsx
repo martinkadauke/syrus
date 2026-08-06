@@ -2,14 +2,14 @@ import { PUBLILIUS_SYRUS_QUOTES } from "./appChromeV2/quotes"
 import { ChevronDownIcon, DashboardIcon, MoonIcon, PlusIcon, RepositoryIcon, ScheduleIcon, SearchIcon, SetupIcon, SpendingIcon, SunIcon, TeamIcon, TerminalIcon, UserIcon } from "./appChromeV2/icons"
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, activeChatIdFromPath, adminNavItemActive, adminSubnavLinkClass, bugReportContext, clampSidebarWidth, isAdminPath, isAuthPath, normalizedAppPath, popupButtonClass, popupLinkClass, redirectsToSetup, sidebarLinkClass, storeSidebarWidth, storedSidebarWidth, updateBootstrapTheme, withRoutePrefix } from "./appChromeV2/helpers"
 import { RecentChatsSidebar } from "./appChromeV2/RecentChatsSidebar"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { BRAND_ICON_SRC } from "../lib/brandIcon"
 import { type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { fetchBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { createEmptyChat, fetchNewChat, type ChatsIndexPayload } from "../api/chats"
-import { patchJson } from "../api/client"
+import { patchJson, postJson } from "../api/client"
 import { dashboardApiSearch, dashboardChromeSearch, fetchDashboardChrome, mergeDashboardPayload, type DashboardChromePayload, type DashboardRowsPayload, type DashboardSubject } from "../api/dashboard"
 import { fetchTerminalSessions } from "../api/terminal"
 import { BugReportButton, type BugReportButtonHandle } from "../components/BugReportButton"
@@ -329,6 +329,15 @@ function SystemAlertsBanner({ alerts, prefix }: { alerts?: BootstrapPayload["sys
 }
 
 function SystemAlertItem({ alert, prefix }: { alert: NonNullable<BootstrapPayload["system_alerts"]>[number]; prefix: string }) {
+  const queryClient = useQueryClient()
+  const action = useMutation({
+    mutationFn: (payload: NonNullable<typeof alert.actions>[number]) => postJson(payload.path, payload.params || {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["bootstrap"] })
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      void queryClient.invalidateQueries({ queryKey: ["chats"] })
+    }
+  })
   const tone = {
     alarm: "border-red-200 bg-red-50 text-red-900",
     warn: "border-amber-200 bg-amber-50 text-amber-900",
@@ -354,7 +363,23 @@ function SystemAlertItem({ alert, prefix }: { alert: NonNullable<BootstrapPayloa
             {alert.cta.text}
           </Link>
         ) : null}
+        {alert.actions?.length ? (
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {alert.actions.map((alertAction) => (
+              <button
+                className={`inline-flex items-center justify-center rounded border border-current px-3 py-1.5 font-medium hover:bg-white/60 disabled:cursor-not-allowed disabled:opacity-60 ${alertAction.destructive ? "text-red-900" : ""}`}
+                disabled={action.isPending}
+                key={`${alertAction.method}:${alertAction.path}:${alertAction.text}`}
+                onClick={() => action.mutate(alertAction)}
+                type="button"
+              >
+                {alertAction.text}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
+      {action.isError ? <p className="mt-2 text-xs font-medium">Action failed.</p> : null}
     </article>
   )
 }

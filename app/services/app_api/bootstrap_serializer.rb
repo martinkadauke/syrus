@@ -121,7 +121,8 @@ module AppApi
           title: alert.title,
           message: alert.message,
           action_steps: alert.action_steps,
-          cta: alert.cta
+          cta: alert.cta,
+          actions: alert.actions
         }
       end
     end

@@ -15,7 +15,9 @@ RSpec.describe App::ProviderAvailability do
 
   def failed_run(provider:, owner: user, outcome: "provider_usage_limit", message: "model gpt-5.5 weekly usage limit exhausted", step_kind: nil, classification: nil)
     job = Factories.job(repository: Factories.repository(user: owner), user: owner, agent_provider: provider)
-    step = if step_kind
+    step = if outcome == "rate_limited" && step_kind.blank?
+      nil
+    elsif step_kind
       workflow = Workflow.create!(job: job, user: owner, trigger_kind: "auto_merge", agent_provider: provider)
       Step.create!(workflow: workflow, kind: step_kind, position: 0)
     else
@@ -109,7 +111,7 @@ RSpec.describe App::ProviderAvailability do
       classification: "rate_limited"
     )
 
-    status = described_class.for_user(user, "claude", now: now)
+    status = described_class.for_user(user, "claude", now: now, cached: false)
 
     expect(status).to include(
       provider: "claude",
@@ -309,6 +311,67 @@ RSpec.describe App::ProviderAvailability do
     expect(status.dig(:evidence, :current)).to include(status: "warning")
     expect(status.dig(:evidence, :latest_negative)).to include(status: "warning")
     expect(status.dig(:evidence, :latest_positive)).to be_nil
+  end
+
+  it "keeps a provider availability override for low Codex evidence and clears it after measured recovery" do
+    user.update!(provider_availability_pause_thresholds: { "codex" => 10 })
+    user.override_provider_availability!("codex")
+    expect(user.reload.provider_availability_overridden?("codex")).to be(true)
+
+    ProviderAvailabilityEvidence.record_codex_probe!(
+      user: user,
+      status: "warning",
+      snapshot: { "remaining_percent" => 18.0 },
+      message: "Codex usage has 18% remaining.",
+      observed_at: now
+    )
+
+    expect(user.reload.provider_availability_overridden?("codex")).to be(true)
+
+    ProviderAvailabilityEvidence.record_codex_probe!(
+      user: user,
+      status: "ok",
+      snapshot: { "remaining_percent" => 25.0 },
+      message: "Codex usage has 25% remaining.",
+      observed_at: now + 1.minute
+    )
+
+    expect(user.reload.provider_availability_overridden?("codex")).to be(false)
+  end
+
+  it "keeps measured low Codex usage even when a later chat turn succeeds" do
+    ProviderAvailabilityEvidence.record_codex_probe!(
+      user: user,
+      status: "warning",
+      snapshot: {
+        "remaining_percent" => 18.0,
+        "primary" => { "label" => "weekly", "remaining_percent" => 18.0, "used_percent" => 82.0 }
+      },
+      message: "Codex usage has 18% remaining.",
+      observed_at: now
+    )
+    user.update!(
+      codex_usage_status: "warning",
+      codex_usage_observed_at: now,
+      codex_usage_snapshot: {
+        "remaining_percent" => 18.0,
+        "primary" => { "label" => "weekly", "remaining_percent" => 18.0, "used_percent" => 82.0 }
+      }
+    )
+    ProviderAvailabilityEvidence.record_codex_success!(
+      user: user,
+      source: "chat_turn_success",
+      model: "gpt-5.5",
+      observed_at: now + 1.minute
+    )
+
+    status = described_class.for_user(user, "codex", now: now + 1.minute, cached: false)
+
+    expect(status).to include(state: "available", open: false, usage_exhausted: false)
+    expect(status.dig(:usage, :status)).to eq("warning")
+    expect(status.dig(:usage, :remaining_percent)).to eq(18.0)
+    expect(status.dig(:usage, :evidence)).to include(status: "warning", source: "usage_probe")
+    expect(status.dig(:evidence, :current)).to include(status: "available", source: "chat_turn_success")
   end
 
   it "does not show exhausted availability for inconclusive Codex probe evidence" do

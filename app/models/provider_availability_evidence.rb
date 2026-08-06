@@ -55,13 +55,14 @@ class ProviderAvailabilityEvidence < ApplicationRecord
       details: sanitized_details(details)
     )
     clear_codex_usage_cache_after_success!(user, evidence)
+    clear_override_if_codex_recovered!(user, details)
     App::ProviderAvailability.clear_cache!(user: user, provider: "codex")
     evidence
   end
 
   def self.record_codex_probe!(user:, status:, snapshot:, message:, http_status: nil, observed_at: Time.current)
     account_id = CodexAccountScope.for_user(user)
-    create!(
+    evidence = create!(
       user: user,
       provider: "codex",
       account_id: account_id,
@@ -75,6 +76,8 @@ class ProviderAvailabilityEvidence < ApplicationRecord
         snapshot: snapshot
       )
     )
+    clear_override_if_codex_recovered!(user, snapshot)
+    evidence
   end
 
   def self.record_codex_invocation_failure!(run:, status: "exhausted", model: nil, message: nil, observed_at: Time.current)
@@ -254,5 +257,14 @@ class ProviderAvailabilityEvidence < ApplicationRecord
         "account_id" => evidence.account_id
       }.compact
     )
+  end
+
+  def self.clear_override_if_codex_recovered!(user, payload)
+    payload = payload.to_h
+    remaining = payload["remaining_percent"] || payload[:remaining_percent]
+    return unless user.provider_availability_recovered?("codex", remaining_percent: remaining)
+    return unless user.clear_provider_availability_override!("codex")
+
+    ProviderAvailabilityWakeup.call(provider: "codex", user: user)
   end
 end

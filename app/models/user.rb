@@ -28,6 +28,7 @@ class User < ApplicationRecord
 
   AGENT_PROVIDERS = %w[ claude codex ].freeze
   CHAT_PROVIDERS = %w[ claude codex ].freeze
+  DEFAULT_PROVIDER_AVAILABILITY_PAUSE_THRESHOLD_PERCENT = 10
   CODEX_AUTH_MODES = %w[ api_key chatgpt_login ].freeze
   THEMES = %w[ light dark ].freeze
   ROLES = %w[ developer product_owner ].freeze
@@ -174,6 +175,7 @@ class User < ApplicationRecord
             numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :profile_location, :profile_company, length: { maximum: 100 }
   validates :profile_website, length: { maximum: 255 }
+  validate :provider_availability_pause_thresholds_valid
   after_initialize :seed_notification_preferences
   after_initialize :seed_ui_preferences
   after_initialize :seed_locale
@@ -349,6 +351,68 @@ class User < ApplicationRecord
     )
 
     update!(dashboard_preferences: updated) if updated != dashboard_preferences
+  end
+
+  def provider_availability_pause_threshold_for(provider)
+    provider = provider.to_s
+    value = provider_availability_pause_thresholds.to_h[provider]
+    return DEFAULT_PROVIDER_AVAILABILITY_PAUSE_THRESHOLD_PERCENT unless value.present?
+
+    value.to_i
+  end
+
+  def provider_availability_pause_enabled?(provider)
+    provider_availability_pause_threshold_for(provider).positive?
+  end
+
+  def provider_availability_recovered?(provider, remaining_percent:)
+    threshold = provider_availability_pause_threshold_for(provider)
+    return true if threshold.zero?
+    return false if remaining_percent.blank?
+
+    remaining_percent.to_f >= provider_availability_recovery_threshold_for(provider)
+  end
+
+  def provider_availability_recovery_threshold_for(provider)
+    [ provider_availability_pause_threshold_for(provider) * 2, provider_availability_pause_threshold_for(provider) + 10 ].max.clamp(0, 100)
+  end
+
+  def provider_availability_override_for(provider)
+    provider_availability_overrides.to_h[provider.to_s]
+  end
+
+  def provider_availability_overridden?(provider, evidence_observed_at: nil)
+    override = provider_availability_override_for(provider)
+    return false unless override.is_a?(Hash)
+
+    override_at = parse_provider_availability_time(override["overridden_at"])
+    return override_at.present? if evidence_observed_at.blank?
+
+    override_at.present? && override_at >= evidence_observed_at
+  end
+
+  def override_provider_availability!(provider, by_user: self)
+    provider = provider.to_s
+    update!(
+      provider_availability_overrides: provider_availability_overrides.to_h.merge(
+        provider => {
+          "overridden_at" => Time.current.iso8601,
+          "overridden_by_user_id" => by_user&.id
+        }.compact
+      )
+    )
+    App::ProviderAvailability.broadcast_changed(user: self, provider: provider)
+  end
+
+  def clear_provider_availability_override!(provider)
+    provider = provider.to_s
+    overrides = provider_availability_overrides.to_h
+    return false unless overrides.key?(provider)
+
+    overrides.delete(provider)
+    update!(provider_availability_overrides: overrides.presence)
+    App::ProviderAvailability.broadcast_changed(user: self, provider: provider)
+    true
   end
 
   def update_dashboard_columns!(subject:, columns:)
@@ -752,5 +816,25 @@ class User < ApplicationRecord
 
   def promote_first_user_to_admin
     self.admin = true if User.count.zero?
+  end
+
+  def provider_availability_pause_thresholds_valid
+    thresholds = provider_availability_pause_thresholds
+    return if thresholds.blank?
+    return errors.add(:provider_availability_pause_thresholds, "must be a hash") unless thresholds.is_a?(Hash)
+
+    thresholds.each do |provider, value|
+      errors.add(:provider_availability_pause_thresholds, "contains unknown provider #{provider}") unless provider.to_s.in?(AGENT_PROVIDERS)
+      integer = Integer(value, exception: false)
+      if integer.nil? || integer < 0 || integer > 100
+        errors.add(:provider_availability_pause_thresholds, "must contain percentages between 0 and 100")
+      end
+    end
+  end
+
+  def parse_provider_availability_time(value)
+    Time.zone.parse(value.to_s)
+  rescue ArgumentError, TypeError
+    nil
   end
 end

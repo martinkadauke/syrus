@@ -107,6 +107,13 @@ export type BootstrapPayload = {
       text: string
       path: string
     } | null
+    actions?: Array<{
+      text: string
+      method: "post" | string
+      path: string
+      params?: Record<string, unknown>
+      destructive?: boolean
+    }>
   }>
   unread_notifications_count: number
   csrf_token: string

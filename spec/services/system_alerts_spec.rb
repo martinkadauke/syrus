@@ -67,7 +67,46 @@ RSpec.describe SystemAlerts do
       expect(alert.title).to include("low")
       expect(alert.message).to include("5h 12% remaining")
       expect(alert.message).to include("weekly 88% remaining")
-      expect(alert.cta).to eq(text: "Open credentials", path: "/credentials")
+      expect(alert.cta).to eq(text: "Open agent settings", path: "/settings/agent")
+      expect(alert.actions).to include(
+        include(text: "Recheck Codex", path: "/api/v1/app/credentials/recheck_provider_availability"),
+        include(text: "Resume Codex anyway", path: "/api/v1/app/credentials/override_provider_availability")
+      )
+    end
+
+    it "keeps low Codex usage banner after later successful Codex evidence" do
+      user = Factories.user
+      ProviderAvailabilityEvidence.record_codex_probe!(
+        user: user,
+        status: "warning",
+        snapshot: {
+          "remaining_percent" => 18.0,
+          "primary" => { "label" => "weekly", "remaining_percent" => 18.0, "used_percent" => 82.0 }
+        },
+        message: "Codex usage has 18% remaining.",
+        observed_at: 2.minutes.ago
+      )
+      user.update!(
+        codex_usage_status: "warning",
+        codex_usage_observed_at: 2.minutes.ago,
+        codex_usage_snapshot: {
+          "remaining_percent" => 18.0,
+          "primary" => { "label" => "weekly", "remaining_percent" => 18.0, "used_percent" => 82.0 }
+        }
+      )
+      ProviderAvailabilityEvidence.record_codex_success!(
+        user: user,
+        source: "chat_turn_success",
+        model: "gpt-5.5",
+        observed_at: 1.minute.ago
+      )
+      allow(DataRootDiskUsage).to receive(:current).and_return(nil)
+
+      alert = described_class.active_for(user: user).first
+
+      expect(alert.id).to eq("codex_usage:#{user.id}")
+      expect(alert.severity).to eq(:warn)
+      expect(alert.message).to include("weekly 18% remaining")
     end
 
     it "uses cached provider availability for Codex usage alerts" do

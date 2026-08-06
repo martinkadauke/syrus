@@ -18,7 +18,11 @@ module SystemAlerts
   #   :info  — blue, "you should know about this"
   SEVERITIES = %i[ alarm warn info ].freeze
 
-  Alert = Data.define(:id, :severity, :title, :message, :action_steps, :cta)
+  Alert = Data.define(:id, :severity, :title, :message, :action_steps, :cta, :actions) do
+    def initialize(id:, severity:, title:, message:, action_steps:, cta: nil, actions: [])
+      super(id: id, severity: severity, title: title, message: message, action_steps: action_steps, cta: cta, actions: actions)
+    end
+  end
 
   def self.active_for(user:)
     out = []
@@ -54,7 +58,8 @@ module SystemAlerts
         "Paste the new token into <a class=\"underline\" href=\"/credentials\">Settings → Credentials</a> and save. " \
           "The banner clears on the next successful API call."
       ],
-      cta: { text: "Update token", path: "/credentials" }
+      cta: { text: "Update token", path: "/credentials" },
+      actions: []
     )
   end
   private_class_method :github_token_blocked
@@ -85,9 +90,25 @@ module SystemAlerts
       message: message,
       action_steps: [
         "Pause or move Codex-backed automation to another provider before starting more work.",
-        "Refresh Credentials after changing the Codex account or plan so Syrus can fetch a new usage snapshot."
+        "Recheck after changing the Codex account or plan so Syrus can fetch a new usage snapshot.",
+        "Override only if you are sure the account has usable Codex quota; Syrus will resume paused Codex work subject to normal admission control."
       ],
-      cta: { text: "Open credentials", path: "/credentials" }
+      cta: { text: "Open agent settings", path: "/settings/agent" },
+      actions: [
+        {
+          text: "Recheck Codex",
+          method: "post",
+          path: "/api/v1/app/credentials/recheck_provider_availability",
+          params: { provider: "codex" }
+        },
+        {
+          text: "Resume Codex anyway",
+          method: "post",
+          path: "/api/v1/app/credentials/override_provider_availability",
+          params: { provider: "codex" },
+          destructive: exhausted
+        }
+      ]
     )
   end
   private_class_method :codex_usage
@@ -168,7 +189,8 @@ module SystemAlerts
       title: title,
       message: message,
       action_steps: action_steps,
-      cta: { text: "Open admin overview", path: "/admin" }
+      cta: { text: "Open admin overview", path: "/admin" },
+      actions: []
     )
   end
   private_class_method :build_disk_alert

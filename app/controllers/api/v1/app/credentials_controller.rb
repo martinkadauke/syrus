@@ -190,6 +190,32 @@ module Api
           render json: credentials_payload(Current.user.reload).merge(message: "API token revoked.")
         end
 
+        def recheck_provider_availability
+          provider = provider_param
+          return unless provider
+
+          result = refresh_provider_availability(provider)
+          ProviderAvailabilityWakeup.call(provider: provider, user: Current.user)
+          render json: credentials_payload(Current.user.reload).merge(
+            provider: provider,
+            availability: ::App::ProviderAvailability.for_user(Current.user.reload, provider, cached: false),
+            message: result&.message.presence || "#{provider.titleize} availability rechecked."
+          )
+        end
+
+        def override_provider_availability
+          provider = provider_param
+          return unless provider
+
+          Current.user.override_provider_availability!(provider, by_user: Current.user)
+          ProviderAvailabilityWakeup.call(provider: provider, user: Current.user)
+          render json: credentials_payload(Current.user.reload).merge(
+            provider: provider,
+            availability: ::App::ProviderAvailability.for_user(Current.user.reload, provider, cached: false),
+            message: "#{provider.titleize} provider availability override enabled."
+          )
+        end
+
         private
 
         def credentials_payload(user)
@@ -197,6 +223,7 @@ module Api
             user: user_json(user),
             credential_status: credential_status_json(user),
             github_rate_limit: github_rate_limit_json(user),
+            provider_availability: ::App::ProviderAvailability.all_for_user(user),
             options: credentials_options(user)
           }
         end
@@ -227,6 +254,10 @@ module Api
             chat_provider: user.chat_provider,
             codex_auth_mode: user.codex_auth_mode,
             agent_max_turns: user.agent_max_turns,
+            provider_availability_pause_thresholds: User::AGENT_PROVIDERS.to_h do |provider|
+              [ provider, user.provider_availability_pause_threshold_for(provider) ]
+            end,
+            provider_availability_overrides: user.provider_availability_overrides.to_h,
             scheduling_paused: user.scheduling_paused,
             auto_approve_mode: user.auto_approve_mode,
             locale: user.locale,
@@ -300,7 +331,25 @@ module Api
                                 :profile_location, :role, :agent_provider, :chat_provider, :claude_oauth_token, :codex_auth_mode,
                                 :codex_api_key, :codex_auth_json, :gemini_api_key, :github_token,
                                 :agent_max_turns, :scheduling_paused, :auto_approve_mode, :locale,
+                                { provider_availability_pause_thresholds: [ :claude, :codex ] },
                                 { notification_preferences: [ :desktop_job_implemented, :desktop_job_failed ] } ])
+        end
+
+        def provider_param
+          provider = params[:provider].to_s
+          return provider if provider.in?(User::AGENT_PROVIDERS)
+
+          render_error("validation_failed", "Unknown agent provider.", status: :unprocessable_content)
+          nil
+        end
+
+        def refresh_provider_availability(provider)
+          if provider == "codex"
+            CodexUsageProbe.refresh_for(user: Current.user, force: true)
+          else
+            ::App::ProviderAvailability.broadcast_changed(user: Current.user, provider: provider)
+            nil
+          end
         end
 
         def blank_write_only_value?(key, value)

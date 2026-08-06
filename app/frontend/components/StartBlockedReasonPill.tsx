@@ -9,6 +9,7 @@ type StartBlockedReason =
   | "job_not_ready_for_execution"
   | "main_branch_broken"
   | "urgent_job_active"
+  | "provider_availability"
 
 const TONES: Record<StartBlockedReason, "amber" | "red" | "gray"> = {
   dependency_failed: "red",
@@ -16,7 +17,8 @@ const TONES: Record<StartBlockedReason, "amber" | "red" | "gray"> = {
   stack_fan_in_base_unavailable: "amber",
   job_not_ready_for_execution: "amber",
   main_branch_broken: "red",
-  urgent_job_active: "gray"
+  urgent_job_active: "gray",
+  provider_availability: "amber"
 }
 
 export function StartBlockedReasonPill({ reason, details }: { reason: string; details?: StartBlockedDetails | null }) {

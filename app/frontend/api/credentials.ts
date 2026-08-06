@@ -1,4 +1,5 @@
 import { deleteJson, getJson, patchJson, postForm, postJson } from "./client"
+import type { ProviderAvailability } from "./providerAvailability"
 
 export type CredentialsUser = {
   id: number
@@ -19,6 +20,8 @@ export type CredentialsUser = {
   chat_provider: string | null
   codex_auth_mode: string
   agent_max_turns: number
+  provider_availability_pause_thresholds: Record<string, number>
+  provider_availability_overrides: Record<string, unknown>
   scheduling_paused: boolean
   auto_approve_mode: string
   locale: string
@@ -80,6 +83,7 @@ export type CredentialsPayload = {
   user: CredentialsUser
   credential_status: CredentialStatus
   github_rate_limit: GithubRateLimit | null
+  provider_availability: Record<string, ProviderAvailability>
   options: CredentialsOptions
   message?: string
   new_api_token?: string
@@ -127,6 +131,7 @@ export type CredentialsInput = {
   gemini_api_key: string
   github_token: string
   agent_max_turns: number
+  provider_availability_pause_thresholds: Record<string, number>
   scheduling_paused: boolean
   auto_approve_mode: string
   locale: string
@@ -148,6 +153,14 @@ export function updateCredentials(values: CredentialsInput) {
   return patchJson<CredentialsPayload>("/api/v1/app/credentials", {
     user: values
   })
+}
+
+export function recheckProviderAvailability(provider: string) {
+  return postJson<CredentialsPayload>("/api/v1/app/credentials/recheck_provider_availability", { provider })
+}
+
+export function overrideProviderAvailability(provider: string) {
+  return postJson<CredentialsPayload>("/api/v1/app/credentials/override_provider_availability", { provider })
 }
 
 // Saves only the GitHub token. The credentials controller updates just the

@@ -83,6 +83,8 @@ module App
       return wrapped.fetch("value") if wrapped.is_a?(Hash) && wrapped.key?("value")
 
       value = yield
+      return value if value.nil?
+
       Rails.cache.write(store_key, { "value" => value }, expires_in: CACHE_TTL)
       value
     rescue StandardError
@@ -159,12 +161,13 @@ module App
         message: transient_message(circuit),
         usage: usage_snapshot,
         evidence: latest_evidence_payload
-      }
+      }.merge(pause_metadata)
     end
 
     def available_status
       usage = usage_snapshot
-      return nil unless usage
+      evidence = latest_evidence_payload
+      return nil if usage.blank? && evidence.blank?
 
       {
         provider: provider,
@@ -177,8 +180,8 @@ module App
         reason: nil,
         message: "#{provider_label} is available.",
         usage: usage,
-        evidence: latest_evidence_payload
-      }
+        evidence: evidence
+      }.merge(pause_metadata)
     end
 
     def rate_limited_status(signal)
@@ -195,7 +198,7 @@ module App
         message: "#{provider_label} is rate-limited. Syrus will treat #{provider_label} as unavailable until a later #{provider_label} run completes without a rate-limit failure.",
         usage: usage_snapshot,
         evidence: latest_evidence_payload
-      }
+      }.merge(pause_metadata)
     end
 
     def usage_limit_status(signal)
@@ -212,7 +215,7 @@ module App
         message: usage_limit_message(signal, retry_after),
         usage: usage_snapshot,
         evidence: latest_evidence_payload(primary: usage_signal_summary(signal))
-      }
+      }.merge(pause_metadata)
     end
 
     def usage_limit_message(signal, retry_after)
@@ -367,12 +370,14 @@ module App
 
       snapshot = user.codex_usage_snapshot || {}
       windows = codex_usage_windows(snapshot)
-      evidence = latest_codex_evidence
-      return if windows.blank? && snapshot["remaining_percent"].blank? && user.codex_usage_status.blank? && evidence.blank?
+      evidence = latest_codex_usage_evidence
+      status = user.codex_usage_status.presence || evidence&.status
+      observed_at = user.codex_usage_observed_at&.iso8601 || evidence&.observed_at&.iso8601
+      return if windows.blank? && snapshot["remaining_percent"].blank? && status.blank? && evidence.blank?
 
       {
-        status: evidence&.status || user.codex_usage_status,
-        observed_at: evidence&.observed_at&.iso8601 || user.codex_usage_observed_at&.iso8601,
+        status: status,
+        observed_at: observed_at,
         remaining_percent: snapshot["remaining_percent"],
         windows: windows,
         evidence: evidence&.summary
@@ -390,6 +395,17 @@ module App
         latest_positive: evidence_summary_if_not_older_than(latest_codex_positive_evidence, current),
         latest_negative: evidence_summary_if_not_older_than(latest_codex_negative_evidence, current)
       }.compact
+    end
+
+    def pause_metadata
+      observed_at = if provider == "codex"
+        latest_codex_evidence&.observed_at || user.codex_usage_observed_at
+      end
+      {
+        pause_threshold_percent: user.provider_availability_pause_threshold_for(provider),
+        pause_enabled: user.provider_availability_pause_enabled?(provider),
+        override_active: user.provider_availability_overridden?(provider, evidence_observed_at: observed_at)
+      }
     end
 
     def evidence_summary_if_not_older_than(evidence, current)
@@ -435,6 +451,12 @@ module App
 
     def latest_codex_negative_evidence
       @latest_codex_negative_evidence ||= latest_displayable_codex_evidence(ProviderAvailabilityEvidence.where(user: user, provider: "codex").negative)
+    end
+
+    def latest_codex_usage_evidence
+      @latest_codex_usage_evidence ||= latest_displayable_codex_evidence(
+        ProviderAvailabilityEvidence.where(user: user, provider: "codex", source: ProviderAvailabilityEvidence::PROBE_SOURCES)
+      )
     end
 
     def latest_displayable_codex_evidence(scope)

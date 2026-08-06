@@ -47,6 +47,8 @@ function makePayload(overrides: {
       chat_provider: null,
       codex_auth_mode: overrides.codex_auth_mode ?? "api_key",
       agent_max_turns: 200,
+      provider_availability_pause_thresholds: { claude: 10, codex: 10 },
+      provider_availability_overrides: {},
       scheduling_paused: false,
       auto_approve_mode: "never",
       locale: "en",
@@ -65,6 +67,7 @@ function makePayload(overrides: {
       ...overrides.credential_status
     },
     github_rate_limit: null,
+    provider_availability: {},
     options: {
       locales: ["en", "de", "la"],
       agent_providers: ["claude", "codex"],

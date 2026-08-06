@@ -8,6 +8,9 @@ export type ProviderAvailability = {
   retry_after: string | null
   reason: string | null
   message: string
+  pause_threshold_percent?: number
+  pause_enabled?: boolean
+  override_active?: boolean
   usage?: {
     status?: string | null
     observed_at?: string | null

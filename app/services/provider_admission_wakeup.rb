@@ -80,7 +80,7 @@ class ProviderAdmissionWakeup
   end
 
   def clear_provider_start_block!(workflow)
-    return unless workflow.artifact("start_blocked_reason").to_s.in?(%w[provider_circuit provider_usage_limit])
+    return unless workflow.artifact("start_blocked_reason").to_s.in?(%w[provider_circuit provider_usage_limit provider_availability])
 
     workflow.update!(
       artifacts: workflow.artifacts.to_h.except(
@@ -88,7 +88,13 @@ class ProviderAdmissionWakeup
         "start_blocked_at",
         "start_blocked_last_seen_at",
         "start_blocked_next_check_at",
-        "start_blocked_details"
+        "start_blocked_details",
+        "pause_reason",
+        "pause_kind",
+        "pause_started_at",
+        "pause_last_seen_at",
+        "pause_next_check_at",
+        "pause_details"
       )
     )
   end

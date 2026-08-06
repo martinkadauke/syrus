@@ -65,6 +65,8 @@ Rails.application.routes.draw do
           post :codex_oauth_start
           post :codex_oauth_exchange
           post :rotate_api_token
+          post :recheck_provider_availability
+          post :override_provider_availability
           delete :revoke_api_token
           resources :documents, only: %i[ index create destroy ], controller: "credentials/documents"
         end

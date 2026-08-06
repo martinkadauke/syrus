@@ -18,9 +18,11 @@ import {
 } from "../components/credentials/CredentialCard"
 import {
   fetchCredentials,
+  overrideProviderAvailability,
   revokeApiToken,
   rotateApiToken,
   savePartialCredentials,
+  recheckProviderAvailability,
   updateCredentials,
   type CredentialsInput,
   type CredentialsPayload
@@ -278,6 +280,15 @@ function CredentialsForm({ payload, onNotice, section }: { payload: CredentialsP
           </Field>
         ) : null}
 
+        {section === "agent" ? (
+          <ProviderAvailabilitySettings
+            onNotice={onNotice}
+            payload={payload}
+            setValues={setValues}
+            values={values}
+          />
+        ) : null}
+
         {section === "preferences" ? (
           <Field label={t('account_settings.language')}>
             <select
@@ -454,14 +465,107 @@ function inputFromPayload(payload: CredentialsPayload): CredentialsInput {
     gemini_api_key: "",
     github_token: "",
     agent_max_turns: payload.user.agent_max_turns,
+    provider_availability_pause_thresholds: payload.user.provider_availability_pause_thresholds || { claude: 10, codex: 10 },
     scheduling_paused: payload.user.scheduling_paused,
     auto_approve_mode: payload.user.auto_approve_mode,
     locale: payload.user.locale
   }
 }
 
+function ProviderAvailabilitySettings({
+  payload,
+  values,
+  setValues,
+  onNotice
+}: {
+  payload: CredentialsPayload
+  values: CredentialsInput
+  setValues: (values: CredentialsInput) => void
+  onNotice: (message: string | null) => void
+}) {
+  const { t } = useT("settings")
+  const queryClient = useQueryClient()
+  const recheck = useMutation({
+    mutationFn: recheckProviderAvailability,
+    onSuccess: (updated) => {
+      cacheCredentials(queryClient, updated)
+      void queryClient.invalidateQueries({ queryKey: ["bootstrap"] })
+      onNotice(updated.message || t("account_settings.provider_availability_rechecked"))
+    }
+  })
+  const override = useMutation({
+    mutationFn: overrideProviderAvailability,
+    onSuccess: (updated) => {
+      cacheCredentials(queryClient, updated)
+      void queryClient.invalidateQueries({ queryKey: ["bootstrap"] })
+      onNotice(updated.message || t("account_settings.provider_availability_overridden"))
+    }
+  })
+
+  return (
+    <div className="space-y-3 rounded border border-gray-200 p-3 dark:border-gray-700">
+      <div>
+        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">{t("account_settings.provider_availability_heading")}</h3>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t("account_settings.provider_availability_desc")}</p>
+      </div>
+      {payload.options.agent_providers.map((provider) => {
+        const availability = payload.provider_availability?.[provider]
+        const threshold = values.provider_availability_pause_thresholds?.[provider] ?? 10
+        return (
+          <div className="grid gap-3 rounded border border-gray-100 p-3 dark:border-gray-800 sm:grid-cols-[1fr_auto] sm:items-center" key={provider}>
+            <div className="min-w-0">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {t("account_settings.provider_availability_threshold", { provider: titleize(provider) })}
+                <input
+                  className={`${inputClass()} mt-2 max-w-32`}
+                  max={100}
+                  min={0}
+                  onChange={(event) => setValues({
+                    ...values,
+                    provider_availability_pause_thresholds: {
+                      ...values.provider_availability_pause_thresholds,
+                      [provider]: Number(event.target.value)
+                    }
+                  })}
+                  type="number"
+                  value={threshold}
+                />
+              </label>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {availability?.usage?.remaining_percent != null
+                  ? t("account_settings.provider_availability_remaining", { percent: Math.round(availability.usage.remaining_percent) })
+                  : t("account_settings.provider_availability_no_usage")}
+                {availability?.override_active ? ` ${t("account_settings.provider_availability_override_active")}` : ""}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="rounded bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                disabled={recheck.isPending}
+                onClick={() => recheck.mutate(provider)}
+                type="button"
+              >
+                {t("account_settings.provider_availability_recheck")}
+              </button>
+              <button
+                className="rounded bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-950/40 dark:text-amber-200"
+                disabled={override.isPending}
+                onClick={() => override.mutate(provider)}
+                type="button"
+              >
+                {t("account_settings.provider_availability_override")}
+              </button>
+            </div>
+          </div>
+        )
+      })}
+      {recheck.isError ? <PanelMessage tone="error">{errorMessage(recheck.error, "Unable to recheck provider availability.")}</PanelMessage> : null}
+      {override.isError ? <PanelMessage tone="error">{errorMessage(override.error, "Unable to override provider availability.")}</PanelMessage> : null}
+    </div>
+  )
+}
+
 function titleize(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (match) => match.toUpperCase())
 }
-
 

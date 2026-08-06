@@ -56,6 +56,51 @@ RSpec.describe StepDispatcher do
       expect(workflow.artifact("start_blocked_next_check_at")).to be_nil
     end
 
+    it "does not create the first Run when provider usage is below the user's provider threshold" do
+      workflow.update!(agent_provider: "codex")
+      job.user.update!(
+        provider_availability_pause_thresholds: { "codex" => 10 },
+        codex_usage_status: "warning",
+        codex_usage_observed_at: Time.current,
+        codex_usage_snapshot: {
+          "remaining_percent" => 9.0,
+          "primary" => {
+            "label" => "weekly",
+            "remaining_percent" => 9.0,
+            "used_percent" => 91.0,
+            "reset_at" => 1.hour.from_now.iso8601
+          }
+        }
+      )
+
+      expect {
+        described_class.start_workflow(workflow)
+      }.not_to change { Run.count }
+
+      expect(workflow.reload.artifact("pause_reason")).to eq(StepDispatcher::PROVIDER_AVAILABILITY_BLOCK_REASON)
+      expect(workflow.artifact("pause_kind")).to eq("provider_availability")
+      expect(workflow.artifact("start_blocked_details")).to include(
+        "provider" => "codex",
+        "threshold_percent" => 10,
+        "remaining_percent" => 9.0
+      )
+      expect(enqueued_jobs.map { |entry| entry[:job] }).to include(WorkflowPhaseAdmissionJob)
+    end
+
+    it "does not provider-pause when the user's provider threshold is zero" do
+      workflow.update!(agent_provider: "codex")
+      job.user.update!(
+        provider_availability_pause_thresholds: { "codex" => 0 },
+        codex_usage_status: "exhausted",
+        codex_usage_observed_at: Time.current,
+        codex_usage_snapshot: { "remaining_percent" => 0.0 }
+      )
+
+      expect {
+        described_class.start_workflow(workflow)
+      }.to change { s1.runs.count }.by(1)
+    end
+
     it "cancels an unstarted workflow when the job closed after workflow creation" do
       job.update_columns(state: "closed", finished_at: Time.current, closure_reason: "operator_cancelled")
 
@@ -398,6 +443,38 @@ RSpec.describe StepDispatcher do
       expect(workflow.artifact("start_blocked_details")).to include(
         "phase_step_id" => s2.id,
         "phase_step_kind" => "summarize"
+      )
+    end
+
+    it "finishes the current step and then pauses before the next step when provider usage is exhausted" do
+      workflow.update!(state: "running", started_at: 1.minute.ago, agent_provider: "codex")
+      s1.update_columns(state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
+      job.user.update!(
+        provider_availability_pause_thresholds: { "codex" => 10 },
+        codex_usage_status: "exhausted",
+        codex_usage_observed_at: Time.current,
+        codex_usage_snapshot: { "remaining_percent" => 0.0 }
+      )
+      allow(App::ProviderAvailability).to receive(:for_user).and_return(
+        {
+          provider: "codex",
+          label: "Codex",
+          state: "exhausted",
+          usage_exhausted: true,
+          retry_after: 1.hour.from_now.iso8601,
+          message: "Codex usage limit has been reached.",
+          usage: { remaining_percent: 0.0, observed_at: Time.current.iso8601 }
+        }
+      )
+
+      expect {
+        described_class.advance_from(s1)
+      }.not_to change { s2.runs.count }
+
+      expect(workflow.reload.artifact("pause_reason")).to eq(StepDispatcher::PROVIDER_AVAILABILITY_BLOCK_REASON)
+      expect(workflow.artifact("start_blocked_details")).to include(
+        "reason" => "provider_usage_exhausted",
+        "phase_step_id" => s2.id
       )
     end
 
