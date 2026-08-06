@@ -1129,7 +1129,7 @@ RSpec.describe "App API dashboard commands", type: :request do
         "visibility" => "when_present",
         "count" => 1
       )
-      expect(folders_by_name.fetch("Inbox")).to include("count" => nil, "attention_preset" => "inbox")
+      expect(folders_by_name.fetch("Inbox")).to include("count" => 1, "attention_preset" => "inbox")
       expect(folders_by_name.fetch("Just failed")).to include(
         "kind" => "builtin",
         "visibility" => "when_present",
@@ -1147,7 +1147,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(folders_by_name.fetch("Running jobs")).to include(
         "kind" => "user_defined",
         "visibility" => "user_defined",
-        "count" => nil,
+        "count" => 0,
         "attention_preset" => nil
       )
     end

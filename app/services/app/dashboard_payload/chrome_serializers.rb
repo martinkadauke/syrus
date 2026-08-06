@@ -99,9 +99,9 @@ module App
 
       def smart_folder_count_needed?(folder)
         return true if active_smart_folder&.id == folder.id
-        return false unless folder.builtin?
+        return true unless folder.builtin?
 
-        folder.visibility == :when_present
+        folder.visibility.in?([ :always, :when_present ])
       end
 
       def smart_folder_counts_cache_key(folders)
