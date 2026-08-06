@@ -149,6 +149,8 @@ If any required preflight grader fails, the chain continues normally to the impl
 
 This trigger kind is infrastructure-facing and not surfaced in the operator Job state machine. It does not produce a PR or appear in the normal Job workflow list.
 
+`main_grader` is exempt from user Job start gates and the global agent-run concurrency deferral that would make the health signal stale. It starts and runs even while another Job in the repository has urgent priority, and its RunJobs use an internal Solid Queue priority ahead of user-facing `urgent` Jobs so queued urgent work cannot delay the main-health check. It is also exempt from the broken-main gate because the workflow is the check that measures main-branch grader health.
+
 **Workspace lifecycle:** Infrastructure workflows (those in `Workflow::INFRASTRUCTURE_TRIGGER_KINDS`) clean their workspace immediately on both success and failure — they do not participate in the normal failed-workflow workspace retention. This is enforced at two layers:
 
 1. The `fail` AASM event in `Workflow` calls `cleanup_workspace!` immediately for infrastructure workflows.

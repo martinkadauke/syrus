@@ -226,6 +226,10 @@ class Run < ApplicationRecord
     Workflow.resume_queue_name(host)
   end
 
+  def solid_queue_priority
+    workflow_template_class.solid_queue_priority(job)
+  end
+
   private
 
   def retried_in_place_after_worker_died?
@@ -370,7 +374,7 @@ class Run < ApplicationRecord
     return if current_workflow_id && current_workflow_id == workflow_id
 
     queue = resume_worker_queue || workflow_template_class.queue_name
-    RunJob.set(queue: queue, priority: job.solid_queue_priority).perform_later(id)
+    RunJob.set(queue: queue, priority: solid_queue_priority).perform_later(id)
   end
 
   def workflow_template_class

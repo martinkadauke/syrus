@@ -16,11 +16,15 @@ module Workflows
   # The anchor Job is closed by the hook in both cases; it is excluded from
   # the operator UI (main_grader kind is filtered out of dashboard queries).
   class MainGrader < Base
+    SOLID_QUEUE_PRIORITY = Job::PRIORITY_TO_SQ.fetch("urgent") - 10
+
     steps :prepare, :grader_fanout, :grader_collect
 
     def self.trigger_kind = "main_grader"
 
     def self.queue_name = :runs
+
+    def self.solid_queue_priority(_job) = SOLID_QUEUE_PRIORITY
 
     def self.after_success(workflow)
       update_grader_health!(workflow, "healthy")
