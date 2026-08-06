@@ -496,6 +496,7 @@ export type ChatPayload = {
     appState: ChatWhiteboardAppState
     files: ChatWhiteboardFiles
   }
+  speech_to_text?: ChatSpeechToTextCapability
   paths: {
     credentials_path: string
     repositories_path: string
@@ -514,6 +515,8 @@ export type ChatPayload = {
     app_bookmarks_path: string
     app_attachments_path: string
     app_video_walkthroughs_path: string
+    app_speech_to_text_batch_path?: string
+    app_speech_to_text_stream_path?: string
     app_whiteboard_path: string
     app_scratchpad_reorder_path: string
     app_cancel_coding_checkout_path?: string
@@ -529,6 +532,19 @@ export type ChatPayload = {
   coding_mode_enabled: boolean
   local_mode_enabled: boolean
   local_tunnel_connected: boolean
+}
+
+export type ChatSpeechToTextCapability = {
+  enabled: boolean
+  backend?: {
+    configured: boolean
+    unavailable_reason?: string
+  }
+  modes: {
+    backend_streaming: { available: boolean; unavailable_reason?: string }
+    backend_batch: { available: boolean; unavailable_reason?: string }
+    browser: { available: boolean }
+  }
 }
 
 export type ChatMessagesPayload = {
