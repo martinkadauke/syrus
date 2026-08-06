@@ -20,11 +20,11 @@ class WorkflowWorkspacePruneJob < ApplicationJob
 
   # Recurring (no args): the coordinator runs the cluster-wide DB/branch and
   # chat sweeps, then fans the local-disk filesystem sweep out to every live
-  # worker — each worker's workspaces live on its own local disk, so a single
-  # pod can't sweep them all. `mode == "filesystem"` is the per-worker leg,
-  # enqueued to that pod's resume queue (see fan_out_filesystem_prune). Passing
-  # an arg also bypasses SkipIfPending's no-arg dedup, so the fan-out isn't
-  # collapsed into one.
+  # worker data root — each storage-affinity group may have its own local disk,
+  # so a single pod can't sweep them all. `mode == "filesystem"` is the
+  # per-storage leg, enqueued to that storage root's resume queue (see
+  # fan_out_filesystem_prune). Passing an arg also bypasses SkipIfPending's
+  # no-arg dedup, so the fan-out isn't collapsed into one.
   def perform(mode = nil)
     if mode == "filesystem"
       filesystem_sweep
@@ -39,17 +39,27 @@ class WorkflowWorkspacePruneJob < ApplicationJob
   private
 
   def fan_out_filesystem_prune
-    hostnames = InstanceVersion.fresh.where(role: "worker").distinct.pluck(:hostname)
+    resume_queues = live_resume_queues
 
     # No tracked worker pods (single-host / dev): sweep the local disk directly.
-    if hostnames.empty?
+    if resume_queues.empty?
       filesystem_sweep
       return
     end
 
-    hostnames.each do |host|
-      self.class.set(queue: Workflow.resume_queue_name(host)).perform_later("filesystem")
+    resume_queues.each do |queue|
+      self.class.set(queue: queue).perform_later("filesystem")
     end
+  end
+
+  def live_resume_queues
+    SolidQueue::Process.where.not(last_heartbeat_at: nil).flat_map do |process|
+      next [] unless process.last_heartbeat_at >= InstanceVersion::HEARTBEAT_STALE_THRESHOLD.ago
+
+      InstanceVersion.queue_names(process.metadata&.dig("queues")).select { |queue| queue.start_with?("resume-") }
+    end.uniq
+  rescue NameError, ActiveRecord::StatementInvalid
+    []
   end
 
   def db_sweep

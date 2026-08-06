@@ -498,25 +498,29 @@ class Workflow < ApplicationRecord
     end.freeze
   end
 
-  # Per-worker SolidQueue queue that only the pod with this hostname consumes
-  # (declared in config/queue.yml). Used to route a "Retry from failed step"
-  # resume back to the worker that holds this Job's single on-disk workspace
-  # (workspaces are per-Job local disk under multi-worker). The format must
-  # match the queue.yml entry.
-  def self.resume_queue_name(hostname)
-    "resume-#{hostname}"
+  # Per-storage SolidQueue queue that only workers sharing the same durable
+  # data root consume (declared in config/queue*.yml). Used to route "Retry
+  # from failed step" and post-crash re-enqueues back to a worker that can see
+  # the workflow's on-disk workspace. In node-local hostPath deployments this
+  # is effectively node affinity; in shared-PVC deployments all workers share
+  # one key and can safely share one resume queue.
+  def self.resume_queue_name(storage_key)
+    "resume-#{storage_key}"
   end
 
-  # Record the worker pod that ran this workflow so a later reopen can be
-  # routed back to it (the workspace lives on that pod's local disk). Uses the
-  # same hostname source InstanceVersion records (SyrusVersion.hostname), so the
-  # liveness check lines up. Cheap update_column — no callbacks/validation.
-  def record_worker_hostname!
+  # Record the worker pod for diagnostics and the durable storage key for
+  # resume routing. Cheap update_columns — no callbacks/validation.
+  def record_worker_identity!
     host = SyrusVersion.hostname
-    return if host.blank? || worker_hostname == host
+    storage_key = WorkerStorageIdentity.queue_key
+    updates = {}
+    updates[:worker_hostname] = host if host.present? && worker_hostname != host
+    updates[:worker_storage_key] = storage_key if storage_key.present? && worker_storage_key != storage_key
+    return if updates.empty?
 
-    update_column(:worker_hostname, host)
+    update_columns(updates)
   end
+  alias_method :record_worker_hostname!, :record_worker_identity!
 
   def landing_workflow?
     LANDING_TRIGGER_KINDS.include?(trigger_kind)

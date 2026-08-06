@@ -397,9 +397,9 @@ RSpec.describe "Work engine reconciler chaos simulation" do
 
     def topology_queued_dead_resume_queue(workflow, step)
       run = queued_run_on_step!(workflow, step)
-      worker_host = "chaos-topology-dead-worker-#{case_number}-#{workflow.id}"
-      workflow.update_columns(worker_hostname: worker_host)
-      solid_queue_run_job(run, ready: true, queue_name: "resume-#{worker_host}")
+      storage_key = "chaos-topology-dead-storage-#{case_number}-#{workflow.id}"
+      workflow.update_columns(worker_storage_key: storage_key)
+      solid_queue_run_job(run, ready: true, queue_name: "resume-#{storage_key}")
       expectation(
         "topology queued run on dead resume queue",
         target: { workflow_id: workflow.id },
@@ -611,10 +611,10 @@ RSpec.describe "Work engine reconciler chaos simulation" do
 
     def queued_dead_resume_queue
       _job, workflow, step, run = graph
-      worker_host = "chaos-dead-worker-#{case_number}"
+      storage_key = "chaos-dead-storage-#{case_number}"
       queued_run!(workflow, step, run)
-      workflow.update_columns(worker_hostname: worker_host)
-      solid_queue_run_job(run, ready: true, queue_name: "resume-#{worker_host}")
+      workflow.update_columns(worker_storage_key: storage_key)
+      solid_queue_run_job(run, ready: true, queue_name: "resume-#{storage_key}")
 
       expectation(
         "queued run on dead resume queue",
@@ -626,10 +626,10 @@ RSpec.describe "Work engine reconciler chaos simulation" do
 
     def queued_with_healthy_queue_job_beside_dead_resume_job
       _job, workflow, step, run = graph
-      worker_host = "chaos-dead-worker-#{case_number}"
+      storage_key = "chaos-dead-storage-#{case_number}"
       queued_run!(workflow, step, run)
-      workflow.update_columns(worker_hostname: worker_host)
-      solid_queue_run_job(run, ready: true, queue_name: "resume-#{worker_host}")
+      workflow.update_columns(worker_storage_key: storage_key)
+      solid_queue_run_job(run, ready: true, queue_name: "resume-#{storage_key}")
       solid_queue_run_job(run, ready: true, queue_name: "runs")
 
       expectation(

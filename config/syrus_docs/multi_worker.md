@@ -15,23 +15,23 @@ queues across two worker configs and select one per pod with the
 
 | Config | Queues | Where |
 | --- | --- | --- |
-| `config/queue.home.yml` | `chat`, `default`, `videos` (+ its `resume-<host>`) | one pod, on the node holding the search PVC / with the web pods |
-| `config/queue.compute.yml` | `runs`, `merges` (+ its `resume-<host>`) | one pod per worker node; local disk, no search mount |
+| `config/queue.home.yml` | `chat`, `videos`, `control_plane`, `polling`, `indexing`, `cleanup`, `low_priority_maintenance` (+ its `resume-<worker-storage-key>`) | one pod, on the node holding the search PVC / with the web pods |
+| `config/queue.compute.yml` | `runs`, `merges` (+ its `resume-<worker-storage-key>`) | one pod per worker node; local disk, no search mount |
 
 - **The home worker** runs everything bound to the single-node search index or
-  co-located with it: `default` (Index\*Job = search **writes**, pollers,
-  reapers, broadcasts), `chat` (search **reads** via the `search_chats` MCP
-  tool), and `videos`. It consumes `default`, so it is the tier that
-  **schedules recurring tasks** — leave `SOLID_QUEUE_SKIP_RECURRING` unset here.
+  co-located with it: `control_plane`, `polling`, `indexing` (search
+  **writes**), `cleanup`, `low_priority_maintenance`, `chat` (search **reads**
+  via the `search_chats` MCP tool), and `videos`. It is the tier that schedules
+  recurring tasks — leave `SOLID_QUEUE_SKIP_RECURRING` unset here.
 - **The compute worker** runs the heavy, search-free queues — `runs`
   (implementation, response, grader, and `main_grader` RunJobs) and `merges`
-  (landing / rebase) — which enqueue their search updates onto `default` rather
+  (landing / rebase) — which enqueue their search updates onto `indexing` rather
   than touching the index directly. Spread it one-per-node on fast local disk.
   Set `SOLID_QUEUE_SKIP_RECURRING=1` so only the home worker schedules recurring
   jobs.
-- Both configs consume this pod's own `resume-<hostname>` queue, so
-  retry-from-failed-step affinity (below) works on whichever pod holds the
-  workspace.
+- Both configs consume the current data root's `resume-<worker-storage-key>`
+  queue, so retry-from-failed-step affinity (below) works on whichever worker
+  can see the workspace.
 
 **The home worker MUST be a single pod** (`replicas: 1`, `strategy: Recreate`).
 Chat workspaces (`ChatWorkspace`, at
@@ -42,8 +42,8 @@ disk, `ensure_coding_checkout!` returns that local checkout instead of re-clonin
 on another pod. A chat session's turns therefore MUST all land on the same pod,
 which holds only because exactly one pod consumes `chat`. Never put `chat` on
 the compute DaemonSet, and never scale the home worker past one replica. (If the
-chat tier ever needs to scale, chat first needs its own per-pod affinity — a
-`resume-<hostname>`-style chat queue keyed off `chat_sessions.workspace_path`.)
+chat tier ever needs to scale, chat first needs its own storage-affinity queue
+keyed off `chat_sessions.workspace_path` or equivalent durable workspace owner.)
 Coding-mode **handoff** is exempt: `submit_coding_changes` captures the current
 HEAD to an immutable handoff branch after confirmation, and
 `complete_implement_step` uses the pushed Job branch, so the resulting
@@ -70,48 +70,50 @@ agent (`:runs`-queue) Runs are already executing across all pods, a new one is
 deferred and re-enqueued. Main-branch grader Runs are on `:runs` and are counted
 too; landing/merge Runs are not counted. See `AppSetting` reference.
 
-## Retry-from-failed-step worker affinity
+## Retry-from-failed-step storage affinity
 
-Each Job keeps at most one on-disk workspace (see the workspace-per-Job change).
-On local-disk-per-worker deployments that workspace lives on **one** pod, so a
-"Retry from failed step" (`Workflow#reopen`) must resume on that pod.
+Each Job keeps at most one on-disk workspace. On local-disk-per-worker
+deployments that workspace lives on one worker data root, so a "Retry from
+failed step" (`Workflow#reopen`) must resume on a worker that can see that same
+data root.
 
-- When a `RunJob` runs a workflow it records the pod in `workflows.worker_hostname`
-  (`SyrusVersion.hostname` — the same value `InstanceVersion` heartbeats).
-- Each worker consumes its own per-pod queue `resume-<hostname>` (declared in
-  `config/queue.yml`, alongside `runs`).
+- On first boot against a data root, `WorkerStorageIdentity` creates a durable
+  id file at `$SYRUS_DATA_ROOT/.syrus-worker-storage-id` (or `~/.syrus` when
+  `SYRUS_DATA_ROOT` is unset).
+- Each worker consumes `resume-<worker-storage-key>` for that durable id
+  (declared in `config/queue*.yml`).
+- When a `RunJob` runs a workflow it records both diagnostics hostname
+  (`workflows.worker_hostname`) and routing key
+  (`workflows.worker_storage_key`).
 - On reopen / post-crash re-enqueue, `Run#enqueue_run_job` routes to
-  `resume-<hostname>` **only when that pod is still alive**
-  (`InstanceVersion.worker_live?`, 2-minute heartbeat window). If the pod is
-  gone — deploy, eviction, restart with a new pod name — its local workspace is
-  gone too, so routing falls back to the normal `runs` queue and any worker
-  re-clones a fresh workspace (a normal "start over").
+  `resume-<worker-storage-key>` only when a fresh Solid Queue worker advertises
+  that queue. If no worker currently consumes it — node gone, storage gone, or
+  old deployment without the queue — routing falls back to the normal workflow
+  queue and recovery relies on durable transcript rehydration or fresh retry.
 
-This needs no configuration: on a single worker it routes reopens back to that
-worker; in local/dev (no `InstanceVersion` rows) it degrades to the normal
-queue. It becomes load-bearing once you run multiple workers on local disk.
+This needs no deployment-specific node naming. With node-local `hostPath`, each
+node gets a different storage key that survives pod replacement on that node.
+With a shared RWX volume, all workers see the same id and safely share one
+resume queue. With per-pod ephemeral storage, each pod gets its own id and
+affinity lasts only as long as that storage does.
 
-Note: affinity is keyed on the **pod hostname**. A pod restarting on the same
-node with a `hostPath` workspace volume gets a new hostname, so a pending reopen
-degrades to a fresh clone even though the files are still on the node — correct,
-just not optimal. Keying on node name would tighten that later.
+`worker_hostname` remains useful for diagnostics, process ownership, and worker
+health correlation, but it is not the resume-routing key.
 
 ## Per-worker workspace pruning
 
-A workspace lives on the local disk of the pod that ran the workflow, so one pod
-can't clean another's. Two safeguards make pruning worker-local:
+A workspace lives on the data root that ran the workflow, so a worker on a
+different local disk can't clean it. Two safeguards make pruning storage-local:
 
-- `WorkflowWorkspace.cleanup_for` skips a workflow only when a **live** worker
-  pod (`InstanceVersion.worker_live?`) still owns it, so a prune pass can't
-  false-stamp `cleaned_up_at` on a workspace that's still on another pod. It
-  cleans normally when the recorded host is this pod, is blank (legacy /
-  single-worker), or is no longer a live worker — the last case covers
-  single-host Docker, where a backend update recreates the worker container with
-  a new hostname but the shared volume (and its leftover workspaces) persist.
+- `WorkflowWorkspace.cleanup_for` skips a workflow only when another live
+  storage-affinity queue still owns it, so a prune pass can't false-stamp
+  `cleaned_up_at` on a workspace that's still on another data root. It cleans
+  normally when the recorded storage key is this data root, is blank (legacy /
+  single-worker), or has no live queue consumer.
 - `WorkflowWorkspacePruneJob` (recurring) is a coordinator: it runs the
   cluster-wide DB/branch and chat sweeps once, then **fans the local filesystem
-  sweep out to every live worker** via each pod's `resume-<hostname>` queue. With
-  no tracked workers (single-host / dev) it sweeps the local disk directly.
+  sweep out to every live storage-affinity queue**. With no tracked resume
+  queues (single-host / dev) it sweeps the local disk directly.
 
 ## Per-worker disk health
 

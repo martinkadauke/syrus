@@ -80,6 +80,19 @@ RSpec.describe WorkEngine::Reconciler do
     queue_job
   end
 
+  def live_worker_queue!(queue_name, hostname: "worker-live")
+    ensure_solid_queue_test_tables!
+    SolidQueue::Process.create!(
+      hostname: hostname,
+      kind: "worker",
+      last_heartbeat_at: Time.current,
+      metadata: { "queues" => [ queue_name, "runs" ] },
+      name: "#{hostname}:1",
+      pid: 321,
+      created_at: Time.current
+    )
+  end
+
   def enable_unified_work_engine_reconciler!
     Feature.find_or_create_by!(slug: WorkEngine::Gate::FEATURE_SLUG) do |feature|
       feature.category = "Operations"
@@ -157,10 +170,10 @@ RSpec.describe WorkEngine::Reconciler do
     expect(plan(result, :reenqueue_run)).to have_attributes(target_id: retry_run.id)
   end
 
-  it "classifies a queued Run ready on a dead per-worker resume queue" do
+  it "classifies a queued Run ready on a dead storage-affinity resume queue" do
     run.update_columns(state: "queued", created_at: 5.minutes.ago, updated_at: 5.minutes.ago)
-    workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_hostname: "syrus-worker-dead")
-    solid_queue_run_job(run, ready: true, queue_name: "resume-syrus-worker-dead", created_at: 5.minutes.ago)
+    workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_storage_key: "storage-dead")
+    solid_queue_run_job(run, ready: true, queue_name: "resume-storage-dead", created_at: 5.minutes.ago)
 
     result = reconcile(run_id: run.id)
     issue = kind(result, :queued_run_on_dead_resume_queue)
@@ -204,8 +217,8 @@ RSpec.describe WorkEngine::Reconciler do
 
   it "does not repair a queued Run when a healthy queue job exists beside stale failed queue jobs" do
     run.update_columns(state: "queued", created_at: 5.minutes.ago, updated_at: 5.minutes.ago)
-    workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_hostname: "syrus-worker-dead")
-    solid_queue_run_job(run, ready: true, queue_name: "resume-syrus-worker-dead", created_at: 5.minutes.ago)
+    workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_storage_key: "storage-dead")
+    solid_queue_run_job(run, ready: true, queue_name: "resume-storage-dead", created_at: 5.minutes.ago)
     solid_queue_run_job(run, ready: true, queue_name: "runs", created_at: 4.minutes.ago)
 
     result = reconcile(run_id: run.id)
@@ -546,8 +559,8 @@ RSpec.describe WorkEngine::Reconciler do
 
   it "does not re-enqueue a queued Run while a normal-queue RunJob is scheduled for retry" do
     run.update_columns(state: "queued", created_at: 5.minutes.ago, updated_at: 5.minutes.ago)
-    workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_hostname: "syrus-worker-dead")
-    solid_queue_run_job(run, ready: true, queue_name: "resume-syrus-worker-dead", created_at: 5.minutes.ago)
+    workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_storage_key: "storage-dead")
+    solid_queue_run_job(run, ready: true, queue_name: "resume-storage-dead", created_at: 5.minutes.ago)
     scheduled = solid_queue_run_job(run, run_at: 15.seconds.from_now, queue_name: "runs", created_at: Time.current)
 
     result = reconcile(run_id: run.id)
@@ -1298,14 +1311,8 @@ RSpec.describe WorkEngine::Reconciler do
   end
 
   it "does not report missing workspace when a live remote worker owns the workflow" do
-    InstanceVersion.create!(
-      hostname: "syrus-worker-remote",
-      role: "worker",
-      version: "test-sha",
-      started_at: Time.current,
-      last_heartbeat_at: Time.current
-    )
-    workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_hostname: "syrus-worker-remote")
+    live_worker_queue!("resume-storage-remote", hostname: "syrus-worker-remote")
+    workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_hostname: "syrus-worker-remote", worker_storage_key: "storage-remote")
     step.update_columns(state: "running", started_at: 5.minutes.ago)
     run.update_columns(state: "running", started_at: 5.minutes.ago, last_heartbeat_at: 5.minutes.ago)
     allow(File).to receive(:directory?).and_call_original
@@ -1317,7 +1324,8 @@ RSpec.describe WorkEngine::Reconciler do
     expect(result.snapshot.workspaces[workflow.id]).to include(
       exists: true,
       inspected: false,
-      worker_hostname: "syrus-worker-remote"
+      worker_hostname: "syrus-worker-remote",
+      worker_storage_key: "storage-remote"
     )
   end
 

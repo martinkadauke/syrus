@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_06_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_06_193000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -1892,6 +1892,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_06_140000) do
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
     t.string "worker_hostname"
+    t.string "worker_storage_key"
     t.index ["cleaned_up_at"], name: "index_workflows_on_cleaned_up_at"
     t.index ["job_id", "created_at"], name: "index_workflows_on_job_id_and_created_at"
     t.index ["job_id", "finished_at", "id"], name: "idx_workflows_job_finished_latest"
@@ -1900,6 +1901,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_06_140000) do
     t.index ["state", "created_at", "id"], name: "idx_workflows_state_created_at"
     t.index ["state", "started_at", "id"], name: "idx_workflows_state_started_at"
     t.index ["user_id"], name: "index_workflows_on_user_id"
+    t.index ["worker_storage_key"], name: "index_workflows_on_worker_storage_key"
   end
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"

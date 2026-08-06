@@ -42,6 +42,12 @@ class WorkflowWorkspace
   end
 
   def self.remote_live_worker_workspace?(workflow)
+    storage_key = workflow.worker_storage_key.presence
+    if storage_key.present?
+      current_key = WorkerStorageIdentity.queue_key
+      return storage_key != current_key && InstanceVersion.worker_queue_live?(Workflow.resume_queue_name(storage_key))
+    end
+
     host = workflow.worker_hostname
     host.present? && host != SyrusVersion.hostname && InstanceVersion.worker_live?(host)
   end
@@ -107,23 +113,22 @@ class WorkflowWorkspace
   # remove the directory (e.g. permissions), we log a warning and
   # leave `cleaned_up_at` nil so WorkflowWorkspacePruneJob retries
   # rather than treating a still-present dir as already gone.
-  # A workspace lives on the local disk of the worker that ran the workflow.
-  # Skip cleaning it here ONLY when another *live* worker pod owns it — under
-  # local-disk multi-worker its disk is unreachable from here, and cleaning
-  # would falsely stamp cleaned_up_at while the real workspace persists on the
-  # owning pod. Everything else is cleanable here:
-  #   - no recorded host (legacy / not stamped),
-  #   - it ran on this host,
-  #   - the recorded host is not a live worker (single-host Docker where the
-  #     container was recreated with a new hostname but the shared volume — and
-  #     the workspace — persist; or a dead pod whose disk is already gone).
+  # A workspace lives on the data root of the worker that ran the workflow.
+  # Skip cleaning it here ONLY when another *live* worker data root owns it —
+  # under local-disk multi-worker its disk is unreachable from here, and
+  # cleaning would falsely stamp cleaned_up_at while the real workspace
+  # persists on the owning root. Everything else is cleanable here:
+  #   - no recorded storage key/host (legacy / not stamped),
+  #   - it ran on this storage root,
+  #   - the recorded storage root is not live (pod/node gone or old hostname
+  #     without a live worker).
   def self.cleanable_here?(workflow)
     !remote_live_worker_workspace?(workflow)
   end
 
   def self.cleanup_for(workflow)
     unless cleanable_here?(workflow)
-      Rails.logger.debug("[WorkflowWorkspace] skip cleanup for Workflow ##{workflow.id}: ran on #{workflow.worker_hostname}, not #{SyrusVersion.hostname}")
+      Rails.logger.debug("[WorkflowWorkspace] skip cleanup for Workflow ##{workflow.id}: storage_key=#{workflow.worker_storage_key} host=#{workflow.worker_hostname}")
       return
     end
 

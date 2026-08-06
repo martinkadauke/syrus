@@ -242,7 +242,7 @@ module WorkEngine
             safe_to_auto_repair: workflow&.running? || workflow&.queued?,
             recommended_repair_action: "reenqueue_run",
             evidence: run_evidence(run).merge(solid_queue: sq, solid_queue_state: "dead_resume_queue"),
-            explanation: "Run ##{run.id} is queued on a per-worker resume queue whose worker is no longer live."
+            explanation: "Run ##{run.id} is queued on a storage-affinity resume queue with no live worker."
           )
         elsif sqs.none? { |sq| queue_job_can_progress?(sq) } && (sq = sqs.find { |candidate| candidate[:failed] })
           issue(
@@ -775,7 +775,8 @@ module WorkEngine
       workflows.select { |workflow| workflow.running? || workflow.retry_available? }.filter_map do |workflow|
         next if workflow.job&.closed?
         next if WorkflowWorkspace.remote_live_worker_workspace?(workflow)
-        next if workflow.worker_hostname.present? && !InstanceVersion.worker_live?(workflow.worker_hostname)
+        next if workflow.worker_storage_key.present? && !InstanceVersion.worker_queue_live?(Workflow.resume_queue_name(workflow.worker_storage_key))
+        next if workflow.worker_storage_key.blank? && workflow.worker_hostname.present? && !InstanceVersion.worker_live?(workflow.worker_hostname)
 
         path = WorkflowWorkspace.path_for(workflow)
         next if File.directory?(path)
@@ -787,7 +788,11 @@ module WorkEngine
           affected_ids: ids_for(workflow),
           safe_to_auto_repair: false,
           recommended_repair_action: "start_over_with_fresh_workflow",
-          evidence: workflow_evidence(workflow).merge(workspace_path: path.to_s, worker_hostname: workflow.worker_hostname),
+          evidence: workflow_evidence(workflow).merge(
+            workspace_path: path.to_s,
+            worker_hostname: workflow.worker_hostname,
+            worker_storage_key: workflow.worker_storage_key
+          ),
           explanation: "Workflow ##{workflow.id} needs its workspace, but the directory is not present on the inspected worker."
         )
       end
@@ -1086,7 +1091,7 @@ module WorkEngine
       queue_name = queue_name.to_s
       return false unless queue_name.start_with?("resume-")
 
-      !InstanceVersion.worker_live?(queue_name.delete_prefix("resume-"))
+      !InstanceVersion.worker_queue_live?(queue_name)
     end
 
     def workspace_snapshot_for(workflow)
@@ -1096,11 +1101,18 @@ module WorkEngine
           path: path.to_s,
           exists: true,
           inspected: false,
-          worker_hostname: workflow.worker_hostname
+          worker_hostname: workflow.worker_hostname,
+          worker_storage_key: workflow.worker_storage_key
         }
       end
 
-      { path: path.to_s, exists: File.directory?(path), inspected: true, worker_hostname: workflow.worker_hostname }
+      {
+        path: path.to_s,
+        exists: File.directory?(path),
+        inspected: true,
+        worker_hostname: workflow.worker_hostname,
+        worker_storage_key: workflow.worker_storage_key
+      }
     end
 
     def solid_queue_process_live?(process_id)
@@ -1274,7 +1286,8 @@ module WorkEngine
         job_state: workflow.job.state,
         created_at: workflow.created_at&.iso8601,
         started_at: workflow.started_at&.iso8601,
-        worker_hostname: workflow.worker_hostname
+        worker_hostname: workflow.worker_hostname,
+        worker_storage_key: workflow.worker_storage_key
       }
     end
 

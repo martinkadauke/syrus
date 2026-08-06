@@ -271,13 +271,21 @@ RSpec.describe "App API job run commands", type: :request do
 
   it "routes DiagnoseRunJob to the owning worker's resume queue when the worker is live" do
     run = job.initial_run
-    run.workflow.update_column(:worker_hostname, "syrus-worker-compute")
-    InstanceVersion.create!(hostname: "syrus-worker-compute", role: "worker", version: "test-sha",
-                            started_at: Time.current, last_heartbeat_at: Time.current)
+    run.workflow.update_column(:worker_storage_key, "storage-compute")
+    ensure_solid_queue_test_tables!
+    SolidQueue::Process.create!(
+      hostname: "syrus-worker-compute",
+      kind: "worker",
+      last_heartbeat_at: Time.current,
+      metadata: { "queues" => [ "resume-storage-compute", "runs" ] },
+      name: "syrus-worker-compute:1",
+      pid: 123,
+      created_at: Time.current
+    )
 
     expect {
       post app_job_path("/runs/#{run.id}/diagnose"), as: :json
-    }.to have_enqueued_job(DiagnoseRunJob).with(run.id).on_queue("resume-syrus-worker-compute")
+    }.to have_enqueued_job(DiagnoseRunJob).with(run.id).on_queue("resume-storage-compute")
 
     expect(response).to have_http_status(:ok)
   end

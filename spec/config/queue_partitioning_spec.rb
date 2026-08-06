@@ -3,7 +3,6 @@
 require "rails_helper"
 require "erb"
 require "yaml"
-require "socket"
 
 # The multi-node deployment splits queues across two worker configs selected per
 # pod via SOLID_QUEUE_CONFIG, while single-host / Compose keeps running the full
@@ -13,7 +12,7 @@ require "socket"
 #                     heavy/search queues partitioned (no queue orphaned, none
 #                     double-run across the two tiers).
 #   - Resume affinity: every worker config must consume this pod's own
-#                     resume-<hostname> queue, matching Workflow.resume_queue_name.
+#                     resume-<worker-storage-key> queue.
 RSpec.describe "queue partitioning" do
   ROOT = Rails.root
 
@@ -117,9 +116,9 @@ RSpec.describe "queue partitioning" do
     expect((home | compute)).to match_array(APP_QUEUES)
   end
 
-  it "gives every worker config this pod's own resume-<hostname> queue" do
-    expected = Workflow.resume_queue_name(Socket.gethostname)
-    expect(expected).to eq("resume-#{Socket.gethostname}")
+  it "gives every worker config this data root's resume queue" do
+    expected = WorkerStorageIdentity.queue_name
+    expect(expected).to start_with("resume-")
 
     %w[config/queue.yml config/queue.home.yml config/queue.compute.yml].each do |config|
       resume = queues_for(config)[:resume].uniq

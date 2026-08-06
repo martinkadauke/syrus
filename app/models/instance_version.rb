@@ -36,6 +36,27 @@ class InstanceVersion < ApplicationRecord
     fresh.where(hostname: hostname, role: "worker").exists?
   end
 
+  def self.worker_queue_live?(queue_name)
+    return false if queue_name.blank?
+
+    SolidQueue::Process.where.not(last_heartbeat_at: nil).any? do |process|
+      next false unless process.last_heartbeat_at >= HEARTBEAT_STALE_THRESHOLD.ago
+
+      queue_names(process.metadata&.dig("queues")).include?(queue_name.to_s)
+    end
+  rescue NameError, ActiveRecord::StatementInvalid
+    false
+  end
+
+  def self.queue_names(raw)
+    case raw
+    when Array
+      raw.flat_map { |entry| queue_names(entry) }
+    else
+      raw.to_s.split(/[,\s]+/)
+    end.compact_blank
+  end
+
   # ----- per-pod SYRUS_DATA_ROOT usage --------------------------------------
   # Stamped by the heartbeat on worker pods (InstanceVersionSupervisor). Under
   # local-disk multi-worker each pod fills independently, so disk health is

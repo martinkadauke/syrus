@@ -102,10 +102,12 @@ class DiagnoseRunJob < ApplicationJob
     # its local disk. If the recorded owning worker is dead, the workspace may
     # likewise be unavailable from this process. Leave filesystem/process
     # signals nil rather than reporting a false missing workspace.
+    owning_storage_queue = Workflow.resume_queue_name(workflow.worker_storage_key) if workflow.worker_storage_key.present?
     owning_host = workflow.worker_hostname
     if WorkflowWorkspace.remote_live_worker_workspace?(workflow) ||
-       (owning_host.present? && !InstanceVersion.worker_live?(owning_host))
-      Rails.logger.debug("[DiagnoseRunJob] Run ##{run.id}: workflow workspace owned by #{workflow.worker_hostname} — filesystem signals unavailable")
+       (owning_storage_queue.present? && !InstanceVersion.worker_queue_live?(owning_storage_queue)) ||
+       (owning_storage_queue.blank? && owning_host.present? && !InstanceVersion.worker_live?(owning_host))
+      Rails.logger.debug("[DiagnoseRunJob] Run ##{run.id}: workflow workspace owned by storage=#{workflow.worker_storage_key} host=#{workflow.worker_hostname} — filesystem signals unavailable")
       return
     end
 

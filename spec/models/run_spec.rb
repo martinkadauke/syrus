@@ -490,6 +490,19 @@ RSpec.describe Run do
                               started_at: Time.current, last_heartbeat_at: Time.current)
     end
 
+    def live_worker_queue!(queue_name, hostname: "syrus-worker-1")
+      ensure_solid_queue_test_tables!
+      SolidQueue::Process.create!(
+        hostname: hostname,
+        kind: "worker",
+        last_heartbeat_at: Time.current,
+        metadata: { "queues" => [ queue_name, "runs" ] },
+        name: "#{hostname}:1",
+        pid: 123,
+        created_at: Time.current
+      )
+    end
+
     it "uses the normal :runs queue when no worker hostname is recorded" do
       run  # force Job/Run creation before clearing so factory noise is excluded
       clear_enqueued_jobs
@@ -504,6 +517,14 @@ RSpec.describe Run do
       expect { run.reenqueue! }.to have_enqueued_job(RunJob).on_queue("resume-syrus-worker-1")
     end
 
+    it "routes to the storage-affinity resume queue when it has a live worker" do
+      workflow.update_column(:worker_storage_key, "storage-a")
+      live_worker_queue!("resume-storage-a")
+
+      clear_enqueued_jobs
+      expect { run.reenqueue! }.to have_enqueued_job(RunJob).on_queue("resume-storage-a")
+    end
+
     it "falls back to :runs when the recorded worker is gone (no fresh instance)" do
       workflow.update_column(:worker_hostname, "syrus-worker-dead")
 
@@ -513,15 +534,17 @@ RSpec.describe Run do
   end
 
   describe "Workflow#record_worker_hostname!" do
-    it "stamps the current worker hostname exactly once" do
+    it "stamps the current worker hostname and storage key" do
       workflow = job.initial_run.workflow
       allow(SyrusVersion).to receive(:hostname).and_return("syrus-worker-7")
+      allow(WorkerStorageIdentity).to receive(:queue_key).and_return("storage-7")
 
       workflow.record_worker_hostname!
       expect(workflow.reload.worker_hostname).to eq("syrus-worker-7")
+      expect(workflow.worker_storage_key).to eq("storage-7")
 
       # Idempotent: no redundant write when already stamped for this host.
-      expect(workflow).not_to receive(:update_column)
+      expect(workflow).not_to receive(:update_columns)
       workflow.record_worker_hostname!
     end
   end

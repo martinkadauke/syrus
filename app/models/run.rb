@@ -211,12 +211,19 @@ class Run < ApplicationRecord
     enqueue_run_job
   end
 
-  # When this workflow already ran on a specific worker pod that is still
-  # alive, route back to that pod's per-worker resume queue so it resumes on
-  # the existing on-disk workspace. Returns nil when no worker was recorded or
-  # the pod is gone (its local workspace is lost, so any worker re-clones fresh).
+  # When this workflow already ran on a durable worker data root that still has
+  # a live consumer, route back to that storage-specific resume queue so it can
+  # see the existing on-disk workspace. Returns nil when no storage key was
+  # recorded, or for legacy hostname-only rows when that worker pod is gone.
   # Public so callers like DiagnoseRunJob dispatch can use the same routing logic.
   def resume_worker_queue
+    storage_key = workflow&.worker_storage_key.presence
+    if storage_key.present?
+      queue = Workflow.resume_queue_name(storage_key)
+      return queue if InstanceVersion.worker_queue_live?(queue)
+      return nil
+    end
+
     host = workflow&.worker_hostname
     return nil if host.blank?
     return nil unless InstanceVersion.worker_live?(host)

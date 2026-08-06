@@ -647,6 +647,19 @@ RSpec.describe WorkflowWorkspace, :ci_only do
                               started_at: Time.current, last_heartbeat_at: Time.current)
     end
 
+    def live_worker_queue!(queue_name, hostname: "worker-other")
+      ensure_solid_queue_test_tables!
+      SolidQueue::Process.create!(
+        hostname: hostname,
+        kind: "worker",
+        last_heartbeat_at: Time.current,
+        metadata: { "queues" => [ queue_name, "runs" ] },
+        name: "#{hostname}:1",
+        pid: 456,
+        created_at: Time.current
+      )
+    end
+
     it "is cleanable when no worker hostname was recorded (legacy / single-worker)" do
       expect(described_class.cleanable_here?(workflow)).to be(true)
     end
@@ -664,6 +677,22 @@ RSpec.describe WorkflowWorkspace, :ci_only do
       live_worker!("worker-other")
 
       expect(described_class.cleanable_here?(workflow)).to be(false)
+    end
+
+    it "is NOT cleanable when another live storage root owns it" do
+      allow(WorkerStorageIdentity).to receive(:queue_key).and_return("storage-me")
+      workflow.update_column(:worker_storage_key, "storage-other")
+      live_worker_queue!("resume-storage-other")
+
+      expect(described_class.cleanable_here?(workflow)).to be(false)
+    end
+
+    it "is cleanable when this storage root owns it even if the pod hostname changed" do
+      allow(SyrusVersion).to receive(:hostname).and_return("worker-new")
+      allow(WorkerStorageIdentity).to receive(:queue_key).and_return("storage-shared")
+      workflow.update_columns(worker_hostname: "worker-old", worker_storage_key: "storage-shared")
+
+      expect(described_class.cleanable_here?(workflow)).to be(true)
     end
 
     it "IS cleanable when the recorded host is not a live worker (single-host recreate / dead pod)" do

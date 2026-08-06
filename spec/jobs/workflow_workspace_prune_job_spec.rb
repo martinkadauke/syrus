@@ -409,20 +409,28 @@ RSpec.describe WorkflowWorkspacePruneJob do
   describe "per-worker filesystem fan-out" do
     include ActiveJob::TestHelper
 
-    def fresh_worker!(hostname)
-      InstanceVersion.create!(hostname: hostname, role: "worker", version: "x",
-                              started_at: Time.current, last_heartbeat_at: Time.current)
+    def live_worker_queue!(queue_name, hostname:)
+      ensure_solid_queue_test_tables!
+      SolidQueue::Process.create!(
+        hostname: hostname,
+        kind: "worker",
+        last_heartbeat_at: Time.current,
+        metadata: { "queues" => [ queue_name, "runs" ] },
+        name: "#{hostname}:1",
+        pid: 123,
+        created_at: Time.current
+      )
     end
 
-    it "fans the local filesystem sweep out to each live worker's resume queue" do
-      fresh_worker!("worker-a")
-      fresh_worker!("worker-b")
+    it "fans the local filesystem sweep out to each live storage resume queue" do
+      live_worker_queue!("resume-storage-a", hostname: "worker-a")
+      live_worker_queue!("resume-storage-b", hostname: "worker-b")
       clear_enqueued_jobs
 
       described_class.new.perform
 
       enqueued = enqueued_jobs.select { |j| j["job_class"] == "WorkflowWorkspacePruneJob" }
-      expect(enqueued.map { |j| j["queue_name"] }).to contain_exactly("resume-worker-a", "resume-worker-b")
+      expect(enqueued.map { |j| j["queue_name"] }).to contain_exactly("resume-storage-a", "resume-storage-b")
       expect(enqueued.map { |j| j["arguments"] }).to all(eq(["filesystem"]))
     end
 

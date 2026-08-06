@@ -53,4 +53,8 @@ operations are worth the extra moving parts.
 
 The important operational model is simple: the database is the source of
 truth, the worker owns long-running agent and Git operations, and
-`$SYRUS_DATA_ROOT` stores clone caches plus workflow workspaces.
+`$SYRUS_DATA_ROOT` stores clone caches plus workflow workspaces. In
+multi-worker deployments, Syrus records a durable storage identity for each
+data root and routes failed-step resumes back to a worker that advertises the
+matching queue, so pod or container names can change across deploys without
+breaking workspace-affinity retries.

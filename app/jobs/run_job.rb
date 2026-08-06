@@ -77,10 +77,9 @@ class RunJob < ApplicationJob
     @workflow = @step&.workflow
     @job = @run.job
 
-    # Record the worker pod driving this workflow so a later reopen ("Retry
-    # from failed step") or post-crash re-enqueue can be routed back to the
-    # pod holding the on-disk workspace (see Run#resume_worker_queue).
-    @workflow&.record_worker_hostname!
+    # Record the worker pod for diagnostics and the durable storage key for
+    # later resume routing to a worker that can see the on-disk workspace.
+    @workflow&.record_worker_identity!
 
     @shutdown_requested = false
     prior_trap = Signal.trap("TERM") do

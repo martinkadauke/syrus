@@ -23,22 +23,24 @@
     SCHEDULES recurring tasks — leave SOLID_QUEUE_SKIP_RECURRING unset here and
     set it to `1` on compute pods so recurring jobs are scheduled exactly once.
 
-    `Socket` isn't autoloaded when this file is rendered outside Rails
-    (bin/check-thread-budget); require it so the ERB is self-contained. %>
-<% require "socket" %>
+    WorkerStorageIdentity is required explicitly so the ERB is self-contained
+    when rendered by queue/config checks outside normal Rails autoload paths. %>
+<% services_path = File.expand_path("app/services", Dir.pwd) %>
+<% $LOAD_PATH.unshift(services_path) unless $LOAD_PATH.include?(services_path) %>
+<% require "worker_storage_identity" %>
 default: &default
   dispatchers:
     - polling_interval: 1
       batch_size: 500
   workers:
-    # Control-plane pool. Listed first with this pod's per-pod
-    # `resume-<hostname>` queue so an operator resume that landed here is picked
-    # up ahead of routine background work.
+    # Control-plane pool. Listed first with this worker data root's
+    # `resume-<worker-storage-key>` queue so an operator resume that landed
+    # here is picked up ahead of routine background work.
     # Multi-queue workers MUST be a YAML array: Solid Queue 1.4 does NOT split a
     # space-joined string (`Array("resume-x control_plane")` is one literal queue), so
     # a string here would claim zero jobs and back up the recurring scheduler.
     - queues:
-        - "resume-<%= Socket.gethostname %>"
+        - "<%= WorkerStorageIdentity.queue_name %>"
         - "control_plane"
       threads: <%= ENV.fetch("CONTROL_PLANE_CONCURRENCY", 3) %>
       processes: 1

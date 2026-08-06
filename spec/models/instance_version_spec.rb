@@ -50,6 +50,39 @@ RSpec.describe InstanceVersion do
     end
   end
 
+  describe ".worker_queue_live?" do
+    def solid_queue_process(queues:, last_heartbeat_at: Time.current)
+      ensure_solid_queue_test_tables!
+      SolidQueue::Process.create!(
+        hostname: "worker-a",
+        kind: "worker",
+        last_heartbeat_at: last_heartbeat_at,
+        metadata: { "queues" => queues },
+        name: "worker-a:1",
+        pid: 123,
+        created_at: Time.current
+      )
+    end
+
+    it "is true when a fresh Solid Queue worker advertises the queue" do
+      solid_queue_process(queues: [ "resume-storage-a", "runs" ])
+
+      expect(described_class.worker_queue_live?("resume-storage-a")).to eq(true)
+    end
+
+    it "supports comma-separated queue metadata" do
+      solid_queue_process(queues: "resume-storage-a,runs")
+
+      expect(described_class.worker_queue_live?("resume-storage-a")).to eq(true)
+    end
+
+    it "is false when only stale workers advertise the queue" do
+      solid_queue_process(queues: [ "resume-storage-a" ], last_heartbeat_at: 10.minutes.ago)
+
+      expect(described_class.worker_queue_live?("resume-storage-a")).to eq(false)
+    end
+  end
+
   describe "#seconds_since_heartbeat" do
     it "is nil when there's no heartbeat yet" do
       expect(fixture(last_heartbeat_at: nil).seconds_since_heartbeat).to be_nil

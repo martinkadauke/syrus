@@ -12,18 +12,23 @@
                    index (they enqueue Index*Job onto `indexing`, which the
                    home worker consumes).
       - `merges` — deterministic landing / rebase / stack-rebase Workflows.
-    Each pod also consumes its own `resume-<hostname>` queue: a workspace lives
-    on the local disk of the pod that ran it, so "Retry from failed step" and
-    post-crash re-enqueues must resume on that same pod (Run#resume_worker_queue,
-    Workflow.resume_queue_name). This affinity is load-bearing here — it is why
-    the compute tier can use fast per-node local disk instead of a shared PVC.
+    Each pod also consumes its storage-affinity
+    `resume-<worker-storage-key>` queue: a workspace lives on the data root
+    that first ran it, so "Retry from failed step" and post-crash re-enqueues
+    must resume on a worker that can see that same data root
+    (Run#resume_worker_queue, Workflow.resume_queue_name). This affinity is
+    load-bearing here — it is why the compute tier can use fast per-node local
+    disk instead of a shared PVC, while shared-PVC deployments naturally share
+    one resume queue.
 
     Set SOLID_QUEUE_SKIP_RECURRING=1 on compute pods: recurring tasks enqueue to
     home-tier queues, so only the home worker should schedule them.
 
-    `Socket` isn't autoloaded when this file is rendered outside Rails
-    (bin/check-thread-budget); require it so the ERB is self-contained. %>
-<% require "socket" %>
+    WorkerStorageIdentity is required explicitly so the ERB is self-contained
+    when rendered by queue/config checks outside normal Rails autoload paths. %>
+<% services_path = File.expand_path("app/services", Dir.pwd) %>
+<% $LOAD_PATH.unshift(services_path) unless $LOAD_PATH.include?(services_path) %>
+<% require "worker_storage_identity" %>
 default: &default
   dispatchers:
     - polling_interval: 1
@@ -33,12 +38,13 @@ default: &default
     # POD, so total concurrency across the cluster is JOB_CONCURRENCY ×
     # (compute pod count); a cluster-wide ceiling lives in
     # AppSetting.max_concurrent_agent_runs. Listed first with this pod's
-    # `resume-<hostname>` queue so operator resumes land ahead of fresh work.
+    # `resume-<worker-storage-key>` queue so operator resumes land ahead of
+    # fresh work.
     # Multi-queue workers MUST be a YAML array: Solid Queue 1.4 does NOT split a
     # space-joined string (`Array("resume-x runs")` is one literal queue), so a
     # string here would claim zero agent jobs.
     - queues:
-        - "resume-<%= Socket.gethostname %>"
+        - "<%= WorkerStorageIdentity.queue_name %>"
         - "runs"
       threads: <%= ENV.fetch("JOB_CONCURRENCY", 3) %>
       processes: 1
