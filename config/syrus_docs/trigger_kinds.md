@@ -30,9 +30,13 @@ Structurally identical to `pr_comment` but triggered from the chat interface rat
 
 **When it fires:** CI checks on the Job's PR fail and the job is configured for CI repair.
 
-**Step chain:** `prepare → analyze_and_fix → summarize_amend → try(push)`
+**Step chain:** `prepare → retry_until(analyze_and_fix, graders) → summarize_amend → try(push)`
 
-The agent inspects the failing checks and fixes the root cause, then pushes the fix.
+The agent inspects the failing checks and fixes the root cause, then Syrus runs
+the repository's configured graders before pushing the fix. Graders use each
+grader's `.syrus.yml` `ci:` command when present so CI-only checks run during
+CI-failure repair; without `ci:`, the normal `run:` command is used. If graders
+fail, their output feeds the next `analyze_and_fix` iteration.
 
 ## retry
 

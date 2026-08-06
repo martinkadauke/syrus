@@ -92,7 +92,7 @@ Current chains:
 initial:     prepare → [loop(implement → adversarial_review)] → retry_until(implement → graders) → coverage_analyze → summarize → test_plan → pr_open
 pr_comment:  prepare → [loop(respond → adversarial_review)] → retry_until(respond → graders) → coverage_analyze → coverage_pr_comment → summarize_amend → refresh_job_metadata → try(push)
 chat_feedback: prepare → [loop(respond → adversarial_review)] → retry_until(respond → graders) → coverage_analyze → coverage_pr_comment → summarize_amend → refresh_job_metadata → try(push)
-ci_failure:  prepare → analyze_and_fix → summarize_amend → try(push)
+ci_failure:  prepare → retry_until(analyze_and_fix → graders) → summarize_amend → try(push)
 retry:       prepare → [loop(implement → adversarial_review)] → retry_until(implement → graders) → coverage_analyze → summarize → test_plan → pr_open
 rebase:      auto_rebase → agent_rebase → force_push
 stack_rebase: stack_auto_rebase → stack_agent_rebase → stack_force_push

@@ -529,9 +529,19 @@ RSpec.describe Workflows do
       expect_follow_up_push_template(wf)
     end
 
-    it "instantiates CiFailure with analyze_and_fix → summarize_amend → try(push)" do
+    it "instantiates CiFailure with CI-inclusive graders before summarize_amend → try(push)" do
       wf = Workflows::CiFailure.instantiate(job: job)
-      expect(wf.steps.pluck(:kind)).to eq(%w[ prepare analyze_and_fix summarize_amend push ])
+      expect(wf.steps.pluck(:kind)).to eq(%w[ prepare analyze_and_fix grader_fanout grader_collect summarize_amend push ])
+      expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ analyze_and_fix grader_fanout grader_collect ])
+      expect(wf.chain_template).to include(
+        {
+          "type" => "retry_until",
+          "max_iterations" => AppSetting.grade_max_iterations,
+          "repair" => %w[ analyze_and_fix ],
+          "check" => %w[ grader_fanout grader_collect ],
+          "repair_first" => true
+        }
+      )
       expect_follow_up_push_template(wf)
     end
 

@@ -1,7 +1,8 @@
 module Workflows
   # CI checks went red on the PR's branch. Diagnose, fix, push.
   #
-  #   analyze_and_fix → summarize_amend → try(push)
+  #   prepare → retry_until(analyze_and_fix, grader_fanout, grader_collect)
+  #     → summarize_amend → try(push)
   #     on remote-branch rebase conflict:
   #       push_agent_rebase → retry_until(grade, repair: landing_fix) → push_after_rebase
   #
@@ -10,12 +11,24 @@ module Workflows
   # implement phase here is "look at the failing checks, find the
   # root cause, fix the code or the test".
   class CiFailure < Base
-    steps :prepare, :analyze_and_fix, :summarize_amend, follow_up_push
+    steps :prepare,
+          Workflows::RetryUntil.new(repair: [ :analyze_and_fix ], check: [ :grader_fanout, :grader_collect ]),
+          :summarize_amend,
+          follow_up_push
 
     def self.trigger_kind = "ci_failure"
 
     def self.steps_for(_job)
-      [ "prepare", "analyze_and_fix", "summarize_amend", follow_up_push(max_iterations: AppSetting.grade_max_iterations) ]
+      [
+        "prepare",
+        Workflows::RetryUntil.new(
+          max_iterations: AppSetting.grade_max_iterations,
+          repair: [ :analyze_and_fix ],
+          check: [ :grader_fanout, :grader_collect ]
+        ),
+        "summarize_amend",
+        follow_up_push(max_iterations: AppSetting.grade_max_iterations)
+      ]
     end
   end
 end
