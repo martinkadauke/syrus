@@ -273,6 +273,44 @@ RSpec.describe App::ProviderAvailability do
     expect(status.dig(:evidence, :latest_positive)).to include(model: "gpt-5.4")
   end
 
+  it "does not show older positive Codex evidence beside a newer warning probe" do
+    ProviderAvailabilityEvidence.record_codex_success!(
+      user: user,
+      source: "usage_probe",
+      model: nil,
+      observed_at: now - 2.minutes,
+      details: {
+        message: "Codex usage has 46% remaining.",
+        snapshot: { "remaining_percent" => 46.0 }
+      }
+    )
+    ProviderAvailabilityEvidence.record_codex_probe!(
+      user: user,
+      status: "warning",
+      snapshot: {
+        "remaining_percent" => 18.0,
+        "primary" => { "label" => "weekly", "remaining_percent" => 18.0, "used_percent" => 82.0 }
+      },
+      message: "Codex usage has 18% remaining.",
+      observed_at: now
+    )
+    user.update!(
+      codex_usage_status: "warning",
+      codex_usage_observed_at: now,
+      codex_usage_snapshot: {
+        "remaining_percent" => 18.0,
+        "primary" => { "label" => "weekly", "remaining_percent" => 18.0, "used_percent" => 82.0 }
+      }
+    )
+
+    status = described_class.for_user(user, "codex", now: now, cached: false)
+
+    expect(status.dig(:usage, :remaining_percent)).to eq(18.0)
+    expect(status.dig(:evidence, :current)).to include(status: "warning")
+    expect(status.dig(:evidence, :latest_negative)).to include(status: "warning")
+    expect(status.dig(:evidence, :latest_positive)).to be_nil
+  end
+
   it "does not show exhausted availability for inconclusive Codex probe evidence" do
     ProviderAvailabilityEvidence.record_codex_probe!(
       user: user,
@@ -401,7 +439,9 @@ RSpec.describe App::ProviderAvailability do
 
   it "caches provider availability outside the request-local cache" do
     failed_run(provider: "codex")
-    allow(Rails.cache).to receive(:fetch).and_call_original
+    shared_cache = {}
+    allow(Rails.cache).to receive(:read) { |key| shared_cache[key] }
+    allow(Rails.cache).to receive(:write) { |key, value, **_options| shared_cache[key] = value }
 
     first = described_class.for_user(user, "codex", now: now)
     Current.provider_availability_cache = nil
@@ -410,6 +450,40 @@ RSpec.describe App::ProviderAvailability do
     second = described_class.for_user(user, "codex", now: now)
 
     expect(second).to eq(first)
-    expect(Rails.cache).not_to have_received(:fetch)
+  end
+
+  it "does not keep stale provider availability in a process-local cache after shared cache is cleared" do
+    failed_run(provider: "codex")
+    shared_cache = {}
+    allow(Rails.cache).to receive(:read) { |key| shared_cache[key] }
+    allow(Rails.cache).to receive(:write) { |key, value, **_options| shared_cache[key] = value }
+    allow(Rails.cache).to receive(:delete) { |key| shared_cache.delete(key) }
+
+    first = described_class.for_user(user, "codex", now: now)
+    described_class.clear_cache!(user: user, provider: "codex")
+    ProviderAvailabilityEvidence.record_codex_probe!(
+      user: user,
+      status: "warning",
+      snapshot: {
+        "remaining_percent" => 18.0,
+        "primary" => { "label" => "weekly", "remaining_percent" => 18.0, "used_percent" => 82.0 }
+      },
+      message: "Codex usage has 18% remaining.",
+      observed_at: now + 1.minute
+    )
+    user.update!(
+      codex_usage_status: "warning",
+      codex_usage_observed_at: now + 1.minute,
+      codex_usage_snapshot: {
+        "remaining_percent" => 18.0,
+        "primary" => { "label" => "weekly", "remaining_percent" => 18.0, "used_percent" => 82.0 }
+      }
+    )
+    Current.provider_availability_cache = nil
+
+    second = described_class.for_user(user, "codex", now: now + 1.minute)
+
+    expect(first.dig(:usage, :remaining_percent)).to be_nil
+    expect(second.dig(:usage, :remaining_percent)).to eq(18.0)
   end
 end

@@ -17,10 +17,8 @@ module App
       cache = Current.provider_availability_cache ||= {}
       return cache[key] if cache.key?(key)
 
-      cache[key] = fetch_process_cache(key, now: now) do
-        fetch_shared_cache(key) do
-          new(user: user, provider: provider, now: now).status
-        end
+      cache[key] = fetch_shared_cache(key) do
+        new(user: user, provider: provider, now: now).status
       end
     end
 
@@ -389,9 +387,21 @@ module App
 
       {
         current: current,
-        latest_positive: latest_codex_positive_evidence&.summary,
-        latest_negative: latest_codex_negative_evidence&.summary
+        latest_positive: evidence_summary_if_not_older_than(latest_codex_positive_evidence, current),
+        latest_negative: evidence_summary_if_not_older_than(latest_codex_negative_evidence, current)
       }.compact
+    end
+
+    def evidence_summary_if_not_older_than(evidence, current)
+      return unless evidence
+      current_time = parse_observed_at(current&.dig(:observed_at) || current&.dig("observed_at"))
+      return evidence.summary if current_time.blank? || evidence.observed_at >= current_time
+    end
+
+    def parse_observed_at(value)
+      Time.zone.parse(value.to_s)
+    rescue ArgumentError, TypeError
+      nil
     end
 
     def usage_signal_summary(signal)
