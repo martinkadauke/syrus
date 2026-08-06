@@ -43,6 +43,7 @@ class Job < ApplicationRecord
   belongs_to :user
   belongs_to :owner_user, class_name: "User", optional: true
   belongs_to :repository
+  belongs_to :input_source, optional: true
   belongs_to :scheduled_task, optional: true
   belongs_to :epic, optional: true
   belongs_to :parent_job, class_name: "Job", optional: true
@@ -97,7 +98,7 @@ class Job < ApplicationRecord
   validates :priority, presence: true, inclusion: { in: PRIORITIES }
   validates :job_provider_setting, presence: true, inclusion: { in: PROVIDER_SETTINGS }
   validates :stack_base, presence: true, inclusion: { in: STACK_BASES }
-  validates :agent_provider, presence: true, inclusion: { in: User::AGENT_PROVIDERS }
+  validates :agent_provider, presence: true, inclusion: { in: -> { User.agent_providers } }
   validates :validity, presence: true, inclusion: { in: VALIDITIES }
   validates :triaging_reason, presence: true, inclusion: { in: TRIAGING_REASONS }
   validates :approved_via, inclusion: { in: APPROVAL_VIAS }, allow_nil: true
@@ -105,7 +106,7 @@ class Job < ApplicationRecord
   validates :issue_number,
             presence: true,
             numericality: { only_integer: true, greater_than: 0 },
-            if: :issue?
+            if: -> { issue? && (input_source.nil? || input_source.is_a?(InputSources::Github)) }
   validates :scheduled_task_id, presence: true, if: :cron?
   validate  :issue_number_blank_for_cron, if: :cron?
   validate  :issue_number_blank_for_direct, if: :direct?

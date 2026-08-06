@@ -96,6 +96,7 @@ export type RepositoryFormPayload = {
   repository: RepositoryFormRecord
   configured_agent_providers: RepositoryProviderOption[]
   user_agent_provider_label: string
+  input_source_types: InputSourceType[]
   auto_approve_modes: RepositoryAutoApproveMode[]
   repositories_path: string
   agent_insights_enabled?: boolean
@@ -702,6 +703,67 @@ export function fetchRepositoryFlakyTests(path: string) {
 
 export function updateRepository(id: number, values: RepositoryInput) {
   return patchJson<RepositorySavedPayload>(`/api/v1/app/repositories/${id}`, { repository: values })
+}
+
+export type InputSourceSchemaField = {
+  key: string
+  type: "string" | "password" | "linear_team"
+  required: boolean
+  label: string
+  scope: "config" | "credentials"
+  depends_on?: string
+}
+
+export type InputSourceRecord = {
+  id: number
+  type: string
+  type_key: string
+  label: string
+  polling_enabled: boolean
+  values: Record<string, string | null>
+  last_poll_started_at: string | null
+  issues_ingested_count: number
+}
+
+export type InputSourceType = {
+  type: string
+  type_key: string
+  label: string
+  schema: InputSourceSchemaField[]
+  source: InputSourceRecord | null
+  path: string | null
+}
+
+export type InputSourcePayload = {
+  input_source: InputSourceRecord | null
+  message?: string | null
+}
+
+export type InputSourceInput = {
+  polling_enabled: boolean
+  values: Record<string, string>
+}
+
+export type LinearTeam = {
+  id: string
+  name: string
+}
+
+export type LinearTeamsPayload = {
+  teams: LinearTeam[]
+}
+
+export function fetchInputSource(path: string) {
+  return getJson<InputSourcePayload>(path)
+}
+
+export function saveInputSource(path: string, values: InputSourceInput) {
+  return patchJson<InputSourcePayload>(path, { input_source: values })
+}
+
+export function fetchLinearTeams(apiKey: string) {
+  const params = new URLSearchParams({ api_key: apiKey })
+  return getJson<LinearTeamsPayload>(`/api/v1/app/linear/teams?${params}`)
 }
 
 export function pollRepository(id: number) {

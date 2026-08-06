@@ -254,7 +254,7 @@ module Api
             chat_provider: user.chat_provider,
             codex_auth_mode: user.codex_auth_mode,
             agent_max_turns: user.agent_max_turns,
-            provider_availability_pause_thresholds: User::AGENT_PROVIDERS.to_h do |provider|
+            provider_availability_pause_thresholds: User.agent_providers.to_h do |provider|
               [ provider, user.provider_availability_pause_threshold_for(provider) ]
             end,
             provider_availability_overrides: user.provider_availability_overrides.to_h,
@@ -306,7 +306,7 @@ module Api
         def credentials_options(user)
           {
             locales: User::LOCALES,
-            agent_providers: User::AGENT_PROVIDERS,
+            agent_providers: User.agent_providers,
             chat_providers: User::CHAT_PROVIDERS.select { |provider| user.chat_provider_configured?(provider) },
             roles: User::ROLES,
             codex_auth_modes: User::CODEX_AUTH_MODES,
@@ -337,7 +337,7 @@ module Api
 
         def provider_param
           provider = params[:provider].to_s
-          return provider if provider.in?(User::AGENT_PROVIDERS)
+          return provider if provider.in?(User.agent_providers)
 
           render_error("validation_failed", "Unknown agent provider.", status: :unprocessable_content)
           nil

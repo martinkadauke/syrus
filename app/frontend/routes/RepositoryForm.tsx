@@ -8,6 +8,8 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import {
   createRepository,
   fetchEditRepositoryForm,
+  fetchInputSource,
+  fetchLinearTeams,
   fetchNewRepositoryForm,
   fetchRepositoryBranches,
   fetchRepositoryOptions,
@@ -15,9 +17,12 @@ import {
   type GitHubRepositoryOption,
   type InsightScheduleConfigRecord,
   type InsightScheduleConfigInput,
+  type InputSourceType,
+  type LinearTeam,
   type RepositoryFormPayload,
   type RepositoryEpicDependencyPolicy,
   type RepositoryInput,
+  saveInputSource,
   syncFork,
   updateInsightScheduleConfig,
   updateRepository
@@ -504,6 +509,10 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
           </Field>
         </section>
 
+        {mode === "edit" && payload.repository.id ? (payload.input_source_types || []).map((sourceType) => (
+          <InputSourceSection key={sourceType.type} sourceType={sourceType} />
+        )) : null}
+
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             {t('repository_form.credential_section')}
@@ -743,6 +752,192 @@ function CredentialModeComparison() {
       </table>
     </div>
   )
+}
+
+function InputSourceSection({ sourceType }: { sourceType: InputSourceType }) {
+  const { t } = useT("settings")
+  const initialSource = sourceType.source
+  const [values, setValues] = useState<Record<string, string>>(() => valuesFromSourceType(sourceType))
+  const [pollingEnabled, setPollingEnabled] = useState(initialSource?.polling_enabled ?? false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  const sourceQuery = useQuery({
+    queryKey: ["input_source", sourceType.path],
+    queryFn: () => fetchInputSource(sourceType.path || ""),
+    enabled: !!sourceType.path
+  })
+
+  const currentSource = sourceQuery.data?.input_source ?? initialSource
+
+  useEffect(() => {
+    const nextSource = sourceQuery.data?.input_source ?? sourceType.source
+    setValues(valuesFromSourceType({ ...sourceType, source: nextSource }))
+    setPollingEnabled(nextSource?.polling_enabled ?? false)
+  }, [sourceType, sourceQuery.data])
+
+  const save = useMutation({
+    mutationFn: () => saveInputSource(sourceType.path || "", { polling_enabled: pollingEnabled, values }),
+    onSuccess: (data) => {
+      setMessage(data.message ?? t("input_sources.saved"))
+      setErrorMsg(null)
+      if (data.input_source) {
+        setValues(valuesFromSourceType({ ...sourceType, source: data.input_source }))
+        setPollingEnabled(data.input_source.polling_enabled)
+      }
+      sourceQuery.refetch()
+    },
+    onError: (error) => {
+      setMessage(null)
+      setErrorMsg(errorMessage(error, t("input_sources.save_error")))
+    }
+  })
+
+  const plausibleApiKey = values.api_key?.startsWith("lin_api_") ? values.api_key : ""
+
+  const teamsQuery = useQuery({
+    queryKey: ["linear_teams", sourceType.type_key, plausibleApiKey],
+    queryFn: () => fetchLinearTeams(plausibleApiKey),
+    enabled: sourceType.schema.some((field) => field.type === "linear_team") && plausibleApiKey.length > 0,
+    retry: false
+  })
+
+  const teams: LinearTeam[] = teamsQuery.data?.teams ?? []
+
+  return (
+    <section className="space-y-4 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+      <div>
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          {sourceType.label}
+        </h2>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {t("input_sources.section_description")}
+        </p>
+      </div>
+
+      {currentSource ? (
+        <div className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+          {currentSource.last_poll_started_at ? (
+            <p>{t("input_sources.last_polled_at", { time: new Date(currentSource.last_poll_started_at).toLocaleString() })}</p>
+          ) : null}
+          <p>{t("input_sources.issues_ingested", { count: currentSource.issues_ingested_count })}</p>
+        </div>
+      ) : null}
+
+      {message ? <div className="rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/40 p-3 text-sm text-green-700 dark:text-green-300">{message}</div> : null}
+      {errorMsg ? <div className="rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">{errorMsg}</div> : null}
+
+      <div className="space-y-4">
+        {sourceType.schema.map((field) => (
+          <InputSourceField
+            key={field.key}
+            currentSource={currentSource}
+            field={field}
+            onChange={(value) => setValues({ ...values, [field.key]: value })}
+            teams={teams}
+            teamsError={teamsQuery.isError}
+            teamsLoading={teamsQuery.isPending}
+            value={values[field.key] || ""}
+          />
+        ))}
+
+        <Checkbox
+          label={t("input_sources.polling_enabled_label")}
+          onChange={setPollingEnabled}
+          value={pollingEnabled}
+        />
+
+        <button
+          className="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300 dark:disabled:bg-blue-900"
+          disabled={save.isPending}
+          onClick={() => {
+            setMessage(null)
+            setErrorMsg(null)
+            save.mutate()
+          }}
+          type="button"
+        >
+          {save.isPending ? t("input_sources.saving") : t("input_sources.save", { source: sourceType.label })}
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function InputSourceField({
+  currentSource,
+  field,
+  onChange,
+  teams,
+  teamsError,
+  teamsLoading,
+  value
+}: {
+  currentSource: InputSourceType["source"]
+  field: InputSourceType["schema"][number]
+  onChange: (value: string) => void
+  teams: LinearTeam[]
+  teamsError: boolean
+  teamsLoading: boolean
+  value: string
+}) {
+  const { t } = useT("settings")
+  if (field.type === "linear_team") {
+    return (
+      <Field label={field.label}>
+        {teamsLoading ? (
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t("input_sources.team_loading")}</p>
+        ) : teamsError ? (
+          <p className="mt-1 text-xs text-red-600 dark:text-red-400">{t("input_sources.team_error")}</p>
+        ) : teams.length === 0 ? (
+          <input
+            aria-label={field.label}
+            className={`${inputClass()} font-mono`}
+            onChange={(e) => onChange(e.target.value)}
+            required={field.required}
+            type="text"
+            value={value}
+          />
+        ) : (
+          <select
+            aria-label={field.label}
+            className={`${inputClass()} cursor-pointer`}
+            onChange={(e) => onChange(e.target.value)}
+            required={field.required}
+            value={value}
+          >
+            <option value="">{t("input_sources.team_placeholder")}</option>
+            {teams.map((team) => (
+              <option key={team.id} value={team.id}>{team.name}</option>
+            ))}
+          </select>
+        )}
+      </Field>
+    )
+  }
+
+  return (
+    <Field label={field.label}>
+      <input
+        aria-label={field.label}
+        autoComplete="off"
+        className={field.type === "string" ? `${inputClass()} font-mono` : inputClass()}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={field.type === "password" && currentSource ? t("input_sources.secret_placeholder_set") : undefined}
+        required={field.required && !(field.type === "password" && currentSource)}
+        type={field.type === "password" ? "password" : "text"}
+        value={value}
+      />
+    </Field>
+  )
+}
+
+function valuesFromSourceType(sourceType: InputSourceType) {
+  return sourceType.schema.reduce<Record<string, string>>((values, field) => {
+    const value = sourceType.source?.values?.[field.key]
+    values[field.key] = value == null ? "" : String(value)
+    return values
+  }, {})
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

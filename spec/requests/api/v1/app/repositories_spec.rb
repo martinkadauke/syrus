@@ -281,6 +281,18 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       { "value" => "codex", "label" => "Codex" },
       { "value" => "claude", "label" => "Claude Code" }
     )
+    expect(body["input_source_types"]).to include(
+      include(
+        "type" => "InputSources::Github",
+        "type_key" => "github",
+        "schema" => include(include("key" => "trigger_label", "scope" => "config"))
+      ),
+      include(
+        "type" => "InputSources::Linear",
+        "type_key" => "linear",
+        "schema" => include(include("key" => "team_id", "type" => "linear_team", "scope" => "config"))
+      )
+    )
     expect(body["user_agent_provider_label"]).to eq("Codex")
     expect(body["auto_approve_modes"]).to include(include("value" => "if_graders_pass"))
     expect(body["repositories_path"]).to eq(repositories_path)
@@ -869,7 +881,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
 
     expect {
       post "/api/v1/app/repositories/#{repository.id}/poll"
-    }.to have_enqueued_job(PollRepositoryJob).with(repository.id, force: true)
+    }.to have_enqueued_job(PollInputSourceJob).with(repository.github_input_source.id, force: true)
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["message"]).to eq("Polling acme/widgets now.")
@@ -882,7 +894,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
 
     expect {
       post "/api/v1/app/repositories/#{repository.id}/poll", params: { return_to: "detail" }
-    }.to have_enqueued_job(PollRepositoryJob).with(repository.id, force: true)
+    }.to have_enqueued_job(PollInputSourceJob).with(repository.github_input_source.id, force: true)
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["message"]).to eq("Polling acme/widgets now.")

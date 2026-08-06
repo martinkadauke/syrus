@@ -2,6 +2,14 @@ source "https://rubygems.org"
 
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
 gem "rails", "~> 8.1.3", ">= 8.1.3.1"
+
+# Bundled agent provider plugins
+gem "syrus_claude_agent", path: "plugins/claude_agent"
+gem "syrus_codex_agent",  path: "plugins/codex_agent"
+
+# Bundled input source plugins
+gem "syrus_github_source", path: "plugins/github_source"
+gem "syrus_linear_source", path: "plugins/linear_source"
 # The modern asset pipeline for Rails [https://github.com/rails/propshaft]
 gem "propshaft"
 # Use sqlite3 for development/test
@@ -32,6 +40,9 @@ gem "faraday-retry"
 # Model Context Protocol SDK — used for the per-run sidecar that lets
 # the agent submit PR copy back to Syrus during its run.
 gem "mcp"
+
+# Bundled plugin: built-in MCP tool set for workflow sidecar agents.
+gem "syrus_core_tools", path: "plugins/syrus_core_tools"
 
 # Best-effort text extraction for repository documents exposed to chat agents.
 gem "docx"

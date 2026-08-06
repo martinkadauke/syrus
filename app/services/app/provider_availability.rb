@@ -138,7 +138,7 @@ module App
     end
 
     def self.all_for_user(user, now: Time.current)
-      User::AGENT_PROVIDERS.index_with { |provider| for_user(user, provider, now: now) }
+      User.agent_providers.index_with { |provider| for_user(user, provider, now: now) }
     end
 
     private

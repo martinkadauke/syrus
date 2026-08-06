@@ -263,6 +263,9 @@ Rails.application.routes.draw do
         get "repositories/:id/insight_schedule_config", to: "insight_schedule_configs#show", constraints: { id: /\d+/ }
         patch "repositories/:id/insight_schedule_config", to: "insight_schedule_configs#update", constraints: { id: /\d+/ }
         get "workflows/:workflow_id/coverage_hit_map", to: "workflows#coverage_hit_map", constraints: { workflow_id: /\d+/ }
+        get "linear/teams", to: "linear#teams"
+        get "repositories/:repository_id/input_sources/:type", to: "input_sources#show"
+        patch "repositories/:repository_id/input_sources/:type", to: "input_sources#update"
         get "repositories/:repository_id/documents", to: "repository_documents#index"
         post "repositories/:repository_id/documents", to: "repository_documents#create"
         delete "repository_documents/:id", to: "repository_documents#destroy"
@@ -287,6 +290,7 @@ Rails.application.routes.draw do
           post "insights/:id/promote_memory", to: "insights#promote_memory"
           get "overview", to: "overview#show"
           get "worker_health", to: "worker_health#show"
+          get "plugins", to: "plugins#index"
           get "queue/:tab", to: "queue#show", as: :queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
           post "queue/reap_stale_runs", to: "queue#reap_stale_runs"
           get "stuck", to: "stuck#index"
@@ -379,6 +383,7 @@ Rails.application.routes.draw do
         get "overview", to: "overview#show"
         get "stuck",    to: "overview#stuck"
         get "worker_health", to: "worker_health#show"
+        get "plugins",  to: "plugins#index"
         get "performance", to: "performance#show"
 
         # Operator console kill switches.
@@ -504,6 +509,7 @@ Rails.application.routes.draw do
   get "admin/users", to: "spa#show", as: :admin_users
   get "admin/users/:id", to: "spa#show", as: :admin_user, constraints: { id: /\d+/ }
   get "admin/features", to: "spa#show", as: :admin_features
+  get "admin/plugins", to: "spa#show", as: :admin_plugins
   get "admin/insights", to: "spa#show", as: :admin_insights
   get "admin/console", to: "spa#show", as: :admin_console
   get "admin/installations", to: "spa#show", as: :admin_installations

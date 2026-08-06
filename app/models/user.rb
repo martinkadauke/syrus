@@ -26,7 +26,6 @@ class User < ApplicationRecord
   has_many :cron_templates, dependent: :destroy
   has_many :invitations, foreign_key: :invited_by_id, dependent: :nullify
 
-  AGENT_PROVIDERS = %w[ claude codex ].freeze
   CHAT_PROVIDERS = %w[ claude codex ].freeze
   DEFAULT_PROVIDER_AVAILABILITY_PAUSE_THRESHOLD_PERCENT = 10
   CODEX_AUTH_MODES = %w[ api_key chatgpt_login ].freeze
@@ -161,7 +160,7 @@ class User < ApplicationRecord
   validates :agent_max_turns,
             presence: true,
             numericality: { only_integer: true, in: AGENT_MAX_TURNS_RANGE }
-  validates :agent_provider, presence: true, inclusion: { in: AGENT_PROVIDERS }
+  validates :agent_provider, presence: true, inclusion: { in: -> { User.agent_providers } }
   validates :chat_provider, inclusion: { in: CHAT_PROVIDERS }, allow_nil: true
   validates :theme, presence: true, inclusion: { in: THEMES }
   validates :locale, presence: true, inclusion: { in: LOCALES }
@@ -495,8 +494,12 @@ class User < ApplicationRecord
     update!(dashboard_preferences: updated) if updated != dashboard_preferences
   end
 
+  def self.agent_providers
+    Syrus::PluginRegistry.providers_for(:agent_provider).map(&:provider_key)
+  end
+
   def configured_agent_providers
-    AGENT_PROVIDERS.select { |provider| agent_provider_configured?(provider) }
+    User.agent_providers.select { |provider| agent_provider_configured?(provider) }
   end
 
   def alternate_configured_agent_providers
@@ -824,7 +827,7 @@ class User < ApplicationRecord
     return errors.add(:provider_availability_pause_thresholds, "must be a hash") unless thresholds.is_a?(Hash)
 
     thresholds.each do |provider, value|
-      errors.add(:provider_availability_pause_thresholds, "contains unknown provider #{provider}") unless provider.to_s.in?(AGENT_PROVIDERS)
+      errors.add(:provider_availability_pause_thresholds, "contains unknown provider #{provider}") unless provider.to_s.in?(User.agent_providers)
       integer = Integer(value, exception: false)
       if integer.nil? || integer < 0 || integer > 100
         errors.add(:provider_availability_pause_thresholds, "must contain percentages between 0 and 100")
