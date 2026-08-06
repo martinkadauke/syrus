@@ -63,6 +63,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       expired_dependency_start_block
       orphaned_landing_job
       running_workflow_without_active_descendants
+      running_workflow_with_failed_step
       terminal_workflow_with_active_descendants
     ].freeze
 
@@ -1016,6 +1017,25 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       )
     end
 
+    def running_workflow_with_failed_step
+      _job, workflow, step, run = graph
+      next_step = step.next_step || workflow.steps.where("position > ?", step.position).order(:position).first
+      next_step ||= Step.create!(workflow: workflow, kind: "pr_open", position: step.position + 1)
+      workflow.update_columns(state: "running", started_at: 6.minutes.ago)
+      step.update_columns(kind: "test_plan", state: "failed", finished_at: 4.minutes.ago, next_step_id: next_step.id)
+      next_step.update_columns(state: "queued", started_at: nil, finished_at: nil)
+      run.update_columns(state: "failed", agent_outcome: "error", finished_at: 4.minutes.ago)
+      trace << "workflow=#{workflow.id}:running_with_failed_step=#{step.id}"
+
+      expectation(
+        "running workflow with failed step",
+        target: { workflow_id: workflow.id },
+        expected_issue: :running_workflow_with_failed_step,
+        expected_action: :fail_workflow_from_failed_step,
+        forbidden_issues: %i[running_workflow_without_active_descendants]
+      )
+    end
+
     def terminal_workflow_with_active_descendants
       _job, workflow, step, run = graph
       workflow.update_columns(state: "succeeded", finished_at: 5.minutes.ago, cleaned_up_at: nil)
@@ -1198,6 +1218,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
     assert_chaos_case!(simulation.send(:stale_branch_diverged_workflow))
     assert_chaos_case!(simulation.send(:running_step_with_failed_terminal_run))
     assert_chaos_case!(simulation.send(:running_step_with_succeeded_terminal_run))
+    assert_chaos_case!(simulation.send(:running_workflow_with_failed_step))
     assert_chaos_case!(simulation.send(:closed_job_with_active_workflow))
   end
 

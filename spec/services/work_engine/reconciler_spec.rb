@@ -813,6 +813,44 @@ RSpec.describe WorkEngine::Reconciler do
     expect(result.repair_executions.map(&:message)).to include("reconciled Step ##{step.id} to failed from Run ##{run.id}")
   end
 
+  it "fails a running workflow that already has a failed step and a queued tail" do
+    pr_open = Step.create!(workflow: workflow, kind: "pr_open", position: 1)
+    step.update!(kind: "test_plan", next_step: pr_open)
+    job.update_columns(state: "running", started_at: 30.minutes.ago)
+    workflow.update_columns(state: "running", started_at: 30.minutes.ago, finished_at: nil)
+    step.update_columns(state: "failed", started_at: 20.minutes.ago, finished_at: 15.minutes.ago)
+    pr_open.update_columns(state: "queued", started_at: nil, finished_at: nil)
+    run.update_columns(
+      state: "failed",
+      agent_provider: "codex",
+      agent_outcome: "error",
+      started_at: 20.minutes.ago,
+      finished_at: 15.minutes.ago
+    )
+    RunFailureClassification.create!(
+      run: run,
+      classification: "agent_resume_unavailable",
+      retryable: true,
+      confidence: 0.9,
+      reason: "provider resume session unavailable",
+      classified_at: 15.minutes.ago
+    )
+
+    result = reconcile_and_execute(workflow_id: workflow.id)
+
+    expect(kind(result, :running_workflow_with_failed_step)).to be_present
+    expect(plan(result, :fail_workflow_from_failed_step)).to have_attributes(
+      auto_executable: true,
+      target_type: "Workflow",
+      target_id: workflow.id
+    )
+    expect(workflow.reload).to be_failed
+    expect(job.reload).to be_failed
+    expect(step.reload).to be_failed
+    expect(pr_open.reload).to be_queued
+    expect(result.repair_executions.map(&:message)).to include("marked Workflow ##{workflow.id} failed from failed Step ##{step.id}")
+  end
+
   it "reconciles a running Step whose only Run already succeeded" do
     next_step = Step.create!(workflow: workflow, kind: "grader_collect", position: 1)
     step.update!(kind: "grader", next_step: next_step)

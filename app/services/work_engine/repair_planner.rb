@@ -431,6 +431,23 @@ module WorkEngine
         end
       end
 
+      class RunningWorkflowWithFailedStep < Base
+        def plan
+          automatic_plan(
+            "fail_workflow_from_failed_step",
+            primary_workflow,
+            "The Workflow is still running even though one of its Steps failed, so mark the Workflow failed and let the normal failed-step retry path take over.",
+            execution_steps: [ "Workflow#fail!" ],
+            preconditions: {
+              workflow_state: "running",
+              failed_step_id: issue.evidence["failed_step_id"],
+              no_active_runs: true,
+              no_running_steps: true
+            }
+          )
+        end
+      end
+
       class ClosedJobActiveWorkflow < Base
         def plan
           automatic_plan(

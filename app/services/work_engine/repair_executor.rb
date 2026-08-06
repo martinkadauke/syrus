@@ -381,6 +381,26 @@ module WorkEngine
         end
       end
 
+      class FailWorkflowFromFailedStep < Base
+        def perform
+          workflow = target_workflow
+          return skipped("Workflow no longer exists") unless workflow
+          return skipped("Workflow is #{workflow.state}, not running") unless workflow.running?
+          return skipped("Workflow still has active Runs") if workflow.runs.active.exists?
+          return skipped("Workflow still has running Steps") if workflow.steps.where(state: "running").exists?
+
+          failed_step = workflow.steps.where(state: "failed").order(position: :desc, id: :desc).first
+          return skipped("Workflow has no failed Step") unless failed_step
+          return skipped("Workflow cannot transition to failed") unless workflow.may_fail?
+
+          StateTransition.with_source("reconciler") do
+            workflow.fail!
+            workflow.save!
+          end
+          success("marked Workflow ##{workflow.id} failed from failed Step ##{failed_step.id}")
+        end
+      end
+
       class ReconcileStepFromTerminalRun < Base
         def perform
           step = target_step

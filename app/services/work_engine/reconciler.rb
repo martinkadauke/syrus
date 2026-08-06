@@ -424,6 +424,21 @@ module WorkEngine
             evidence: workflow_evidence(workflow).merge(step_states: workflow.steps.pluck(:id, :kind, :state)),
             explanation: "Workflow ##{workflow.id} is running but has no queued or running Steps/Runs."
           )
+        elsif workflow.running? && (failed_step = orphaned_failed_step(workflow))
+          issue(
+            kind: :running_workflow_with_failed_step,
+            severity: :error,
+            affected_ids: ids_for(workflow).merge(step_ids: [ failed_step.id ], run_ids: failed_step.runs.where(state: "failed").pluck(:id)),
+            safe_to_auto_repair: true,
+            recommended_repair_action: "fail_workflow_from_failed_step",
+            evidence: workflow_evidence(workflow).merge(
+              failed_step_id: failed_step.id,
+              failed_step_kind: failed_step.kind,
+              failed_step_finished_at: failed_step.finished_at&.iso8601,
+              step_states: workflow.steps.pluck(:id, :kind, :state)
+            ),
+            explanation: "Workflow ##{workflow.id} is still running even though Step ##{failed_step.id} has failed."
+          )
         end
       end
     end
@@ -1143,6 +1158,15 @@ module WorkEngine
 
     def workflow_has_active_descendants?(workflow)
       workflow.steps.active.exists? || workflow.runs.active.exists?
+    end
+
+    def orphaned_failed_step(workflow)
+      failed_steps = workflow.steps.select(&:failed?)
+      return nil if failed_steps.empty?
+      return nil if workflow.runs.active.exists?
+      return nil if workflow.steps.where(state: "running").exists?
+
+      failed_steps.max_by { |step| [ step.position || -1, step.id || -1 ] }
     end
 
     def runs_for_step_reconciliation(step)
