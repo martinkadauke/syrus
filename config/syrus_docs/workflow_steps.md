@@ -52,6 +52,10 @@ Agentic. Addresses PR review feedback or chat feedback. Reads the new comments a
 ### analyze_and_fix
 
 Agentic. Inspects failing CI checks and fixes the root cause. Used in `ci_failure` workflows.
+If GitHub Actions reports that a job failed before repository tests ran
+(for example runner setup or action-download infrastructure failures), Syrus
+records the CI infrastructure reason and does not start an agentic repair
+workflow for that signal.
 
 ### coding_handoff_fix
 

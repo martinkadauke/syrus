@@ -738,6 +738,34 @@ RSpec.describe PollPullRequestJob, :ci_only do
       expect { described_class.perform_now(job.id) }.not_to change { job.workflows.where(trigger_kind: "ci_failure").count }
     end
 
+    it "does not start a CI repair workflow for GitHub Actions setup outages" do
+      stub_check_runs(sha, [
+        { name: "react", status: "completed", conclusion: "failure",
+          html_url: "https://github.com/acme/widgets/actions/runs/99/job/123",
+          output: { summary: nil, text: nil } }
+      ])
+      stub_request(:get, "https://api.github.com/repos/acme/widgets/actions/jobs/123")
+        .with(query: hash_including({}))
+        .to_return(
+          status: 200,
+          headers: { "Content-Type" => "application/json" },
+          body: {
+            id: 123,
+            name: "react",
+            status: "completed",
+            conclusion: "failure",
+            steps: [
+              { name: "Set up job", status: "completed", conclusion: "failure" }
+            ]
+          }.to_json
+        )
+
+      expect { described_class.perform_now(job.id) }.not_to change { job.workflows.where(trigger_kind: "ci_failure").count }
+
+      expect(job.reload.last_ci_handled_sha).to be_nil
+      expect(job.landing_failure_reason).to eq("CI infrastructure failed before repository tests ran on #{sha[0, 7]}")
+    end
+
     it "doesn't re-react to the same head SHA twice" do
       stub_check_runs(sha, [
         { name: "test", status: "completed", conclusion: "failure",

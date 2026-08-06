@@ -398,6 +398,8 @@ class PollPullRequestJob < ApplicationJob
     # (pr_checks_state) AND collects failure details for ci_failure workflows.
     detail = @client.check_runs_detail_for(@slug, head_sha)
     cache_pr_checks_state(head_sha, detail)
+    return if ci_infrastructure_failure_only?(head_sha, detail)
+
     record_no_effective_ci_repair!(head_sha, detail) if no_effective_ci_repair?(head_sha, detail)
 
     return if @job.last_ci_handled_sha == head_sha   # already reacted to this commit
@@ -431,6 +433,22 @@ class PollPullRequestJob < ApplicationJob
       attrs[:landing_failure_reason] = nil
     end
     @job.update_columns(attrs)
+  end
+
+  def ci_infrastructure_failure_only?(head_sha, detail)
+    failed_checks = Array(detail[:failed_checks] || detail["failed_checks"])
+    return false unless failed_checks.any?
+    return false unless failed_checks.all? { |check| ci_infrastructure_check?(check) }
+
+    reason = "CI infrastructure failed before repository tests ran on #{head_sha[0, 7]}"
+    @job.update!(landing_failure_reason: reason) unless @job.landing_failure_reason == reason
+    Rails.logger.info("[PollPullRequestJob] #{@job.slug}: #{reason}; skipping agentic CI repair")
+    true
+  end
+
+  def ci_infrastructure_check?(check)
+    value = check[:failure_kind] || check["failure_kind"]
+    value.to_s == "ci_infrastructure"
   end
 
   # Octokit error messages are shaped:

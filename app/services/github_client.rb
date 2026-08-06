@@ -500,6 +500,12 @@ class GithubClient
   # broken.
   FAILED_CONCLUSIONS = %w[failure timed_out action_required stale].freeze
   INCONCLUSIVE_CONCLUSIONS = %w[cancelled].freeze
+  ACTIONS_INFRA_SETUP_STEP_NAMES = [
+    "Set up job",
+    "Prepare workflow directory",
+    "Prepare all required actions",
+    "Complete job"
+  ].freeze
 
   def failed_check_runs_for(repo_slug, sha)
     runs = track_rate_limits { @client.check_runs_for_ref(repo_slug, sha) }
@@ -533,7 +539,8 @@ class GithubClient
     any_failed = failed_runs.any?
     all_passed = !pending && runs.all? { |cr| PASSING_CONCLUSIONS.include?(cr.conclusion) }
     failed_checks = failed_runs.map do |cr|
-      { name: cr.name, conclusion: cr.conclusion, summary: cr.output&.summary, log: cr.output&.text, html_url: cr.html_url }
+      check = { name: cr.name, conclusion: cr.conclusion, summary: cr.output&.summary, log: cr.output&.text, html_url: cr.html_url }
+      check.merge(actions_failure_metadata_for(repo_slug, cr))
     end
 
     { pending?: pending, any_failed?: any_failed, all_passed?: all_passed, failed_checks: failed_checks }
@@ -823,6 +830,43 @@ class GithubClient
   end
 
   private
+
+  def actions_failure_metadata_for(repo_slug, check_run)
+    job_id = actions_job_id_from_url(check_run.html_url)
+    return {} unless job_id
+
+    job = track_rate_limits { @client.get("/repos/#{repo_slug}/actions/jobs/#{job_id}") }
+    failed_steps = Array(job.steps).select { |step| step.conclusion.to_s == "failure" }
+    failed_step_names = failed_steps.map { |step| step.name.to_s }
+    metadata = {
+      actions_job_id: job_id,
+      actions_failed_steps: failed_step_names
+    }
+
+    if actions_infrastructure_failure?(check_run: check_run, job: job, failed_step_names: failed_step_names)
+      metadata[:failure_kind] = "ci_infrastructure"
+      metadata[:failure_summary] = "GitHub Actions infrastructure failed before repository tests ran."
+    end
+
+    metadata.compact
+  rescue Octokit::NotFound, Octokit::Forbidden, Octokit::Unauthorized => e
+    Rails.logger.warn("[GithubClient] could not inspect Actions job #{repo_slug}/#{job_id}: #{e.message}")
+    {}
+  end
+
+  def actions_job_id_from_url(url)
+    url.to_s[%r{/actions/runs/\d+/job/(\d+)}, 1]&.to_i
+  end
+
+  def actions_infrastructure_failure?(check_run:, job:, failed_step_names:)
+    return false unless check_run.conclusion.to_s == "failure"
+    return false if failed_step_names.empty?
+    return false unless (failed_step_names - ACTIONS_INFRA_SETUP_STEP_NAMES).empty?
+
+    Array(job.steps).none? do |step|
+      step.conclusion.to_s == "failure" && step.name.to_s.match?(/\b(run|test|rspec|vitest|typecheck|rubocop|lint|build)\b/i)
+    end
+  end
 
   # Wraps an Octokit call. On success, persists the rate-limit headers the
   # response carries (every GitHub API response includes them for free). On
