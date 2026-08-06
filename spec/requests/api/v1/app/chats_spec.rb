@@ -1447,7 +1447,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     get "/api/v1/app/chats/#{chat.id}"
 
     expect(parse_body.dig("speech_to_text", "modes")).to eq(
-      "backend_streaming" => { "available" => true },
+      "backend_streaming" => { "available" => false, "unavailable_reason" => "provider_streaming_unavailable" },
       "backend_batch" => { "available" => true },
       "browser" => { "available" => true }
     )

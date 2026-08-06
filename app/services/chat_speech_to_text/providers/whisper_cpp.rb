@@ -15,15 +15,13 @@ module ChatSpeechToText
 
         new(
           executable: executable,
-          model: model,
-          streaming: ActiveModel::Type::Boolean.new.cast(ENV["SYRUS_STT_BACKEND_STREAMING"])
+          model: model
         )
       end
 
-      def initialize(executable:, model:, streaming: false)
+      def initialize(executable:, model:)
         @executable = executable
         @model = model
-        @streaming = streaming
       end
 
       def batch?
@@ -31,7 +29,7 @@ module ChatSpeechToText
       end
 
       def streaming?
-        @streaming
+        false
       end
 
       def transcribe_batch(request)

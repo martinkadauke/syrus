@@ -59,4 +59,16 @@ RSpec.describe ChatSpeechToText::Providers::WhisperCpp do
   ensure
     file&.close!
   end
+
+  it "does not advertise streaming for the batch-only whisper.cpp CLI adapter" do
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with("SYRUS_STT_WHISPER_CPP_EXECUTABLE").and_return("/usr/local/bin/whisper-cli")
+    allow(ENV).to receive(:[]).with("SYRUS_STT_WHISPER_CPP_MODEL").and_return("/models/base.bin")
+    allow(ENV).to receive(:[]).with("SYRUS_STT_BACKEND_STREAMING").and_return("true")
+
+    provider = described_class.from_env
+
+    expect(provider).to be_batch
+    expect(provider).not_to be_streaming
+  end
 end

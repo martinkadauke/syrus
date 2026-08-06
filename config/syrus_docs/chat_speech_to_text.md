@@ -33,9 +33,9 @@ SYRUS_STT_BACKEND_STREAMING=false
 ```
 
 CPU-only deployments can use batch transcription, but latency depends heavily on
-host CPU and model size. GPU acceleration is optional for batch mode but usually
-required before enabling `SYRUS_STT_BACKEND_STREAMING=true`; only enable
-streaming when the configured provider can keep up with live audio.
+host CPU and model size. The bundled `whisper_cpp` adapter uses the CLI batch
+path only; keep `SYRUS_STT_BACKEND_STREAMING=false` unless the configured
+provider implements `stream_transcription` and can keep up with live audio.
 
 The chat payload includes sanitized backend availability metadata:
 `feature_disabled`, `provider_unset`, or no reason when the backend is usable.
