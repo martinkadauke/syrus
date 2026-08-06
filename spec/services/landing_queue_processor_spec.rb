@@ -836,6 +836,34 @@ RSpec.describe LandingQueueProcessor do
       expect(job.reload).to be_landing
     end
 
+    it "retries a transient landing lock conflict for a specific Job" do
+      job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+      processor = instance_double(described_class)
+      calls = 0
+      allow(described_class).to receive(:new).and_return(processor)
+      allow(processor).to receive(:try_land!).with(job) do
+        calls += 1
+        raise ActiveRecord::Deadlocked, "deadlock" if calls == 1
+
+        :landed
+      end
+
+      expect(described_class.try_land!(job)).to eq(:landed)
+      expect(calls).to eq(2)
+    end
+
+    it "queues a landing processor retry instead of raising when landing lock conflicts persist" do
+      job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+      processor = instance_double(described_class)
+      allow(described_class).to receive(:new).and_return(processor)
+      allow(processor).to receive(:try_land!).with(job).and_raise(ActiveRecord::Deadlocked, "deadlock")
+      allow(Feature).to receive(:unified_work_engine_reconciler_enabled?).and_return(false)
+
+      expect {
+        expect(described_class.try_land!(job)).to be_nil
+      }.to have_enqueued_job(LandingQueueProcessorJob)
+    end
+
     it "no-ops when the Job is not approved" do
       job = Factories.job_record(user: user, repository: repository, issue_number: 1,
                                   pr_number: 1, state: "implemented")

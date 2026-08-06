@@ -1,6 +1,11 @@
 class LandingQueueProcessor
   MERGEABILITY_RECHECK_DELAY = 1.minute
   MERGEABILITY_WAIT_REASON = { key: "waiting_github_mergeability" }.freeze
+  TRY_LAND_LOCK_RETRIES = 2
+  TRY_LAND_LOCK_ERRORS = [
+    ActiveRecord::Deadlocked,
+    ActiveRecord::LockWaitTimeout
+  ].freeze
   PRIORITY_ORDER_SQL = [
     "CASE jobs.priority",
     "WHEN 'urgent' THEN 0",
@@ -71,7 +76,32 @@ class LandingQueueProcessor
   def self.try_land!(job = nil)
     return LandingQueueProcessorJob.perform_later unless job
 
-    new.try_land!(job)
+    attempts = 0
+
+    begin
+      new.try_land!(job)
+    rescue *TRY_LAND_LOCK_ERRORS => e
+      attempts += 1
+      if attempts <= TRY_LAND_LOCK_RETRIES
+        Rails.logger.warn(
+          "[LandingQueueProcessor] #{job.slug} try_land lock conflict (#{e.class}); " \
+          "retrying attempt #{attempts}/#{TRY_LAND_LOCK_RETRIES}"
+        )
+        sleep(0.05 * attempts) unless Rails.env.test?
+        job.reload
+        retry
+      end
+
+      Rails.logger.warn(
+        "[LandingQueueProcessor] #{job.slug} try_land lock conflict persisted (#{e.class}); " \
+        "queueing landing processor retry"
+      )
+      LandingQueueProcessorJob.perform_later
+      if Feature.unified_work_engine_reconciler_enabled?
+        WorkEngine::Reconciler.request(source: "#{name}.try_land_lock_conflict", job: job)
+      end
+      nil
+    end
   end
 
   def try_land!(job)
