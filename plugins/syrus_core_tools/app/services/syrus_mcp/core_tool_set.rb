@@ -18,10 +18,21 @@ module SyrusMcp
       ::Mcp::Tools::SearchMemoriesTool,
       ::Mcp::Tools::ListMemoriesTool,
       GetCoverageReportTool,
+      ReadRunWorkerHealthTool,
+      ReadPerformanceDiagnosticsTool,
+      ReadSyrusLogsTool,
       ReportMainConcernTool,
       SubmitSummaryTool,
       SubmitTestPlanTool,
-      SubmitAdversarialReviewTool
+      SubmitJobMetadataTool,
+      SubmitAdversarialReviewTool,
+      SubmitReconciliationFeedbackTool,
+      SubmitInsightTool,
+      UpdateInsightTool,
+      ListInsightsTool,
+      ReadInsightTool,
+      ListRecentWorkflowsTool,
+      ReadInsightRunTranscriptTool
     ].freeze
 
     # The set of tool names this class declares; used by the Sidecar to

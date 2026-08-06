@@ -827,7 +827,7 @@ class User < ApplicationRecord
     return errors.add(:provider_availability_pause_thresholds, "must be a hash") unless thresholds.is_a?(Hash)
 
     thresholds.each do |provider, value|
-      errors.add(:provider_availability_pause_thresholds, "contains unknown provider #{provider}") unless provider.to_s.in?(AGENT_PROVIDERS)
+      errors.add(:provider_availability_pause_thresholds, "contains unknown provider #{provider}") unless provider.to_s.in?(User.agent_providers)
       integer = Integer(value, exception: false)
       if integer.nil? || integer < 0 || integer > 100
         errors.add(:provider_availability_pause_thresholds, "must contain percentages between 0 and 100")
