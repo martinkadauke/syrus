@@ -83,35 +83,51 @@ module SystemAlerts
     end
     message += " The next reset is around <code>#{ERB::Util.html_escape(reset_at)}</code>." if reset_at.present?
 
+    pause_active = codex_provider_pause_active?(user, availability: availability, remaining: remaining, exhausted: exhausted)
+    action_steps = [
+      "Pause or move Codex-backed automation to another provider before starting more work.",
+      "Recheck after changing the Codex account or plan so Syrus can fetch a new usage snapshot."
+    ]
+    actions = [
+      {
+        text: "Recheck Codex",
+        method: "post",
+        path: "/api/v1/app/credentials/recheck_provider_availability",
+        params: { provider: "codex" }
+      }
+    ]
+    if pause_active
+      action_steps << "Override only if you are sure the account has usable Codex quota; Syrus will resume paused Codex work subject to normal admission control."
+      actions << {
+        text: "Resume Codex anyway",
+        method: "post",
+        path: "/api/v1/app/credentials/override_provider_availability",
+        params: { provider: "codex" },
+        destructive: exhausted
+      }
+    end
+
     Alert.new(
       id: "codex_usage:#{user.id}",
       severity: exhausted ? :alarm : :warn,
       title: title,
       message: message,
-      action_steps: [
-        "Pause or move Codex-backed automation to another provider before starting more work.",
-        "Recheck after changing the Codex account or plan so Syrus can fetch a new usage snapshot.",
-        "Override only if you are sure the account has usable Codex quota; Syrus will resume paused Codex work subject to normal admission control."
-      ],
+      action_steps: action_steps,
       cta: { text: "Open agent settings", path: "/settings/agent" },
-      actions: [
-        {
-          text: "Recheck Codex",
-          method: "post",
-          path: "/api/v1/app/credentials/recheck_provider_availability",
-          params: { provider: "codex" }
-        },
-        {
-          text: "Resume Codex anyway",
-          method: "post",
-          path: "/api/v1/app/credentials/override_provider_availability",
-          params: { provider: "codex" },
-          destructive: exhausted
-        }
-      ]
+      actions: actions
     )
   end
   private_class_method :codex_usage
+
+  def self.codex_provider_pause_active?(user, availability:, remaining:, exhausted:)
+    return false unless user.provider_availability_pause_enabled?("codex")
+    return false if availability&.dig(:override_active)
+    return true if exhausted
+    return false if remaining.blank?
+
+    remaining.to_f < user.provider_availability_pause_threshold_for("codex")
+  end
+  private_class_method :codex_provider_pause_active?
 
   def self.codex_usage_breakdown(snapshot)
     [ snapshot["primary"], snapshot["secondary"] ].compact.filter_map do |window|

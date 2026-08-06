@@ -68,10 +68,30 @@ RSpec.describe SystemAlerts do
       expect(alert.message).to include("5h 12% remaining")
       expect(alert.message).to include("weekly 88% remaining")
       expect(alert.cta).to eq(text: "Open agent settings", path: "/settings/agent")
+      expect(alert.actions).to contain_exactly(
+        include(text: "Recheck Codex", path: "/api/v1/app/credentials/recheck_provider_availability")
+      )
+      expect(alert.action_steps.join(" ")).not_to include("Override only")
+    end
+
+    it "surfaces resume override on low Codex usage only when the pause threshold is crossed" do
+      user = Factories.user(
+        provider_availability_pause_thresholds: { "codex" => 20 },
+        codex_usage_status: "warning",
+        codex_usage_snapshot: {
+          "remaining_percent" => 12.4,
+          "primary" => { "label" => "5h", "remaining_percent" => 12.4, "reset_at" => "2026-07-30T18:00:00Z" }
+        }
+      )
+      allow(DataRootDiskUsage).to receive(:current).and_return(nil)
+
+      alert = described_class.active_for(user: user).first
+
       expect(alert.actions).to include(
         include(text: "Recheck Codex", path: "/api/v1/app/credentials/recheck_provider_availability"),
-        include(text: "Resume Codex anyway", path: "/api/v1/app/credentials/override_provider_availability")
+        include(text: "Resume Codex anyway", path: "/api/v1/app/credentials/override_provider_availability", destructive: false)
       )
+      expect(alert.action_steps.join(" ")).to include("Override only")
     end
 
     it "keeps low Codex usage banner after later successful Codex evidence" do
@@ -127,6 +147,23 @@ RSpec.describe SystemAlerts do
 
       expect(alert.severity).to eq(:alarm)
       expect(alert.title).to include("reached")
+      expect(alert.actions).to include(
+        include(text: "Resume Codex anyway", path: "/api/v1/app/credentials/override_provider_availability", destructive: true)
+      )
+    end
+
+    it "hides resume override for exhausted Codex usage when provider pauses are disabled" do
+      user = Factories.user(
+        provider_availability_pause_thresholds: { "codex" => 0 },
+        codex_usage_status: "exhausted",
+        codex_usage_snapshot: {}
+      )
+      allow(DataRootDiskUsage).to receive(:current).and_return(nil)
+
+      alert = described_class.active_for(user: user).first
+
+      expect(alert.severity).to eq(:alarm)
+      expect(alert.actions.map { |action| action[:text] }).not_to include("Resume Codex anyway")
     end
 
     it "does not surface a Codex alarm after later success suppresses bogus model-scoped evidence" do

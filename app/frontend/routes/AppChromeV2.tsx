@@ -346,39 +346,37 @@ function SystemAlertItem({ alert, prefix }: { alert: NonNullable<BootstrapPayloa
 
   return (
     <article className={`rounded border px-4 py-3 text-sm ${tone}`}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-2">
-          <h2 className="font-semibold">{alert.title}</h2>
-          <p dangerouslySetInnerHTML={{ __html: alert.message }} />
-          {alert.action_steps.length > 0 ? (
-            <ul className="list-disc space-y-1 pl-5">
-              {alert.action_steps.map((step) => (
-                <li dangerouslySetInnerHTML={{ __html: step }} key={step} />
-              ))}
-            </ul>
-          ) : null}
-        </div>
-        {alert.cta ? (
-          <Link className="inline-flex shrink-0 items-center justify-center rounded border border-current px-3 py-1.5 font-medium hover:bg-white/60" to={withRoutePrefix(alert.cta.path, prefix)}>
-            {alert.cta.text}
-          </Link>
-        ) : null}
-        {alert.actions?.length ? (
-          <div className="flex shrink-0 flex-wrap gap-2">
-            {alert.actions.map((alertAction) => (
-              <button
-                className={`inline-flex items-center justify-center rounded border border-current px-3 py-1.5 font-medium hover:bg-white/60 disabled:cursor-not-allowed disabled:opacity-60 ${alertAction.destructive ? "text-red-900" : ""}`}
-                disabled={action.isPending}
-                key={`${alertAction.method}:${alertAction.path}:${alertAction.text}`}
-                onClick={() => action.mutate(alertAction)}
-                type="button"
-              >
-                {alertAction.text}
-              </button>
+      <div className="min-w-0 space-y-2">
+        <h2 className="font-semibold">{alert.title}</h2>
+        <p dangerouslySetInnerHTML={{ __html: alert.message }} />
+        {alert.action_steps.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5">
+            {alert.action_steps.map((step) => (
+              <li dangerouslySetInnerHTML={{ __html: step }} key={step} />
             ))}
-          </div>
+          </ul>
         ) : null}
       </div>
+      {alert.cta || alert.actions?.length ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {alert.cta ? (
+            <Link className="inline-flex shrink-0 items-center justify-center rounded border border-current px-3 py-1.5 font-medium hover:bg-white/60" to={withRoutePrefix(alert.cta.path, prefix)}>
+              {alert.cta.text}
+            </Link>
+          ) : null}
+          {alert.actions?.map((alertAction) => (
+            <button
+              className={`inline-flex items-center justify-center rounded border border-current px-3 py-1.5 font-medium hover:bg-white/60 disabled:cursor-not-allowed disabled:opacity-60 ${alertAction.destructive ? "text-red-900" : ""}`}
+              disabled={action.isPending}
+              key={`${alertAction.method}:${alertAction.path}:${alertAction.text}`}
+              onClick={() => action.mutate(alertAction)}
+              type="button"
+            >
+              {alertAction.text}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {action.isError ? <p className="mt-2 text-xs font-medium">Action failed.</p> : null}
     </article>
   )
