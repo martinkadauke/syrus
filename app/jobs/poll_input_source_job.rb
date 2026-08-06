@@ -1,5 +1,5 @@
 class PollInputSourceJob < ApplicationJob
-  queue_as :default
+  queue_as :polling
 
   limits_concurrency to: 1, key: ->(source_id, *) { "poll_input_source:#{source_id}" }
 

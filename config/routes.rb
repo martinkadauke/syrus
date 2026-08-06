@@ -509,6 +509,7 @@ Rails.application.routes.draw do
   get "admin/users", to: "spa#show", as: :admin_users
   get "admin/users/:id", to: "spa#show", as: :admin_user, constraints: { id: /\d+/ }
   get "admin/features", to: "spa#show", as: :admin_features
+  get "admin/plugins", to: "spa#show", as: :admin_plugins
   get "admin/insights", to: "spa#show", as: :admin_insights
   get "admin/console", to: "spa#show", as: :admin_console
   get "admin/installations", to: "spa#show", as: :admin_installations
