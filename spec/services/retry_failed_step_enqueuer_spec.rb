@@ -23,6 +23,19 @@ RSpec.describe RetryFailedStepEnqueuer do
     expect(old_failure.runs).to be_empty
   end
 
+  it "can create a retry run that explicitly disables provider resume" do
+    job = Factories.job_record(state: "failed")
+    workflow = Workflow.create!(job: job, trigger_kind: "initial")
+    workflow.update_columns(state: "failed", started_at: 10.minutes.ago, finished_at: 1.minute.ago)
+    failed_step = Step.create!(workflow: workflow, kind: "test_plan", position: 7)
+    failed_step.update_columns(state: "failed", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+
+    result = described_class.call(workflow: workflow, disable_session_resume: true)
+
+    expect(result).to be_success
+    expect(result.run.parent_session_id).to eq(Steps::Base::DISABLE_AGENT_RESUME)
+  end
+
   %w[merge_train_build merge_train_land].each do |failed_step_kind|
     it "rebuilds a failed merge-train instead of retrying the old #{failed_step_kind} step in place" do
       user = Factories.user(github_token: "ghp_test")

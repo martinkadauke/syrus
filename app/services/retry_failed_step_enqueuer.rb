@@ -8,11 +8,12 @@ class RetryFailedStepEnqueuer
     workflow.steps.where(state: "failed").reorder(position: :desc, id: :desc).first
   end
 
-  def initialize(workflow:, parent_session_id: nil, prompt: nil, agent_provider: nil)
+  def initialize(workflow:, parent_session_id: nil, prompt: nil, agent_provider: nil, disable_session_resume: false)
     @workflow = workflow
     @parent_session_id = parent_session_id
     @prompt = prompt
     @agent_provider = agent_provider.to_s.presence
+    @disable_session_resume = disable_session_resume
   end
 
   def call
@@ -37,7 +38,7 @@ class RetryFailedStepEnqueuer
       job: workflow.job,
       trigger_kind: workflow.trigger_kind,
       agent_provider: agent_provider || workflow.agent_provider,
-      parent_session_id: parent_session_id,
+      parent_session_id: retry_parent_session_id,
       prompt: prompt
     )
 
@@ -46,7 +47,13 @@ class RetryFailedStepEnqueuer
 
   private
 
-  attr_reader :workflow, :parent_session_id, :prompt, :agent_provider
+  attr_reader :workflow, :parent_session_id, :prompt, :agent_provider, :disable_session_resume
+
+  def retry_parent_session_id
+    return Steps::Base::DISABLE_AGENT_RESUME if disable_session_resume
+
+    parent_session_id
+  end
 
   def rebuild_merge_train
     train_id = workflow.artifact("merge_train_id")

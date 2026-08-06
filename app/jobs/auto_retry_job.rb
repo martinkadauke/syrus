@@ -76,7 +76,10 @@ class AutoRetryJob < ApplicationJob
 
   def retry_failed_step(attempt)
     if attempt.workflow.retry_available?
-      RetryFailedStepEnqueuer.call(workflow: attempt.workflow)
+      RetryFailedStepEnqueuer.call(
+        workflow: attempt.workflow,
+        disable_session_resume: attempt.failure_classification == "agent_resume_unavailable"
+      )
     else
       retry_workflow(attempt)
     end

@@ -21,14 +21,14 @@ RSpec.describe ClaudeSessionPruneJob do
     expect(ClaudeSession.exists?(active_session.id)).to be true
   end
 
-  it "clears transcript_jsonl for succeeded Runs within the retention window" do
+  it "keeps transcript_jsonl for succeeded Runs within the retention window" do
     succeeded_run = Factories.job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
     session = ClaudeSession.create!(resumable: succeeded_run, session_id: "ok", transcript_jsonl: "payload")
 
     described_class.perform_now
 
-    expect(session.reload.transcript_jsonl).to be_nil
-    expect(ClaudeSession.exists?(session.id)).to be true  # row kept, just transcript cleared
+    expect(session.reload.transcript_jsonl).to eq("payload")
+    expect(ClaudeSession.exists?(session.id)).to be true
   end
 
   it "does not clear transcript_jsonl for failed/cancelled Runs within the retention window" do

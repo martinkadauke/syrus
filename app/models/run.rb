@@ -115,8 +115,6 @@ class Run < ApplicationRecord
                        if: :saved_change_to_state_to_failed?
   after_update_commit :broadcast_provider_availability_after_failure!,
                        if: :saved_change_to_state_to_failed?
-  after_update_commit :clear_transcript_on_success!,
-                       if: :saved_change_to_state_to_succeeded?
   after_update_commit :record_provider_success_evidence!,
                        if: :saved_change_to_state_to_succeeded?
   after_update_commit :broadcast_provider_availability_after_success!,
@@ -279,10 +277,6 @@ class Run < ApplicationRecord
 
   def job_for_progress_broadcast
     job
-  end
-
-  def clear_transcript_on_success!
-    claude_session&.update_column(:transcript_jsonl, nil)
   end
 
   def classify_failure!

@@ -26,6 +26,7 @@ module Steps
     class StepFailed < StandardError; end
     class NoChangesProduced < StepFailed; end
     DEFAULT_AGENT_RESUME = Object.new.freeze
+    DISABLE_AGENT_RESUME = "__syrus_disable_agent_resume__".freeze
 
     # Shared buffering thresholds — used by buffered_log_sink (agent
     # output) and by Prepare#stream_buffered (shell command output).
@@ -239,7 +240,27 @@ module Steps
     # downstream prompt carries enough context (issue body +
     # comment + diff) without dragging hours-old conversation in.
     def parent_session_id
-      run.parent_session_id.presence || step.upstream_session_id
+      return nil if agent_resume_disabled?
+
+      explicit_parent_session_id || step.upstream_session_id
+    end
+
+    def explicit_parent_session_id
+      return nil if agent_resume_disabled?
+
+      run.parent_session_id.presence
+    end
+
+    def agent_resume_disabled?
+      run.parent_session_id == DISABLE_AGENT_RESUME
+    end
+
+    def codex_resume_unavailable_failure?
+      run.job_logs
+        .order(sequence: :desc)
+        .limit(25)
+        .pluck(:chunk)
+        .any? { |chunk| chunk.to_s.match?(/no stored rollout JSONL|no rollout found|thread\/resume failed|No conversation found/i) }
     end
 
     def append_grade_failure_feedback(prompt)

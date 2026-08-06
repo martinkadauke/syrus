@@ -77,5 +77,13 @@ RSpec.describe AgentProviders::SessionStore do
       expect(described_class.transcript_for(provider: "codex", session_id: "thread", job: job))
         .to eq("newer\n")
     end
+
+    it "ignores legacy zero-byte transcript rows" do
+      ClaudeSession.create!(resumable: run, provider: "codex",
+                            session_id: "thread", transcript_jsonl: "")
+
+      expect(described_class.transcript_for(provider: "codex", session_id: "thread", job: job))
+        .to be_nil
+    end
   end
 end

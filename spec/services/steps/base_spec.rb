@@ -150,6 +150,19 @@ RSpec.describe Steps::Base do
       h = handler_class.new(run)
       expect(h.parent_session_id).to eq("S-explicit")
     end
+
+    it "treats the no-resume sentinel as an explicit nil parent" do
+      upstream_run = Run.create!(job: job, step: upstream_step, trigger_kind: "initial",
+                                  state: "succeeded")
+      ClaudeSession.create!(resumable: upstream_run, session_id: "S-upstream", transcript_jsonl: "x")
+      upstream_step.update!(state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
+
+      current_run = Run.create!(job: job, step: current_step, trigger_kind: "initial",
+                                parent_session_id: Steps::Base::DISABLE_AGENT_RESUME)
+      h = handler_class.new(current_run)
+
+      expect(h.parent_session_id).to be_nil
+    end
   end
 
   describe "#agent_provider" do

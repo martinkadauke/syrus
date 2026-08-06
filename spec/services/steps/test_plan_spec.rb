@@ -84,12 +84,44 @@ RSpec.describe Steps::TestPlan do
     expect(workflow.reload.artifact("test_plan")["steps"]).to include("Run rspec: `bundle exec rspec`")
   end
 
+  it "retries without provider resume when Codex resume state is unavailable" do
+    calls = []
+    allow(handler).to receive(:run_agent) do |**kwargs|
+      calls << kwargs
+      if calls.one?
+        JobLog.append!(
+          run: run,
+          chunk: "[codex resume] resume for session 019f-missing did not complete successfully: thread/resume failed: no rollout found for thread id 019f-missing",
+          kind: "system"
+        )
+        raise Steps::Base::StepFailed, "agent reported error"
+      end
+
+      workflow.set_artifact!("test_plan", { steps: [ "Run bin/rspec" ], notes: nil })
+    end
+
+    handler.call
+
+    expect(calls.size).to eq(2)
+    expect(calls.first).not_to include(resume_session_id: nil)
+    expect(calls.second).to include(resume_session_id: nil)
+  end
+
   it "resumes from the succeeded implement session" do
     ClaudeSession.create!(resumable: implement_run, session_id: "implement-thread", transcript_jsonl: "{}\n")
 
     handler.singleton_class.send(:public, :parent_session_id)
 
     expect(handler.parent_session_id).to eq("implement-thread")
+  end
+
+  it "honors the no-resume retry marker instead of falling back to the implement session" do
+    ClaudeSession.create!(resumable: implement_run, session_id: "implement-thread", transcript_jsonl: "{}\n")
+    run.update!(parent_session_id: Steps::Base::DISABLE_AGENT_RESUME)
+
+    handler.singleton_class.send(:public, :parent_session_id)
+
+    expect(handler.parent_session_id).to be_nil
   end
 
   context "for coding handoff workflows" do

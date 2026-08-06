@@ -339,13 +339,13 @@ RSpec.describe Run do
     end
   end
 
-  describe "transcript pruning on success" do
-    it "clears ClaudeSession transcript_jsonl when the Run transitions to succeeded" do
+  describe "transcript retention on success" do
+    it "keeps ClaudeSession transcript_jsonl when the Run transitions to succeeded" do
       run = job.initial_run
       run.start!; run.save!
       session = ClaudeSession.create!(resumable: run, session_id: "abc", transcript_jsonl: "big payload")
       run.succeed!; run.save!
-      expect(session.reload.transcript_jsonl).to be_nil
+      expect(session.reload.transcript_jsonl).to eq("big payload")
     end
 
     it "does not clear transcript when the Run fails" do

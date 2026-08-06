@@ -94,9 +94,8 @@ module Admin
       {
         session_id: session.session_id,
         provider: session.provider,
-        # transcript_jsonl is dropped on Run success (commit
-        # 804cdf5) — keep the metadata visible but flag the
-        # body as pruned instead of pretending size 0.
+        # transcript_jsonl is kept through the terminal retention window for
+        # provider resume rehydration, then the session row is pruned.
         transcript_pruned: session.transcript_jsonl.nil?,
         transcript_bytes:  session.transcript_jsonl&.bytesize,
         transcript_lines:  session.transcript_jsonl&.count("\n")

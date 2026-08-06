@@ -14,9 +14,10 @@ class ClaudeSession < ApplicationRecord
     select(:id, :provider, :session_id, :resumable_type, :resumable_id, :run_id, :created_at, :updated_at)
   }
 
-  # Keep captured agent sessions for diagnostics for two weeks after the parent Run
-  # reaches a terminal state. After that, ClaudeSessionPruneJob deletes
-  # them. Active Runs (queued/running) are never pruned.
+  # Keep captured agent sessions for diagnostics and provider resume
+  # rehydration for two weeks after the parent Run reaches a terminal
+  # state. After that, ClaudeSessionPruneJob deletes them. Active Runs
+  # (queued/running) are never pruned.
   RETAIN_AFTER_TERMINAL = 14.days
 
   scope :prunable, -> {
@@ -25,9 +26,9 @@ class ClaudeSession < ApplicationRecord
       .where("claude_sessions.updated_at < ?", RETAIN_AFTER_TERMINAL.ago)
   }
 
-  # Sessions whose Run already succeeded but still carry a transcript — cleared
-  # by the prune job as a belt-and-suspenders sweep (the Run callback handles
-  # the common case immediately at transition time).
+  # Sessions whose Run already succeeded and still carry a transcript. Kept as
+  # a named scope for admin diagnostics; prune deletes the whole row once the
+  # terminal retention window expires.
   scope :with_succeeded_transcript, -> {
     for_runs.where(runs: { state: "succeeded" }).where.not(transcript_jsonl: nil)
   }

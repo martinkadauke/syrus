@@ -6,6 +6,7 @@ module AgentProviders
       ClaudeSession.for_runs
                    .where(session_id: session_id, provider: provider, runs: { job_id: job.id })
                    .where.not(transcript_jsonl: nil)
+                   .where.not(transcript_jsonl: "")
                    .order(created_at: :desc)
                    .first&.transcript_jsonl
     end

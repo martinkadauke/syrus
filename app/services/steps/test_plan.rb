@@ -23,11 +23,23 @@ module Steps
 
       log("invoking agent for test_plan step (#{workflow.slug}, --resume from implement)")
 
-      run_agent(
-        prompt: run.prompt,
-        max_turns: TEST_PLAN_TURN_BUDGET,
-        required_mcp_tools: %w[submit_test_plan]
-      )
+      begin
+        run_agent(
+          prompt: run.prompt,
+          max_turns: TEST_PLAN_TURN_BUDGET,
+          required_mcp_tools: %w[submit_test_plan]
+        )
+      rescue StepFailed
+        raise unless codex_resume_unavailable_failure?
+
+        log("test_plan Codex resume state was unavailable; retrying without --resume")
+        run_agent(
+          prompt: fresh_prompt,
+          max_turns: TEST_PLAN_TURN_BUDGET,
+          resume_session_id: nil,
+          required_mcp_tools: %w[submit_test_plan]
+        )
+      end
 
       workflow.reload
       verify_test_plan!
@@ -47,7 +59,9 @@ module Steps
     end
 
     def parent_session_id
-      run.parent_session_id.presence || implement_session_id || super
+      return nil if agent_resume_disabled?
+
+      explicit_parent_session_id || implement_session_id || super
     end
 
     def implement_session_id
@@ -63,6 +77,10 @@ module Steps
 
     def missing_required_implement_run?
       workflow.steps.exists?(kind: "implement") && successful_implement_run.blank?
+    end
+
+    def fresh_prompt
+      Prompts::TestPlan.new.to_s
     end
 
     def mcp_sidecar_failure?(error)

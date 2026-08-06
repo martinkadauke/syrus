@@ -20,7 +20,9 @@ module Steps
     private
 
     def parent_session_id
-      run.parent_session_id.presence ||
+      return nil if agent_resume_disabled?
+
+      explicit_parent_session_id ||
         workflow.steps
           .where(kind: "adversarial_review", loop_id: step.loop_id)
           .where("iteration < ?", step.iteration)

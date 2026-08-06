@@ -5,9 +5,11 @@ module Prompts
   class TestPlan
     def to_s
       <<~PROMPT.strip
-        You just finished implementing and summarizing a Syrus run. Your
-        previous conversation contains the issue, the files you read,
-        the diff you produced, and any edge cases you noticed.
+        You just finished implementing and summarizing a Syrus run. When
+        this turn is resumed, your previous conversation contains the issue,
+        the files you read, the diff you produced, and any edge cases you
+        noticed. If this turn is not resumed, inspect the current workspace,
+        branch diff, and available Syrus context instead.
 
         Review that implementation context and produce a concise,
         actionable test plan for a human reviewer or operator to follow,
@@ -19,8 +21,7 @@ module Prompts
           writing the code.
         - `notes`: optional short context for reviewers.
 
-        Don't recap the whole conversation in your reply. Don't re-read
-        files unless the resumed context is insufficient. Don't make
+        Don't recap the whole conversation in your reply. Don't make
         additional commits. Just call `submit_test_plan` and exit.
       PROMPT
     end

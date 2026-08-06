@@ -71,7 +71,9 @@ module Steps
     end
 
     def parent_session_id
-      run.parent_session_id.presence || implement_session_id || super
+      return nil if agent_resume_disabled?
+
+      explicit_parent_session_id || implement_session_id || super
     end
 
     def implement_session_id
@@ -108,14 +110,6 @@ module Steps
         .limit(25)
         .pluck(:chunk)
         .any? { |chunk| chunk.to_s.match?(/prompt is too long/i) }
-    end
-
-    def codex_resume_unavailable_failure?
-      run.job_logs
-        .order(sequence: :desc)
-        .limit(25)
-        .pluck(:chunk)
-        .any? { |chunk| chunk.to_s.match?(/no stored rollout JSONL|no rollout found|thread\/resume failed|No conversation found/i) }
     end
 
     def fallback_prompt

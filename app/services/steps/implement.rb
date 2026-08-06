@@ -21,7 +21,9 @@ module Steps
     private
 
     def parent_session_id
-      run.parent_session_id.presence || prior_implement_session_id || super
+      return nil if agent_resume_disabled?
+
+      explicit_parent_session_id || prior_implement_session_id || super
     end
 
     def persist_prompt_if_needed

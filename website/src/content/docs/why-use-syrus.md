@@ -33,7 +33,9 @@ happened from an agent transcript.
 Syrus is bring-your-own-key. Users store their own GitHub and agent
 credentials in the Syrus instance, encrypted with Rails Active Record
 Encryption. The database, logs, transcripts, and workspace storage live in
-your deployment.
+your deployment. Successful workflow provider transcripts can remain until
+the normal cleanup window expires so retries can resume after deploys or
+worker movement.
 
 That matters when your evaluation questions are:
 

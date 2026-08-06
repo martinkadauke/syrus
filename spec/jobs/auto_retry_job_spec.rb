@@ -69,6 +69,16 @@ RSpec.describe AutoRetryJob do
     expect(step.reload).to be_queued
   end
 
+  it "disables provider resume for agent-resume-unavailable failed-step attempts" do
+    attempt = failed_attempt!(retry_kind: "failed_step")
+    attempt.update!(failure_classification: "agent_resume_unavailable")
+
+    described_class.perform_now(attempt.id)
+
+    retry_run = step.runs.order(:created_at).last
+    expect(retry_run.parent_session_id).to eq(Steps::Base::DISABLE_AGENT_RESUME)
+  end
+
   it "uses RetryWorkflowEnqueuer for retry-workflow attempts" do
     attempt = failed_attempt!(retry_kind: "retry_workflow")
     result = RetryWorkflowEnqueuer::Result.new(workflow: instance_double(Workflow), error: nil, circuit: nil)

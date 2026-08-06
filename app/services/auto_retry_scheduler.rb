@@ -43,7 +43,7 @@ class AutoRetryScheduler
       return
     end
 
-    retry_kind = retry_kind_for(run)
+    retry_kind = retry_kind_for(run, classification)
     return if retry_kind.nil?
 
     backoff = worker_died ? WORKER_DIED_BACKOFF : BACKOFFS.fetch(attempt_number - 1)
@@ -93,7 +93,8 @@ class AutoRetryScheduler
       !workflow.landing_workflow?
   end
 
-  def retry_kind_for(run)
+  def retry_kind_for(run, classification)
+    return "failed_step" if classification.classification == "agent_resume_unavailable" && workflow.retry_available?
     return "resume_failed_step" if workflow.retry_available? && resumable_agent_run?(run)
     return "failed_step" if workflow.retry_available?
     return "retry_workflow" if retry_workflow_safe?

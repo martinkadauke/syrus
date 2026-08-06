@@ -82,6 +82,9 @@ class AutoRetryFailureClassifier
   def call
     run = latest_failed_run
     return non_retryable("unknown", "no failed run") unless run
+    if run.run_failure_classification&.classification == "agent_resume_unavailable"
+      return retryable("agent_resume_unavailable", run.run_failure_classification.reason)
+    end
 
     outcome = run.agent_outcome.to_s.presence
     return non_retryable(outcome, NON_RETRYABLE_AGENT_OUTCOMES.fetch(outcome)) if NON_RETRYABLE_AGENT_OUTCOMES.key?(outcome)
