@@ -50,25 +50,10 @@ class McpToolUsageRecorder
   end
 
   def self.workflow_tool_names
-    [
-      SyrusMcp::ReadLiveStateTool,
-      Mcp::Tools::ReadMemoryTool,
-      Mcp::Tools::WriteMemoryTool,
-      Mcp::Tools::DeleteMemoryTool,
-      Mcp::Tools::SearchMemoriesTool,
-      Mcp::Tools::ListMemoriesTool,
-      SyrusMcp::GetCoverageReportTool,
-      SyrusMcp::ReportMainConcernTool,
-      SyrusMcp::SubmitSummaryTool,
-      SyrusMcp::SubmitTestPlanTool,
-      SyrusMcp::SubmitJobMetadataTool,
-      SyrusMcp::SubmitAdversarialReviewTool,
-      SyrusMcp::SubmitReconciliationFeedbackTool,
-      SyrusMcp::SubmitInsightTool,
-      SyrusMcp::UpdateInsightTool,
-      SyrusMcp::ListInsightsTool,
-      SyrusMcp::ReadInsightTool
-    ].map { |tool| tool.tool_name.to_s }.uniq.sort
+    (McpToolRegistry.summaries(surface: :workflow) + McpToolRegistry.summaries(surface: :agent_insight))
+      .map { |entry| entry[:tool_name].to_s }
+      .uniq
+      .sort
   end
 
   def self.chat_tool_names

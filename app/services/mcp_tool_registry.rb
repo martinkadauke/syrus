@@ -261,6 +261,9 @@ class McpToolRegistry
         workflow(Mcp::Tools::ListMemoriesTool, required_roles: workflow_roles),
         workflow(SyrusMcp::GetCoverageReportTool, required_roles: workflow_roles),
         workflow(SyrusMcp::ReadRunWorkerHealthTool, required_roles: workflow_roles),
+        workflow(SyrusMcp::StartPreviewTool, required_roles: workflow_roles, mutation: true),
+        workflow(SyrusMcp::StopPreviewTool, required_roles: workflow_roles, mutation: true),
+        workflow(SyrusMcp::ReadPreviewLogTool, required_roles: workflow_roles),
         workflow(SyrusMcp::ReportMainConcernTool, required_roles: workflow_roles, mutation: true),
         workflow(SyrusMcp::SubmitSummaryTool, capability: :submit_summary, required_roles: summary_roles, mutation: true),
         workflow(SyrusMcp::SubmitTestPlanTool, capability: :submit_test_plan, required_roles: summary_roles, mutation: true),
@@ -284,8 +287,11 @@ class McpToolRegistry
         entry(Mcp::Tools::SearchMemoriesTool, surface: :agent_insight),
         entry(Mcp::Tools::ListMemoriesTool, surface: :agent_insight),
         entry(SyrusMcp::SubmitInsightTool, surface: :agent_insight, feature_flag: :agent_insights, mutation: true),
+        entry(SyrusMcp::UpdateInsightTool, surface: :agent_insight, feature_flag: :agent_insights, mutation: true),
         entry(SyrusMcp::ListInsightsTool, surface: :agent_insight, feature_flag: :agent_insights),
-        entry(SyrusMcp::ReadInsightTool, surface: :agent_insight, feature_flag: :agent_insights)
+        entry(SyrusMcp::ReadInsightTool, surface: :agent_insight, feature_flag: :agent_insights),
+        entry(SyrusMcp::ListRecentWorkflowsTool, surface: :agent_insight, feature_flag: :agent_insights),
+        entry(SyrusMcp::ReadInsightRunTranscriptTool, surface: :agent_insight, feature_flag: :agent_insights)
       ]
     end
 
