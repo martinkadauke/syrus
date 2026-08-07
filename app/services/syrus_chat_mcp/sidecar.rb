@@ -328,7 +328,7 @@ module SyrusChatMcp
     ].freeze
 
     def self.tool_names(chat_session = nil)
-      tools = chat_session ? tools_for(chat_session) : McpToolRegistry.tools(surface: :chat, tier: :deferred)
+      tools = chat_session ? tools_for(chat_session) : DEFERRED_TOOLS
       tools.map { |tool| tool.name.demodulize.sub(/Tool\z/, "").underscore }
     end
 
