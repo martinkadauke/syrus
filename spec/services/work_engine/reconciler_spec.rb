@@ -248,6 +248,67 @@ RSpec.describe WorkEngine::Reconciler do
     expect(run.reload).to be_cancelled
   end
 
+  it "cancels active workflows that conflict with an Epic-wide workflow" do
+    epic = Factories.epic(user: job.user, repository: job.repository)
+    keeper_job = Factories.job_record(user: job.user, repository: job.repository, epic: epic, issue_number: 201)
+    conflict_job = Factories.job_record(user: job.user, repository: job.repository, epic: epic, issue_number: 202)
+    keeper = Workflow.create!(job: keeper_job, trigger_kind: "stack_rebase")
+    keeper_step = Step.create!(workflow: keeper, kind: "stack_agent_rebase", position: 0)
+    keeper_run = Run.create!(job: keeper_job, step: keeper_step, trigger_kind: "stack_rebase", agent_provider: "claude")
+    keeper.update_columns(state: "running", started_at: 2.minutes.ago, created_at: 2.minutes.ago)
+    keeper_step.update_columns(state: "running", started_at: 2.minutes.ago)
+    keeper_run.update_columns(state: "running", started_at: 2.minutes.ago, last_heartbeat_at: Time.current)
+
+    conflict = Workflow.create!(job: conflict_job, trigger_kind: "initial")
+    conflict_step = Step.create!(workflow: conflict, kind: "implement", position: 0)
+    conflict_run = Run.create!(job: conflict_job, step: conflict_step, trigger_kind: "initial", agent_provider: "claude")
+    conflict.update_columns(state: "running", started_at: 1.minute.ago, created_at: 1.minute.ago)
+    conflict_step.update_columns(state: "running", started_at: 1.minute.ago)
+    conflict_run.update_columns(state: "running", started_at: 1.minute.ago, last_heartbeat_at: Time.current)
+
+    result = reconcile_and_execute
+
+    expect(kind(result, :epic_workflow_conflict)).to have_attributes(
+      severity: "error",
+      safe_to_auto_repair: true,
+      recommended_repair_action: "cancel_epic_workflow_conflict"
+    )
+    expect(plan(result, :cancel_epic_workflow_conflict)).to have_attributes(
+      auto_executable: true,
+      target_type: "Workflow",
+      target_id: conflict.id
+    )
+    expect(result.repair_executions.map(&:message)).to include("cancelled Workflow ##{conflict.id} because Epic-wide Workflow ##{keeper.id} is active")
+    expect(keeper.reload).to be_running
+    expect(conflict.reload).to be_cancelled
+    expect(conflict_step.reload).to be_cancelled
+    expect(conflict_run.reload).to be_cancelled
+  end
+
+  it "keeps the older Epic-wide workflow and cancels a later Epic-wide workflow" do
+    epic = Factories.epic(user: job.user, repository: job.repository)
+    first_job = Factories.job_record(user: job.user, repository: job.repository, epic: epic, issue_number: 203)
+    second_job = Factories.job_record(user: job.user, repository: job.repository, epic: epic, issue_number: 204)
+    first = Workflow.create!(job: first_job, trigger_kind: "stack_rebase")
+    second = Workflow.create!(job: second_job, trigger_kind: "merge_train", artifacts: { "merge_train_id" => 321 })
+    first_step = Step.create!(workflow: first, kind: "stack_agent_rebase", position: 0)
+    second_step = Step.create!(workflow: second, kind: "merge_train_build", position: 0)
+    first_run = Run.create!(job: first_job, step: first_step, trigger_kind: "stack_rebase", agent_provider: "claude")
+    second_run = Run.create!(job: second_job, step: second_step, trigger_kind: "merge_train", agent_provider: "claude")
+    first.update_columns(state: "running", started_at: 2.minutes.ago, created_at: 2.minutes.ago)
+    second.update_columns(state: "running", started_at: 1.minute.ago, created_at: 1.minute.ago)
+    first_step.update_columns(state: "running", started_at: 2.minutes.ago)
+    second_step.update_columns(state: "running", started_at: 1.minute.ago)
+    first_run.update_columns(state: "running", started_at: 2.minutes.ago, last_heartbeat_at: Time.current)
+    second_run.update_columns(state: "running", started_at: 1.minute.ago, last_heartbeat_at: Time.current)
+
+    result = reconcile_and_execute
+
+    expect(plan(result, :cancel_epic_workflow_conflict)).to have_attributes(target_id: second.id)
+    expect(first.reload).to be_running
+    expect(second.reload).to be_cancelled
+  end
+
   it "cancels stale queued auto-retry workflows after a newer workflow succeeds" do
     source = workflow
     run.update_columns(state: "failed", agent_outcome: "worker_died", finished_at: 30.minutes.ago)

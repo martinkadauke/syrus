@@ -4,6 +4,7 @@ class Workflow < ApplicationRecord
   include BroadcastsJobProgress
 
   TRIGGER_KINDS = Workflow::TriggerKind.values
+  EPIC_WIDE_TRIGGER_KINDS = Workflow::TriggerKind.epic_wide_values
 
   belongs_to :job
   belongs_to :user
@@ -35,6 +36,7 @@ class Workflow < ApplicationRecord
   serialize :chain_template, coder: JSON
 
   scope :active, -> { where(state: %w[ queued running ]) }
+  scope :epic_wide, -> { where(trigger_kind: EPIC_WIDE_TRIGGER_KINDS) }
   scope :terminal, -> { where(state: %w[ succeeded failed cancelled ]) }
   scope :ordered, -> { order(:created_at) }
 
@@ -130,6 +132,10 @@ class Workflow < ApplicationRecord
 
   def saved_change_to_state_to_failed?
     saved_change_to_state? && state == "failed"
+  end
+
+  def epic_wide?
+    Workflow::TriggerKind.epic_wide?(trigger_kind)
   end
 
   def enforce_job_workflow_runaway_limits_on_create!

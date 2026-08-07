@@ -37,6 +37,14 @@ class Workflow
       BY_KIND.keys.freeze
     end
 
+    def epic_wide_values
+      %w[merge_train stack_rebase].freeze
+    end
+
+    def epic_wide?(kind)
+      epic_wide_values.include?(kind.to_s)
+    end
+
     def fetch(kind)
       BY_KIND.fetch(kind.to_s) do
         raise ArgumentError, "unknown workflow trigger_kind=#{kind.inspect}"

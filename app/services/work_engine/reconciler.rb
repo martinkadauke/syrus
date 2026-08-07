@@ -136,6 +136,7 @@ module WorkEngine
       @solid_queue = capture_solid_queue
 
       issues = []
+      issues.concat(classify_epic_workflow_conflicts)
       issues.concat(classify_closed_jobs_with_active_workflows)
       issues.concat(classify_queued_runs)
       issues.concat(classify_paused_queues)
@@ -266,6 +267,33 @@ module WorkEngine
             explanation: "Run ##{run.id} is still queued behind a stale or unreachable SolidQueue claim."
           )
         end
+      end
+    end
+
+    def classify_epic_workflow_conflicts
+      EpicWorkflowLock.conflicting_active_workflows(workflows).map do |conflict|
+        workflow = conflict.fetch(:workflow)
+        keeper = conflict.fetch(:keeper)
+        issue(
+          kind: :epic_workflow_conflict,
+          severity: workflow.epic_wide? ? :critical : :error,
+          affected_ids: ids_for(workflow).merge(
+            job_ids: [ workflow.job_id ],
+            workflow_ids: [ workflow.id, keeper.id ].uniq,
+            epic_ids: [ workflow.job&.epic_id ].compact
+          ),
+          safe_to_auto_repair: workflow.may_cancel?,
+          recommended_repair_action: "cancel_epic_workflow_conflict",
+          evidence: workflow_evidence(workflow).merge(
+            epic_id: workflow.job&.epic_id,
+            conflicting_workflow_id: workflow.id,
+            conflicting_trigger_kind: workflow.trigger_kind,
+            keeper_workflow_id: keeper.id,
+            keeper_trigger_kind: keeper.trigger_kind,
+            reason: conflict.fetch(:reason)
+          ),
+          explanation: "Workflow ##{workflow.id} conflicts with active Epic-wide Workflow ##{keeper.id}; only one workflow may mutate or run jobs for the Epic at a time."
+        )
       end
     end
 

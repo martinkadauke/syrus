@@ -469,6 +469,35 @@ module WorkEngine
         end
       end
 
+      class CancelEpicWorkflowConflict < Base
+        def perform
+          workflow = target_workflow
+          return skipped("Workflow no longer exists") unless workflow
+          return skipped("Workflow is #{workflow.state}, not active") unless workflow.queued? || workflow.running?
+          return skipped("Workflow cannot transition to cancelled") unless workflow.may_cancel?
+
+          keeper_id = plan.preconditions["keeper_workflow_id"]
+          keeper = Workflow.find_by(id: keeper_id)
+          return skipped("Keeper Workflow ##{keeper_id} is no longer active") unless keeper&.queued? || keeper&.running?
+
+          StateTransition.with_source("reconciler") do
+            workflow.artifacts = (workflow.artifacts || {}).merge(
+              "cancelled_reason" => EpicWorkflowLock::BLOCK_REASON,
+              "cancelled_by_reconciler_at" => Time.current.iso8601,
+              "cancelled_details" => {
+                "keeper_workflow_id" => keeper.id,
+                "keeper_workflow_slug" => keeper.slug,
+                "keeper_trigger_kind" => keeper.trigger_kind
+              }
+            )
+            workflow.cancel!
+            workflow.save!
+          end
+
+          success("cancelled Workflow ##{workflow.id} because Epic-wide Workflow ##{keeper.id} is active")
+        end
+      end
+
       class DeferOrphanedLandingJob < Base
         def perform
           job = target_job

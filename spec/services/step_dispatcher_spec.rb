@@ -36,6 +36,45 @@ RSpec.describe StepDispatcher do
       }.not_to change { Run.count }
     end
 
+    it "holds ordinary Epic child workflows while an Epic-wide workflow is active" do
+      epic = Factories.epic(user: job.user, repository: job.repository)
+      keeper_job = Factories.job_record(user: job.user, repository: job.repository, epic: epic, issue_number: 101)
+      job.update!(epic: epic)
+      keeper = Workflow.create!(job: keeper_job, trigger_kind: "stack_rebase")
+      keeper.update_columns(state: "running", started_at: 1.minute.ago)
+
+      expect {
+        described_class.start_workflow(workflow)
+      }.not_to change { Run.count }
+
+      expect(workflow.reload).to be_queued
+      expect(workflow.artifact("start_blocked_reason")).to eq(StepDispatcher::EPIC_WIDE_BLOCK_REASON)
+      expect(workflow.artifact("start_blocked_details")).to include(
+        "blocking_workflow_id" => keeper.id,
+        "blocking_trigger_kind" => "stack_rebase"
+      )
+    end
+
+    it "cancels a second Epic-wide workflow before it starts" do
+      epic = Factories.epic(user: job.user, repository: job.repository)
+      keeper_job = Factories.job_record(user: job.user, repository: job.repository, epic: epic, issue_number: 102)
+      job.update!(epic: epic)
+      keeper = Workflow.create!(job: keeper_job, trigger_kind: "stack_rebase")
+      keeper.update_columns(state: "running", started_at: 1.minute.ago)
+      workflow.update!(trigger_kind: "merge_train", artifacts: { "merge_train_id" => 123 })
+
+      expect {
+        described_class.start_workflow(workflow)
+      }.not_to change { Run.count }
+
+      expect(workflow.reload).to be_cancelled
+      expect(workflow.artifact("start_cancelled_reason")).to eq(StepDispatcher::EPIC_WIDE_BLOCK_REASON)
+      expect(workflow.artifact("start_cancelled_details")).to include(
+        "blocking_workflow_id" => keeper.id,
+        "blocking_trigger_kind" => "stack_rebase"
+      )
+    end
+
     it "threads parent_session_id + prompt through to the first Run" do
       described_class.start_workflow(workflow, parent_session_id: "S-prior", prompt: "carry-over")
       run = s1.runs.last

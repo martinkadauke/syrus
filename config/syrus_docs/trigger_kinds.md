@@ -104,9 +104,11 @@ Rebases the PR branch onto the base branch. Skips `commit_agent_changes` (rebase
 
 Rebases a chain of dependent PR branches in dependency order, then resumes landing for any approved stack Jobs.
 
-Stack rebases do not start while an active Epic merge train includes any related
-Job in the stack. The merge train grades and lands a captured integration branch;
-rewriting member PR branches concurrently would make that captured state stale.
+`stack_rebase` is an Epic-wide workflow when the Job belongs to an Epic. Only
+one Epic-wide workflow may be active for an Epic at a time, and it blocks
+ordinary child Job workflows while it runs. This prevents stack rebases from
+force-pushing member branches while a merge train is grading or landing a
+captured integration branch.
 
 ## coding_handoff
 

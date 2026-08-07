@@ -35,6 +35,27 @@ class StepDispatcher
       return
     end
 
+    if (blocking_workflow = EpicWorkflowLock.blocking_workflow_for(workflow))
+      if workflow.epic_wide?
+        cancel_unstartable_epic_workflow_conflict!(workflow, blocking_workflow)
+      else
+        record_start_blocked!(
+          workflow,
+          EPIC_WIDE_BLOCK_REASON,
+          backoff: START_BLOCKED_BACKOFF,
+          details: {
+            "blocking_workflow_id" => blocking_workflow.id,
+            "blocking_workflow_slug" => blocking_workflow.slug,
+            "blocking_trigger_kind" => blocking_workflow.trigger_kind
+          }
+        )
+        WorkflowPhaseAdmissionJob.set(wait: START_BLOCKED_BACKOFF, priority: workflow.job.solid_queue_priority).perform_later(workflow.id)
+        warn_if_stuck_queued(workflow, "#{EPIC_WIDE_BLOCK_REASON}: #{blocking_workflow.slug}")
+      end
+      return
+    end
+    clear_start_blocked!(workflow, EPIC_WIDE_BLOCK_REASON)
+
     if manually_paused?(workflow)
       record_manual_pause!(workflow)
       warn_if_stuck_queued(workflow, MANUAL_PAUSE_REASON)
@@ -182,6 +203,7 @@ class StepDispatcher
   JOB_BLOCK_REASON = "job_not_ready_for_execution"
   ADMISSION_BLOCK_REASON = "workflow_admission_budget"
   PROVIDER_AVAILABILITY_BLOCK_REASON = "provider_availability"
+  EPIC_WIDE_BLOCK_REASON = EpicWorkflowLock::BLOCK_REASON
   PAUSE_REASON_ADMISSION = ADMISSION_BLOCK_REASON
   PAUSE_REASON_RESOURCE_SAFETY = "resource_safety"
   MANUAL_PAUSE_REASON = "manual_pause"
@@ -311,6 +333,24 @@ class StepDispatcher
     workflow.cancel! if workflow.may_cancel?
     workflow.save!
     nil
+  end
+
+  def self.cancel_unstartable_epic_workflow_conflict!(workflow, blocking_workflow)
+    workflow.artifacts = (workflow.artifacts || {}).merge(
+      "start_cancelled_reason" => EPIC_WIDE_BLOCK_REASON,
+      "start_cancelled_at" => Time.current.iso8601,
+      "start_cancelled_details" => {
+        "blocking_workflow_id" => blocking_workflow.id,
+        "blocking_workflow_slug" => blocking_workflow.slug,
+        "blocking_trigger_kind" => blocking_workflow.trigger_kind
+      }
+    )
+    workflow.cancel! if workflow.may_cancel?
+    workflow.save!
+    Rails.logger.info(
+      "[StepDispatcher] workflow #{workflow.id} (#{workflow.trigger_kind}) cancelled: " \
+      "Epic-wide workflow #{blocking_workflow.id} (#{blocking_workflow.trigger_kind}) is already active"
+    )
   end
 
   def self.fail_unstartable_landing_workflow!(workflow, reason, details: nil, next_check_at: nil, extra_artifacts: {})

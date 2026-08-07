@@ -49,6 +49,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       inline_successor_owned_by_live_root_job
       stale_auto_retry_workflow_with_queued_run
       stale_auto_retry_after_branch_divergence_recovery
+      epic_workflow_conflict
       stale_branch_diverged_workflow
       closed_job_with_active_workflow
       running_step_with_failed_terminal_run
@@ -664,6 +665,39 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       )
     end
 
+    def epic_workflow_conflict
+      reset_shared_repository!
+      epic = Factories.epic(user: shared_user, repository: shared_repository)
+      keeper_job = Factories.job_record(
+        user: shared_user,
+        repository: shared_repository,
+        epic: epic,
+        issue_number: 40_000 + case_number,
+        agent_provider: random_provider
+      )
+      conflict_job = Factories.job_record(
+        user: shared_user,
+        repository: shared_repository,
+        epic: epic,
+        issue_number: 41_000 + case_number,
+        agent_provider: random_provider
+      )
+      keeper = active_workflow!(job: keeper_job, trigger_kind: "stack_rebase", step_kind: "stack_agent_rebase", age: 2.minutes)
+      conflict_kind = random.rand(2).zero? ? "merge_train" : "initial"
+      conflict_step = conflict_kind == "merge_train" ? "merge_train_build" : "implement"
+      conflict = active_workflow!(job: conflict_job, trigger_kind: conflict_kind, step_kind: conflict_step, age: 1.minute)
+      conflict.set_artifact!("merge_train_id", 900_000 + case_number) if conflict_kind == "merge_train"
+      trace << "epic=#{epic.id}:workflow_conflict keeper=#{keeper.id}/#{keeper.trigger_kind} conflict=#{conflict.id}/#{conflict.trigger_kind}"
+
+      expectation(
+        "Epic-wide workflow conflict",
+        target: {},
+        expected_issue: :epic_workflow_conflict,
+        expected_action: :cancel_epic_workflow_conflict,
+        required_plans: [ [ :cancel_epic_workflow_conflict, conflict ] ]
+      )
+    end
+
     def stale_auto_retry_workflow_with_queued_run
       job, source, step, run = graph
       fail_run!(source, step, run)
@@ -705,6 +739,25 @@ RSpec.describe "Work engine reconciler chaos simulation" do
         forbidden_issues: %i[queued_run_without_queue_claim],
         forbidden_actions: %i[reenqueue_run]
       )
+    end
+
+    def active_workflow!(job:, trigger_kind:, step_kind:, age:)
+      workflow = Workflow.create!(job: job, trigger_kind: trigger_kind)
+      step = Step.create!(workflow: workflow, kind: step_kind, position: 0)
+      run = Run.create!(
+        job: job,
+        user: job.user,
+        step: step,
+        trigger_kind: trigger_kind,
+        agent_provider: workflow.agent_provider,
+        state: "running",
+        started_at: age.ago,
+        last_heartbeat_at: Time.current
+      )
+      workflow.update_columns(state: "running", started_at: age.ago, created_at: age.ago, updated_at: age.ago)
+      step.update_columns(state: "running", started_at: age.ago, updated_at: age.ago)
+      trace << "workflow=#{workflow.id}:active trigger=#{trigger_kind} step=#{step.kind} run=#{run.id}"
+      workflow
     end
 
     def stale_auto_retry_after_branch_divergence_recovery

@@ -464,6 +464,24 @@ module WorkEngine
         end
       end
 
+      class EpicWorkflowConflict < Base
+        def plan
+          automatic_plan(
+            "cancel_epic_workflow_conflict",
+            primary_workflow,
+            "Only one Epic-wide workflow may be active for an Epic, and it blocks ordinary Job workflows for all child Jobs. Cancel the conflicting Workflow and keep the older Epic-wide Workflow running.",
+            execution_steps: [ "Workflow#cancel!" ],
+            preconditions: {
+              workflow_state: %w[queued running],
+              epic_id: issue.evidence["epic_id"],
+              keeper_workflow_id: issue.evidence["keeper_workflow_id"],
+              keeper_trigger_kind: issue.evidence["keeper_trigger_kind"],
+              conflicting_trigger_kind: issue.evidence["conflicting_trigger_kind"]
+            }
+          )
+        end
+      end
+
       class RetryableRunFailure < Base
         def plan
           if delayed_provider_retry?
