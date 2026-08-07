@@ -14,14 +14,14 @@ When merge trains are enabled and every open Epic child Job is approved, Syrus d
 
 This removes the old fan-in dependency shape where Syrus created a separate reconciliation Job with a single arbitrary PR base and made siblings wait on it.
 
-For current Epics, operator and chat guidance should talk about the merge-train reconciliation phase. If reconciliation is blocked or failed, retry or inspect the `merge_train` workflow and its `merge_train_reconcile` step. Do not propose a new standalone reconciliation Job unless the Epic already has a historical `reconciliation_job_id` pointing at one.
+For current Epics, operator and chat guidance should talk about the merge-train reconciliation phase. If reconciliation is blocked or failed, retry or inspect the `merge_train` workflow and its `merge_train_reconcile` step. Do not propose a new standalone reconciliation Job.
 
 ## Historical standalone Jobs
 
-Existing standalone reconciliation Jobs remain historically readable. Syrus does not destructively remove them, and the legacy compatibility paths still apply:
+Existing standalone reconciliation Jobs remain historically readable. Syrus does not destructively remove them, but they no longer participate in the landing queue:
 
 - `Epic#work_jobs` excludes the linked reconciliation Job from Epic completion checks.
-- The landing queue still reports `epic reconciliation pending` while an existing linked reconciliation Job is open; the UI labels this as a historical reconciliation Job wait.
+- Sibling Jobs do not wait for the linked reconciliation Job; merge-train landing will run `merge_train_reconcile` again on the integrated tree.
 - Once the linked Job closes, `refresh_auto_state!` clears `reconciliation_job_id`.
 - Empty PR-mode reconciliation Jobs still use the existing no-PR / `no_changes` close path rather than cancellation semantics.
 
@@ -29,7 +29,7 @@ Existing standalone reconciliation Jobs remain historically readable. Syrus does
 
 For current Epics with merge trains enabled, child Jobs do not land through the per-Job auto-merge path. They stay approved with `blocked_reason: "waiting for Epic merge-train"` until all open siblings are approved, then land atomically through the train.
 
-For historical Epics whose `reconciliation_job_id` still points to an open standalone reconciliation Job, sibling Jobs continue to receive `blocked_reason: "epic reconciliation pending"` until that Job closes.
+For historical Epics whose `reconciliation_job_id` still points to an open standalone reconciliation Job, sibling Jobs ignore that legacy Job and continue through normal merge-train landing. Operators should cancel or close the old reconciliation Job; the merge train will redo the reconciliation pass.
 
 ## Configuration
 

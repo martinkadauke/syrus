@@ -1037,7 +1037,7 @@ RSpec.describe LandingQueueProcessor do
     end
   end
 
-  describe "epic reconciliation gate" do
+  describe "historical Epic reconciliation Jobs" do
     let(:epic) { Factories.epic(user: user, repository: repository, state: "in_progress") }
 
     def make_recon_job
@@ -1055,14 +1055,14 @@ RSpec.describe LandingQueueProcessor do
       end
     end
 
-    it "blocks an Epic sibling from landing while the reconciliation Job is open" do
+    it "does not block an Epic sibling from landing while the reconciliation Job is open" do
       recon_job = make_recon_job
       epic.update!(reconciliation_job_id: recon_job.id)
 
       sibling = queue_job(issue_number: 1, approved_at: 2.minutes.ago, epic: epic)
 
       entry = described_class.entries(Job.where(id: sibling.id)).first
-      expect(entry.blocked_reason).to eq({ key: "epic_reconciliation_pending" })
+      expect(entry.blocked_reason).not_to eq({ key: "epic_reconciliation_pending" })
     end
 
     it "does not block the reconciliation Job itself" do

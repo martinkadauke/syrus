@@ -72,7 +72,7 @@ RSpec.describe LandingQueueProcessor, "merge-train integration" do
       expect(entry.landing_unit_key).to eq("job:#{reconciliation.id}")
     end
 
-    it "keeps non-reconciliation siblings blocked on the open reconciliation Job" do
+    it "keeps non-reconciliation siblings eligible for the merge train despite an open historical reconciliation Job" do
       AppSetting.current.update!(merge_train_enabled: true)
       reconciliation = approved_reconciliation_job
       epic.update!(reconciliation_job_id: reconciliation.id)
@@ -80,7 +80,7 @@ RSpec.describe LandingQueueProcessor, "merge-train integration" do
 
       entry = described_class.entries(Job.where(id: child.id)).first
 
-      expect(entry.blocked_reason).to eq({ key: "epic_reconciliation_pending" })
+      expect(entry.blocked_reason).to eq({ key: "waiting_epic_merge_train" })
       expect(entry.landing_unit_key).to eq("epic:#{epic.id}")
     end
   end
