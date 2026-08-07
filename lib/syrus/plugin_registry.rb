@@ -1,6 +1,13 @@
 module Syrus
   class PluginRegistry
-    EXTENSION_POINTS = %i[agent_provider mcp_tool_set input_source test_result_parser coverage_analyzer].freeze
+    EXTENSION_POINTS = %i[
+      agent_provider
+      mcp_tool_set
+      input_source
+      test_result_parser
+      coverage_analyzer
+      preview_provider
+    ].freeze
 
     # Lambdas defer constant resolution until call time (autoload-friendly).
     INTERFACE_FOR = {
@@ -8,7 +15,8 @@ module Syrus
       mcp_tool_set:       -> { Syrus::Plugin::McpToolSet },
       input_source:       -> { Syrus::Plugin::InputSource },
       test_result_parser: -> { Syrus::Plugin::TestResultParser },
-      coverage_analyzer:  -> { Syrus::Plugin::CoverageAnalyzer }
+      coverage_analyzer:  -> { Syrus::Plugin::CoverageAnalyzer },
+      preview_provider:   -> { Syrus::Plugin::PreviewProvider }
     }.freeze
 
     RegistrationError = Class.new(StandardError)

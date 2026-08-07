@@ -472,5 +472,20 @@
   "aria_workflow_pagination": "Workflow-Paginierung",
   "aria_new_direct_job": "Neuer direkter Job",
   "tests_flaky_label": "Flatterhaft",
-  "tests_flaky_tooltip": "{{failed}} von {{total}} aktuellen Läufen fehlgeschlagen"
+  "tests_flaky_tooltip": "{{failed}} von {{total}} aktuellen Läufen fehlgeschlagen",
+  "preview_start": "Vorschau starten",
+  "preview_open": "Vorschau öffnen",
+  "preview_stop": "Vorschau stoppen",
+  "preview_restart": "Vorschau neu starten",
+  "preview_starting": "Vorschau wird gestartet…",
+  "preview_seeding": "Datenbank wird befüllt…",
+  "preview_stopping": "Wird gestoppt…",
+  "preview_failed": "Vorschau fehlgeschlagen",
+  "preview_expired": "Vorschau abgelaufen — neu starten?",
+  "preview_expires_in": "Läuft ab in {{time}}",
+  "preview_section": "Vorschau",
+  "preview_stop_on_action_title": "Eine Vorschau-Umgebung läuft",
+  "preview_stop_on_action_body": "Für diesen Job läuft eine Vorschau-Umgebung. Jetzt stoppen?",
+  "preview_stop_yes": "Ja, stoppen",
+  "preview_keep_running": "Weiterlaufen lassen"
 }

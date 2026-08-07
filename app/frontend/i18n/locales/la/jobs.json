@@ -470,5 +470,20 @@
   "aria_workflow_pagination": "Paginatio fluxus operis",
   "aria_new_direct_job": "Novum opus directum",
   "tests_flaky_label": "Instabilis",
-  "tests_flaky_tooltip": "{{failed}} ex {{total}} cursibus recentibus defecerunt"
+  "tests_flaky_tooltip": "{{failed}} ex {{total}} cursibus recentibus defecerunt",
+  "preview_start": "Incipe praevisum",
+  "preview_open": "Aperi praevisum",
+  "preview_stop": "Siste praevisum",
+  "preview_restart": "Reinitiare praevisum",
+  "preview_starting": "Praevisu initiatur…",
+  "preview_seeding": "Basis datorum seritur…",
+  "preview_stopping": "Sistitur…",
+  "preview_failed": "Praevisum defecit",
+  "preview_expired": "Praevisum exspiravit — reinitiare?",
+  "preview_expires_in": "Exspirat post {{time}}",
+  "preview_section": "Praevisum",
+  "preview_stop_on_action_title": "Ambitus praevisi currit",
+  "preview_stop_on_action_body": "Pro hoc opere ambitus praevisi currit. Nunc sistere?",
+  "preview_stop_yes": "Ita, siste",
+  "preview_keep_running": "Pergat currere"
 }

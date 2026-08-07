@@ -544,6 +544,7 @@ export type JobActions = {
   can_view_timeline: boolean
   can_manage_tags: boolean
   can_open_in_coding_mode: boolean
+  can_start_preview: boolean
   feedback_agent_options: string[]
   rebase_agent_options: string[]
   retry_agent_options: string[]
@@ -638,6 +639,24 @@ export type JobPaths = {
   app_cancel_local_mode_path: string
   app_priority_path: string
   app_provider_setting_path?: string
+  app_preview_path: string
+}
+
+export type PreviewEnvironmentRecord = {
+  id: number
+  state: "starting" | "seeding" | "running" | "stopping" | "stopped" | "failed"
+  url: string | null
+  expires_at: string | null
+  error_message: string | null
+}
+
+export type PreviewStatusPayload = {
+  preview: PreviewEnvironmentRecord | null
+}
+
+export type PreviewActionPayload = {
+  preview: PreviewEnvironmentRecord
+  message: string
 }
 
 export type JobDetailPayload = {
@@ -661,6 +680,7 @@ export type JobDetailPayload = {
   has_test_results: boolean
   pending_feedback?: PendingFeedbackComment[]
   landing_queue_entry: JobLandingQueueEntry | null
+  preview: PreviewEnvironmentRecord | null
   workflows: JobWorkflow[]
   workflows_pagination: JobWorkflowsPagination
   deployment_stages?: JobDeploymentStage[]
@@ -883,4 +903,16 @@ export function fetchPickerJobs(params: { state?: string; repo?: string; limit?:
   if (params.repo) searchParams.set("repo", params.repo)
   searchParams.set("limit", String(params.limit ?? 50))
   return getJson<PickerJobsPayload>(`/api/v1/app/jobs?${searchParams}`)
+}
+
+export function fetchJobPreview(path: string) {
+  return getJson<PreviewStatusPayload>(path)
+}
+
+export function startJobPreview(path: string) {
+  return postJson<PreviewActionPayload>(path)
+}
+
+export function stopJobPreview(path: string) {
+  return deleteJson<PreviewActionPayload>(path)
 }

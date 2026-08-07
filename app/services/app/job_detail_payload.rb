@@ -1,3 +1,5 @@
+require "shellwords"
+
 module App
   class JobDetailPayload
     include Rails.application.routes.url_helpers
@@ -52,6 +54,7 @@ module App
           feedback_history: PerformanceLogging.phase("job_detail.feedback_history", job_id: @job.id) { feedback_history_json },
           pending_feedback: PerformanceLogging.phase("job_detail.pending_feedback", job_id: @job.id) { pending_feedback_json },
           landing_queue_entry: PerformanceLogging.phase("job_detail.landing_queue_entry", job_id: @job.id) { landing_queue_entry_json },
+          preview: PerformanceLogging.phase("job_detail.preview", job_id: @job.id) { preview_env_json },
           workflows: PerformanceLogging.phase("job_detail.workflows", job_id: @job.id, page: workflows_page) { workflows_json },
           workflows_pagination: PerformanceLogging.phase("job_detail.workflows_pagination", job_id: @job.id) { workflows_pagination_json },
           feature_flags: feature_flags_json,
@@ -482,6 +485,7 @@ module App
         can_open_in_coding_mode: Feature.coding_mode_enabled? &&
           (@job.implemented? || @job.approved?) &&
           @job.branch_name.present?,
+        can_start_preview: preview_provider_configured? && (@job.implemented? || @job.approved?),
         feedback_agent_options: @job.alternate_configured_agent_providers,
         rebase_agent_options: @job.alternate_configured_agent_providers,
         retry_agent_options: @job.retry_with_agent_providers
@@ -526,7 +530,8 @@ module App
         app_open_in_local_mode_path: "/api/v1/app/jobs/#{@job.id}/open_in_local_mode",
         app_cancel_local_mode_path: "/api/v1/app/jobs/#{@job.id}/cancel_local_mode",
         app_priority_path: "/api/v1/app/jobs/#{@job.id}/priority",
-        app_provider_setting_path: "/api/v1/app/jobs/#{@job.id}/provider_setting"
+        app_provider_setting_path: "/api/v1/app/jobs/#{@job.id}/provider_setting",
+        app_preview_path: "/api/v1/app/jobs/#{@job.id}/preview"
       }
     end
 
@@ -624,6 +629,45 @@ module App
 
     def iso8601(value)
       value&.iso8601
+    end
+
+    def preview_env_json
+      envs = @job.preview_environments.to_a
+      env = envs.find(&:active?) || envs.max_by(&:created_at)
+      return nil unless env
+
+      base_domain = ENV.fetch("SYRUS_PREVIEW_BASE_DOMAIN", "lvh.me")
+      {
+        id: env.id,
+        state: env.state,
+        url: env.running? ? env.preview_url(base_domain) : nil,
+        expires_at: env.expires_at&.iso8601,
+        error_message: env.error_message
+      }
+    end
+
+    def preview_provider_configured?
+      return @preview_provider_configured unless @preview_provider_configured.nil?
+
+      @preview_provider_configured = (
+        Syrus::Plugin::PreviewProvider.configured? || syrus_yml_has_preview?
+      )
+    end
+
+    def syrus_yml_has_preview?
+      clone_path = File.join(
+        ENV.fetch("SYRUS_DATA_ROOT", File.expand_path("~/.syrus")),
+        "clones",
+        "#{@job.repository_id}.git"
+      )
+      return false unless File.directory?(clone_path)
+
+      yml_content = `git --git-dir #{clone_path.shellescape} show HEAD:.syrus.yml 2>/dev/null`
+      return false unless $?.success? && yml_content.present?
+
+      SyrusYml.new(yml_content).parse.preview.present?
+    rescue StandardError
+      false
     end
   end
 end
