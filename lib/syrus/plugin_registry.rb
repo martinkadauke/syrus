@@ -12,6 +12,7 @@ module Syrus
       chat_mcp_tool_set
       source_control_provider
       prompt_injector
+      artifact_renderer
     ].freeze
 
     # Lambdas defer constant resolution until call time (autoload-friendly).
@@ -26,7 +27,8 @@ module Syrus
       admin_page:         -> { Syrus::Plugin::AdminPage },
       chat_mcp_tool_set:  -> { Syrus::Plugin::ChatMcpToolSet },
       source_control_provider: -> { Syrus::Plugin::SourceControlProvider },
-      prompt_injector:    -> { Syrus::Plugin::PromptInjector }
+      prompt_injector:    -> { Syrus::Plugin::PromptInjector },
+      artifact_renderer:  -> { Syrus::Plugin::ArtifactRenderer }
     }.freeze
 
     RegistrationError = Class.new(StandardError)
