@@ -113,6 +113,28 @@ RSpec.describe PreviewService do
       service.send(:poll_starting_environments)
       expect(env.reload.state).to eq("starting")
     end
+
+    it "stores the configured internal host for the web proxy target" do
+      stub_const("PreviewService::INTERNAL_HOST", "preview")
+      env = create_env
+      service = described_class.new
+      source = instance_double(PreviewCommandSource,
+        resolve: PreviewCommandSource::Config.new(
+          start_command_for: ->(port:) { "echo #{port}" },
+          seed_command: nil,
+          health_check_path: "/",
+          log_paths: []
+        ))
+      allow(PreviewCommandSource).to receive(:new).and_return(source)
+      allow(service).to receive(:allocate_port).and_return(28_008)
+      allow(service).to receive(:spawn_app).and_return(12_345)
+      allow(service).to receive(:await_health_check)
+
+      service.send(:poll_starting_environments)
+
+      expect(env.reload.internal_host).to eq("preview")
+      expect(env.port).to eq(28_008)
+    end
   end
 
   describe "TTL expiration" do

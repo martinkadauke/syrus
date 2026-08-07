@@ -3,7 +3,11 @@ require "syrus/plugin/preview_provider"
 
 RSpec.describe PreviewCommandSource do
   let(:workspace) { Dir.mktmpdir }
-  after { FileUtils.rm_rf(workspace) }
+  after do
+    FileUtils.rm_rf(workspace)
+    Syrus::PluginRegistry.reset!
+    Syrus::Plugin::PreviewProvider.registry.clear
+  end
 
   def write_syrus_yml(content)
     File.write(File.join(workspace, ".syrus.yml"), content)
@@ -59,6 +63,41 @@ RSpec.describe PreviewCommandSource do
       end
 
       it "falls through to registered plugins" do
+        provider_class = Class.new do
+          include Syrus::Plugin::PreviewProvider
+
+          def detect?(_repo_path) = true
+          def start_command(port:) = "node server.js --port #{port}"
+        end
+
+        Syrus::PluginRegistry.register(
+          name: "preview_plugin", version: "1.0.0",
+          provides: { preview_provider: provider_class }
+        )
+
+        result = described_class.new(workspace).resolve
+        expect(result).not_to be_nil
+        expect(result.start_command_for.call(port: 3000)).to eq("node server.js --port 3000")
+      end
+
+      it "does not use disabled PluginRegistry preview providers" do
+        provider_class = Class.new do
+          include Syrus::Plugin::PreviewProvider
+
+          def detect?(_repo_path) = true
+          def start_command(port:) = "node server.js --port #{port}"
+        end
+
+        Syrus::PluginRegistry.register(
+          name: "disabled_preview_plugin", version: "1.0.0",
+          provides: { preview_provider: provider_class }
+        )
+        PluginRecord.find_by!(name: "disabled_preview_plugin").update!(enabled: false)
+
+        expect(described_class.new(workspace).resolve).to be_nil
+      end
+
+      it "falls through to legacy direct preview provider registration" do
         provider = instance_double(
           "TestPreviewProvider",
           detect?: true,
@@ -108,6 +147,21 @@ RSpec.describe PreviewCommandSource do
       it "returns nil when no plugin detects the repo" do
         result = described_class.new(workspace).resolve
         expect(result).to be_nil
+      end
+
+      it "reports whether any preview provider is configured" do
+        provider_class = Class.new do
+          include Syrus::Plugin::PreviewProvider
+        end
+
+        expect(Syrus::Plugin::PreviewProvider.configured?).to be(false)
+
+        Syrus::PluginRegistry.register(
+          name: "configured_preview_plugin", version: "1.0.0",
+          provides: { preview_provider: provider_class }
+        )
+
+        expect(Syrus::Plugin::PreviewProvider.configured?).to be(true)
       end
     end
 

@@ -650,7 +650,7 @@ module App
       return @preview_provider_configured unless @preview_provider_configured.nil?
 
       @preview_provider_configured = (
-        Syrus::Plugin::PreviewProvider.registry.any? || syrus_yml_has_preview?
+        Syrus::Plugin::PreviewProvider.configured? || syrus_yml_has_preview?
       )
     end
 

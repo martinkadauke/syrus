@@ -17,6 +17,7 @@ require "net/http"
 class PreviewService
   PORT_MIN = Integer(ENV.fetch("SYRUS_PREVIEW_PORT_MIN", PreviewEnvironment::DEFAULT_PORT_MIN))
   PORT_MAX = Integer(ENV.fetch("SYRUS_PREVIEW_PORT_MAX", PreviewEnvironment::DEFAULT_PORT_MAX))
+  INTERNAL_HOST = ENV.fetch("SYRUS_PREVIEW_INTERNAL_HOST", "127.0.0.1")
 
   POLL_INTERVAL_SECONDS = 2
   TTL_CHECK_INTERVAL_SECONDS = 30
@@ -104,7 +105,7 @@ class PreviewService
       return
     end
 
-    env.update_columns(port: port, internal_host: "127.0.0.1")
+    env.update_columns(port: port, internal_host: INTERNAL_HOST)
     env.begin_seeding! && env.save!
 
     run_seed_command(source, workspace_path) if source.seed_command

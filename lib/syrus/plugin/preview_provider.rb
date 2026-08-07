@@ -15,7 +15,10 @@ module Syrus
     #     def log_paths = ["log/development.log"]
     #   end
     #
-    #   Syrus::Plugin::PreviewProvider.register(MyPlugin::PreviewProvider.new)
+    #   Syrus::PluginRegistry.register(
+    #     name: "my-preview-plugin", version: "1.0.0",
+    #     provides: { preview_provider: MyPlugin::PreviewProvider }
+    #   )
     module PreviewProvider
       def self.register(provider)
         registry << provider
@@ -26,7 +29,22 @@ module Syrus
       end
 
       def self.for_repo(repo_path)
-        registry.find { |p| p.detect?(repo_path) }
+        provider_candidates.find { |p| p.detect?(repo_path) }
+      end
+
+      def self.configured?
+        registry.any? || Syrus::PluginRegistry.providers_for(:preview_provider).any?
+      end
+
+      def self.provider_candidates
+        registry + Syrus::PluginRegistry.providers_for(:preview_provider).filter_map { |provider| instantiate(provider) }
+      end
+
+      def self.instantiate(provider)
+        return provider if provider.respond_to?(:detect?)
+        return provider.new if provider.respond_to?(:new)
+
+        nil
       end
 
       # -- Interface methods providers must implement --
