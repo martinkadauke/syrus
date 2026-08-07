@@ -37,6 +37,15 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
     it "maps :coverage_analyzer to Syrus::Plugin::CoverageAnalyzer" do
       expect(described_class::INTERFACE_FOR[:coverage_analyzer].call).to eq(Syrus::Plugin::CoverageAnalyzer)
     end
+
+    it "gives coverage analyzer providers the class call contract used by the registry" do
+      provider = Class.new { include Syrus::Plugin::CoverageAnalyzer }
+
+      expect(provider).to respond_to(:call)
+      expect {
+        provider.call(artifact_path: Pathname.new("coverage/lcov.info"), format_hint: "lcov")
+      }.to raise_error(NotImplementedError, /must implement \.call/)
+    end
   end
 
   describe ".register" do
