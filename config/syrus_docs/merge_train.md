@@ -20,6 +20,10 @@ When disabled (default), approved Epic child Jobs land individually via `auto_me
 While waiting for siblings, Jobs show a blocked reason: "waiting for Epic merge-train."
 If the Epic itself is still blocked by an upstream Epic dependency, child Jobs show "waiting for Epic to release" and no merge train is dispatched.
 
+Merge trains do not start while a `rebase` or `stack_rebase` workflow is active
+for any member Job or its related PR stack. A stack rebase may force-push member
+branches, so the train waits and later assembles from fresh branch heads.
+
 ## Assembly requirements
 
 `merge_train_assemble` validates:
@@ -63,6 +67,10 @@ Syrus then runs the required grader suite on the integration branch (same as `au
 3. Comments on and closes each member PR with a note that it was included in the train.
 
 If the base branch advances between build and land (GitHub returns a base-moved error), Syrus inserts a `merge_train_rebase` → re-grade → `merge_train_land_after_rebase` recovery chain dynamically.
+
+While a merge train is active, Syrus suppresses new `rebase` and `stack_rebase`
+workflows for any related member stack. Those branch-rewriting workflows resume
+only after the train succeeds, fails, or is cancelled.
 
 ## Failure behavior
 

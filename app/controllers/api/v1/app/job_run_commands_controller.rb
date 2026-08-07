@@ -59,6 +59,10 @@ module Api
             render_error("validation_failed", "A rebase is already in progress - wait for it to finish.", status: :unprocessable_content)
             return
           end
+          if RebaseWorkflowSelector.active_merge_train_for_stack?(job)
+            render_error("validation_failed", "A merge train is already active for this stack - wait for it to finish.", status: :unprocessable_content)
+            return
+          end
 
           agent_provider = params[:agent_provider].to_s.presence
           return unless valid_configured_agent_provider?(agent_provider)

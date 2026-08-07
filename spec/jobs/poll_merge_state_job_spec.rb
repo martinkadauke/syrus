@@ -426,6 +426,16 @@ RSpec.describe PollMergeStateJob, :ci_only do
       }.to change { job.workflows.where(trigger_kind: "stack_rebase").count }.by(1)
     end
 
+    it "does not dispatch stack rebase while an active merge train contains a related stack job" do
+      epic = Factories.epic(user: user, repository: repository)
+      train = MergeTrain.create!(epic: epic, repository: repository, base_branch: "main", state: "grading")
+      MergeTrainMember.create!(merge_train: train, job: job, position: 0)
+
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.workflows.where(trigger_kind: "stack_rebase").count }
+    end
+
     it "skips stack rebase dispatch after an unchanged recent stack_agent_rebase failure" do
       workflow = Workflows::StackRebase.instantiate(
         job: job,

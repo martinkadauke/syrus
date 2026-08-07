@@ -16,6 +16,12 @@ module PendingActions
       if active_job
         raise ArgumentError, "A rebase is already in progress — wait for it to finish."
       end
+      active_merge_train_job = actions.map { |entry| Job.find(entry.fetch("job_id")) }.find do |job|
+        RebaseWorkflowSelector.active_merge_train_for_stack?(job)
+      end
+      if active_merge_train_job
+        raise ArgumentError, "A merge train is already active for this stack — wait for it to finish."
+      end
 
       ApplicationRecord.transaction do
         actions.each do |entry|

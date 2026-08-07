@@ -151,6 +151,7 @@ class PollMergeStateJob < ApplicationJob
     return if rebase_failure_cooling_down?
     return if repo_rebase_concurrency_reached?
     return if start_blocked?
+    return if merge_train_active_for_stack?
     return if stack_rebase_blocked_by_unchanged_deps?
 
     workflow = RebaseWorkflowSelector.instantiate(job: @job, pr: @pr)
@@ -191,6 +192,15 @@ class PollMergeStateJob < ApplicationJob
   def repo_rebase_concurrency_reached?
     active = RebaseWorkflowSelector.active_in_repository(@job.repository).count
     active >= PollRebaseJob::CONCURRENT_REBASES_PER_REPO
+  end
+
+  def merge_train_active_for_stack?
+    train = RebaseWorkflowSelector.active_merge_trains_for_jobs([ @job ]).order(:id).first
+    return false unless train
+
+    audit("auto_merge: PR ##{@job.pr_number} needs rebase but merge train ##{train.id} is active for this stack; waiting for the train to finish")
+    Rails.logger.info("[PollMergeStateJob] #{@job.slug} PR ##{@job.pr_number} needs rebase but merge train ##{train.id} is active for this stack; skipping dispatch")
+    true
   end
 
   def start_blocked?

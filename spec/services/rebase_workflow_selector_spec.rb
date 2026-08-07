@@ -98,6 +98,37 @@ RSpec.describe RebaseWorkflowSelector do
     end
   end
 
+  describe ".active_merge_train_for_stack?" do
+    it "returns false when no active merge train contains a related stack job" do
+      expect(described_class.active_merge_train_for_stack?(job)).to be false
+    end
+
+    it "returns true when an active merge train contains the job" do
+      epic = Factories.epic(user: user, repository: repository)
+      train = MergeTrain.create!(epic: epic, repository: repository, base_branch: "main", state: "grading")
+      MergeTrainMember.create!(merge_train: train, job: job, position: 0)
+
+      expect(described_class.active_merge_train_for_stack?(job)).to be true
+    end
+
+    it "returns true when an active merge train contains a related parent job" do
+      child = open_child_job(parent: job, issue_number: 8)
+      epic = Factories.epic(user: user, repository: repository)
+      train = MergeTrain.create!(epic: epic, repository: repository, base_branch: "main", state: "grading")
+      MergeTrainMember.create!(merge_train: train, job: job, position: 0)
+
+      expect(described_class.active_merge_train_for_stack?(child)).to be true
+    end
+
+    it "ignores terminal merge trains" do
+      epic = Factories.epic(user: user, repository: repository)
+      train = MergeTrain.create!(epic: epic, repository: repository, base_branch: "main", state: "succeeded")
+      MergeTrainMember.create!(merge_train: train, job: job, position: 0)
+
+      expect(described_class.active_merge_train_for_stack?(job)).to be false
+    end
+  end
+
   describe ".active_in_repository" do
     it "returns no workflows when there are none active in the repository" do
       expect(described_class.active_in_repository(repository)).to be_empty

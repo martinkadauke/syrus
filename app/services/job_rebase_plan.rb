@@ -42,6 +42,7 @@ class JobRebasePlan
   def expected_landing_impact
     return "no PR branch is available to rebase" if (@job.pr_number || @job.external_pr_number).blank?
     return "active rebase workflow must finish first" if RebaseWorkflowSelector.active_for_stack?(@job)
+    return "active merge train must finish first" if RebaseWorkflowSelector.active_merge_train_for_stack?(@job)
     return "successful rebase will retry landing immediately" if @job.approved?
     return "successful rebase will update the PR branch without changing approval state" if @job.open?
 
@@ -54,6 +55,7 @@ class JobRebasePlan
       items << "missing_pr" if (@job.pr_number || @job.external_pr_number).blank?
       items << "missing_branch" if @job.branch_name.blank?
       items << "active_rebase_workflow" if RebaseWorkflowSelector.active_for_stack?(@job)
+      items << "active_merge_train" if RebaseWorkflowSelector.active_merge_train_for_stack?(@job)
       items << "not_approved" unless @job.approved?
       items << "failing_or_pending_checks" if @job.pr_checks_state.present? && @job.pr_checks_state != "success"
       items << "dirty_mergeability" if @job.github_mergeable_state.to_s == "dirty" || @job.local_mergeable_state.to_s == "dirty"

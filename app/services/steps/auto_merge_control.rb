@@ -50,7 +50,7 @@ module Steps
     end
 
     def rebase_workflow_active?
-      RebaseWorkflowSelector.active_for_stack?(job)
+      RebaseWorkflowSelector.active_for_stack?(job) || RebaseWorkflowSelector.active_merge_train_for_stack?(job)
     end
 
     def rebase_attempt_cap_reached?(pr)

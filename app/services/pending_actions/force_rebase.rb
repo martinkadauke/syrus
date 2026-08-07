@@ -12,6 +12,9 @@ module PendingActions
       if RebaseWorkflowSelector.active_for_stack?(job)
         raise ArgumentError, "A rebase is already in progress — wait for it to finish."
       end
+      if RebaseWorkflowSelector.active_merge_train_for_stack?(job)
+        raise ArgumentError, "A merge train is already active for this stack — wait for it to finish."
+      end
 
       workflow = RebaseWorkflowSelector.instantiate(
         job: job,

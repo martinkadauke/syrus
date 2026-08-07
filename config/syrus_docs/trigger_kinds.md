@@ -104,6 +104,10 @@ Rebases the PR branch onto the base branch. Skips `commit_agent_changes` (rebase
 
 Rebases a chain of dependent PR branches in dependency order, then resumes landing for any approved stack Jobs.
 
+Stack rebases do not start while an active Epic merge train includes any related
+Job in the stack. The merge train grades and lands a captured integration branch;
+rewriting member PR branches concurrently would make that captured state stale.
+
 ## coding_handoff
 
 **When it fires:** An operator confirms the handoff after a Coding Mode chat session commits changes.

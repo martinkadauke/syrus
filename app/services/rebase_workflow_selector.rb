@@ -31,9 +31,27 @@ class RebaseWorkflowSelector
   private_class_method :stack_member_with_parent?
 
   def self.active_for_stack?(job)
+    active_for_jobs([ job ]).exists?
+  end
+
+  def self.active_for_jobs(jobs)
+    job_ids = related_job_ids_for(jobs)
+    return Workflow.none if job_ids.empty?
+
     runnable_active_scope(
-      Workflow.active.where(trigger_kind: TRIGGER_KINDS, job_id: StackRebasePlan.related_job_ids_for(job))
-    ).exists?
+      Workflow.active.where(trigger_kind: TRIGGER_KINDS, job_id: job_ids)
+    )
+  end
+
+  def self.active_merge_train_for_stack?(job)
+    active_merge_trains_for_jobs([ job ]).exists?
+  end
+
+  def self.active_merge_trains_for_jobs(jobs)
+    job_ids = related_job_ids_for(jobs)
+    return MergeTrain.none if job_ids.empty?
+
+    MergeTrain.active.joins(:members).where(merge_train_members: { job_id: job_ids }).distinct
   end
 
   def self.active_in_repository(repository)
@@ -57,4 +75,9 @@ class RebaseWorkflowSelector
     SQL
   end
   private_class_method :runnable_active_scope
+
+  def self.related_job_ids_for(jobs)
+    Array(jobs).compact.flat_map { |job| StackRebasePlan.related_job_ids_for(job) }.uniq
+  end
+  private_class_method :related_job_ids_for
 end
