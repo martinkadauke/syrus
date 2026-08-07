@@ -837,23 +837,42 @@ module Api
         end
 
         def job_json(job)
+          PerformanceLogging.phase("repository_detail.job.serialize", repository_id: job.repository_id, job_id: job.id) do
+            repository_detail_job_json(job)
+          end
+        end
+
+        def repository_detail_job_json(job)
+          workflow_agent_provider = PerformanceLogging.phase("repository_detail.job.workflow_agent_provider", repository_id: job.repository_id, job_id: job.id) do
+            job.workflow_agent_provider
+          end
+          provider_availability = PerformanceLogging.phase("repository_detail.job.provider_availability", repository_id: job.repository_id, job_id: job.id, provider: workflow_agent_provider) do
+            ::App::ProviderAvailability.for_user(Current.user, workflow_agent_provider)
+          end
+          current_step_caption = PerformanceLogging.phase("repository_detail.job.current_step_caption", repository_id: job.repository_id, job_id: job.id) do
+            current_step_caption_for(job)
+          end
+          retry_state = PerformanceLogging.phase("repository_detail.job.retry_state", repository_id: job.repository_id, job_id: job.id) do
+            retry_state_for(job)
+          end
+
           {
             id: job.id,
             state: ::App::Presentation.job_summary_state(job),
             priority: job.priority,
             issue_number: job.issue_number,
             issue_title: job.issue_title.to_s,
-            agent_provider: job.workflow_agent_provider,
+            agent_provider: workflow_agent_provider,
             job_provider_setting: job.job_provider_setting,
-            provider_availability: ::App::ProviderAvailability.for_user(Current.user, job.workflow_agent_provider),
+            provider_availability: provider_availability,
             job_path: job_path(job),
             source: job_source_json(job),
             pr_number: job.pr_number,
             pr_url: ::App::Presentation.job_pr_url(job),
             external_pr_number: job.external_pr_number,
             external_pr_url: ::App::Presentation.external_pr_url(job),
-            current_step_caption: current_step_caption_for(job),
-            retry_state: retry_state_for(job),
+            current_step_caption: current_step_caption,
+            retry_state: retry_state,
             runs_count: runs_count_for(job),
             updated_at: job.updated_at.iso8601
           }
@@ -910,7 +929,7 @@ module Api
               type: provider.name,
               type_key: source_type_key(provider),
               label: source_label(provider),
-              schema: provider.new.config_schema,
+              schema: PerformanceLogging.plugin_call(extension_point: :input_source, provider: provider, operation: :config_schema) { provider.new.config_schema },
               source: input_source_json(source, provider),
               path: repository.persisted? ? "/api/v1/app/repositories/#{repository.id}/input_sources/#{source_type_key(provider)}" : nil
             }
@@ -934,7 +953,7 @@ module Api
 
         def input_source_values(source, provider)
           source.config.to_h.merge(
-            provider.new.config_schema.each_with_object({}) do |field, credential_values|
+            PerformanceLogging.plugin_call(extension_point: :input_source, provider: provider, operation: :config_schema) { provider.new.config_schema }.each_with_object({}) do |field, credential_values|
               next unless field[:scope].to_s == "credentials"
 
               key = field.fetch(:key).to_s
@@ -1075,26 +1094,38 @@ module Api
 
         def preload_repository_index_job_state(repositories)
           repository_ids = repositories.map(&:id)
-          @repository_index_open_job_counts = Job.open_threads
-            .where(repository_id: repository_ids)
-            .group(:repository_id)
-            .count
-          @repository_index_last_jobs_by_repository_id = latest_jobs_by_repository_id(repository_ids)
+          @repository_index_open_job_counts = PerformanceLogging.phase("repositories_index.preload.open_job_counts", repository_count: repository_ids.size) do
+            Job.open_threads
+              .where(repository_id: repository_ids)
+              .group(:repository_id)
+              .count
+          end
+          @repository_index_last_jobs_by_repository_id = PerformanceLogging.phase("repositories_index.preload.latest_jobs", repository_count: repository_ids.size) do
+            latest_jobs_by_repository_id(repository_ids)
+          end
         end
 
         def preload_repository_detail_job_state(jobs)
           job_ids = jobs.map(&:id)
-          @repository_detail_runs_count_by_job_id = Run.where(job_id: job_ids).group(:job_id).count
-          @repository_detail_latest_runs_by_job_id = latest_runs_by_job_id(job_ids)
-          @repository_detail_latest_workflows_by_job_id = latest_workflows_by_job_id(job_ids)
-          @repository_detail_active_job_ids = job_ids.empty? ? {} : Run.active.where(job_id: job_ids).distinct.pluck(:job_id).index_with(true)
-          @repository_detail_run_diagnostics_by_run_id = RunDiagnostic
-            .where(run_id: @repository_detail_latest_runs_by_job_id.values.map(&:id))
-            .index_by(&:run_id)
-          @repository_detail_running_workflows_by_job_id = current_running_workflows_by_job_id(job_ids)
-          @repository_detail_current_steps_by_workflow_id = current_steps_by_workflow_id(
-            @repository_detail_running_workflows_by_job_id.values.map(&:id)
-          )
+          @repository_detail_runs_count_by_job_id = PerformanceLogging.phase("repository_detail.preload.runs_count", job_count: job_ids.size) do
+            Run.where(job_id: job_ids).group(:job_id).count
+          end
+          @repository_detail_latest_runs_by_job_id = PerformanceLogging.phase("repository_detail.preload.latest_runs", job_count: job_ids.size) { latest_runs_by_job_id(job_ids) }
+          @repository_detail_latest_workflows_by_job_id = PerformanceLogging.phase("repository_detail.preload.latest_workflows", job_count: job_ids.size) { latest_workflows_by_job_id(job_ids) }
+          @repository_detail_active_job_ids = PerformanceLogging.phase("repository_detail.preload.active_jobs", job_count: job_ids.size) do
+            job_ids.empty? ? {} : Run.active.where(job_id: job_ids).distinct.pluck(:job_id).index_with(true)
+          end
+          @repository_detail_run_diagnostics_by_run_id = PerformanceLogging.phase("repository_detail.preload.run_diagnostics", run_count: @repository_detail_latest_runs_by_job_id.size) do
+            RunDiagnostic
+              .where(run_id: @repository_detail_latest_runs_by_job_id.values.map(&:id))
+              .index_by(&:run_id)
+          end
+          @repository_detail_running_workflows_by_job_id = PerformanceLogging.phase("repository_detail.preload.running_workflows", job_count: job_ids.size) { current_running_workflows_by_job_id(job_ids) }
+          @repository_detail_current_steps_by_workflow_id = PerformanceLogging.phase("repository_detail.preload.current_steps", workflow_count: @repository_detail_running_workflows_by_job_id.size) do
+            current_steps_by_workflow_id(
+              @repository_detail_running_workflows_by_job_id.values.map(&:id)
+            )
+          end
         end
 
         def latest_jobs_by_repository_id(repository_ids)

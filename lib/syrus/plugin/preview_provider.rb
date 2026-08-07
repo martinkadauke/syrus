@@ -29,15 +29,29 @@ module Syrus
       end
 
       def self.for_repo(repo_path)
-        provider_candidates.find { |p| p.detect?(repo_path) }
+        performance_phase("plugin.preview_provider.for_repo") do
+          provider_candidates.find do |p|
+            performance_plugin_call(extension_point: :preview_provider, provider: p, operation: :detect) do
+              p.detect?(repo_path)
+            end
+          end
+        end
       end
 
       def self.configured?
-        registry.any? || Syrus::PluginRegistry.providers_for(:preview_provider).any?
+        performance_phase("plugin.preview_provider.configured") do
+          registry.any? || Syrus::PluginRegistry.providers_for(:preview_provider).any?
+        end
       end
 
       def self.provider_candidates
-        registry + Syrus::PluginRegistry.providers_for(:preview_provider).filter_map { |provider| instantiate(provider) }
+        performance_phase("plugin.preview_provider.provider_candidates") do
+          registry + Syrus::PluginRegistry.providers_for(:preview_provider).filter_map do |provider|
+            performance_plugin_call(extension_point: :preview_provider, provider: provider, operation: :instantiate) do
+              instantiate(provider)
+            end
+          end
+        end
       end
 
       def self.instantiate(provider)
@@ -45,6 +59,22 @@ module Syrus
         return provider.new if provider.respond_to?(:new)
 
         nil
+      end
+
+      def self.performance_phase(name, metadata = {}, &block)
+        if defined?(PerformanceLogging)
+          PerformanceLogging.phase(name, metadata, &block)
+        else
+          yield
+        end
+      end
+
+      def self.performance_plugin_call(extension_point:, provider:, operation:, &block)
+        if defined?(PerformanceLogging)
+          PerformanceLogging.plugin_call(extension_point: extension_point, provider: provider, operation: operation, &block)
+        else
+          yield
+        end
       end
 
       # -- Interface methods providers must implement --

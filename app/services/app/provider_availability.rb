@@ -9,7 +9,7 @@ module App
     @shared_cache_keys = Set.new
 
     def self.for_user(user, provider, now: Time.current, cached: true)
-      return new(user: user, provider: provider, now: now).status unless cached
+      return PerformanceLogging.phase("provider_availability.status", provider: provider, cached: false) { new(user: user, provider: provider, now: now).status } unless cached
 
       key = cache_key(user, provider)
       return nil unless key
@@ -17,8 +17,10 @@ module App
       cache = Current.provider_availability_cache ||= {}
       return cache[key] if cache.key?(key)
 
-      cache[key] = fetch_shared_cache(key) do
-        new(user: user, provider: provider, now: now).status
+      cache[key] = PerformanceLogging.phase("provider_availability.for_user", provider: provider, cached: true) do
+        fetch_shared_cache(key) do
+          PerformanceLogging.phase("provider_availability.status", provider: provider, cached: true) { new(user: user, provider: provider, now: now).status }
+        end
       end
     end
 
@@ -123,22 +125,36 @@ module App
     end
 
     def status
+      PerformanceLogging.phase("provider_availability.compute", provider: provider) do
+        compute_status
+      end
+    end
+
+    def compute_status
       return nil if user.blank? || provider.blank?
 
-      usage_signal = usage_limit_signal
+      usage_signal = PerformanceLogging.phase("provider_availability.usage_limit_signal", provider: provider) { usage_limit_signal }
       return usage_limit_status(usage_signal) if usage_signal
 
-      latest_signal = latest_provider_run_signal
+      latest_signal = PerformanceLogging.phase("provider_availability.latest_provider_run_signal", provider: provider) { latest_provider_run_signal }
       return rate_limited_status(latest_signal) if latest_signal
 
-      circuit = ProviderCircuitBreaker.call(provider, now: now, include_logs: false)
+      circuit = PerformanceLogging.phase("provider_availability.circuit_breaker", provider: provider) do
+        ProviderCircuitBreaker.call(provider, now: now, include_logs: false)
+      end
       return open_status(circuit) if circuit.open? && !circuit.usage_limit?
 
       available_status
     end
 
     def self.all_for_user(user, now: Time.current)
-      User.agent_providers.index_with { |provider| for_user(user, provider, now: now) }
+      PerformanceLogging.phase("provider_availability.all_for_user") do
+        User.agent_providers.index_with do |provider|
+          PerformanceLogging.phase("provider_availability.all_for_user.provider", provider: provider) do
+            for_user(user, provider, now: now)
+          end
+        end
+      end
     end
 
     private
@@ -368,33 +384,37 @@ module App
     def usage_snapshot
       return unless provider == "codex"
 
-      snapshot = user.codex_usage_snapshot || {}
-      windows = codex_usage_windows(snapshot)
-      evidence = latest_codex_usage_evidence
-      status = user.codex_usage_status.presence || evidence&.status
-      observed_at = user.codex_usage_observed_at&.iso8601 || evidence&.observed_at&.iso8601
-      return if windows.blank? && snapshot["remaining_percent"].blank? && status.blank? && evidence.blank?
+      PerformanceLogging.phase("provider_availability.usage_snapshot", provider: provider) do
+        snapshot = user.codex_usage_snapshot || {}
+        windows = codex_usage_windows(snapshot)
+        evidence = latest_codex_usage_evidence
+        status = user.codex_usage_status.presence || evidence&.status
+        observed_at = user.codex_usage_observed_at&.iso8601 || evidence&.observed_at&.iso8601
+        return if windows.blank? && snapshot["remaining_percent"].blank? && status.blank? && evidence.blank?
 
-      {
-        status: status,
-        observed_at: observed_at,
-        remaining_percent: snapshot["remaining_percent"],
-        windows: windows,
-        evidence: evidence&.summary
-      }.compact
+        {
+          status: status,
+          observed_at: observed_at,
+          remaining_percent: snapshot["remaining_percent"],
+          windows: windows,
+          evidence: evidence&.summary
+        }.compact
+      end
     end
 
     def latest_evidence_payload(primary: nil)
       return unless provider == "codex"
 
-      current = primary || latest_codex_evidence&.summary
-      return if current.blank? && latest_codex_positive_evidence.blank? && latest_codex_negative_evidence.blank?
+      PerformanceLogging.phase("provider_availability.latest_evidence_payload", provider: provider) do
+        current = primary || latest_codex_evidence&.summary
+        return if current.blank? && latest_codex_positive_evidence.blank? && latest_codex_negative_evidence.blank?
 
-      {
-        current: current,
-        latest_positive: evidence_summary_if_not_older_than(latest_codex_positive_evidence, current),
-        latest_negative: evidence_summary_if_not_older_than(latest_codex_negative_evidence, current)
-      }.compact
+        {
+          current: current,
+          latest_positive: evidence_summary_if_not_older_than(latest_codex_positive_evidence, current),
+          latest_negative: evidence_summary_if_not_older_than(latest_codex_negative_evidence, current)
+        }.compact
+      end
     end
 
     def pause_metadata

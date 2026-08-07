@@ -80,7 +80,9 @@ module AppApi
     def provider_availability_payload
       return {} unless user
 
-      ::App::ProviderAvailability.all_for_user(user)
+      PerformanceLogging.phase("bootstrap.provider_availability.all_for_user") do
+        ::App::ProviderAvailability.all_for_user(user)
+      end
     end
 
     def public_payload
@@ -114,17 +116,19 @@ module AppApi
     end
 
     def system_alerts_payload
-      SystemAlerts.active_for(user: user).map do |alert|
-        {
-          id: alert.id,
-          dismissal_key: alert.dismissal_key,
-          severity: alert.severity.to_s,
-          title: alert.title,
-          message: alert.message,
-          action_steps: alert.action_steps,
-          cta: alert.cta,
-          actions: alert.actions
-        }
+      PerformanceLogging.phase("bootstrap.system_alerts.active_for") do
+        SystemAlerts.active_for(user: user).map do |alert|
+          {
+            id: alert.id,
+            dismissal_key: alert.dismissal_key,
+            severity: alert.severity.to_s,
+            title: alert.title,
+            message: alert.message,
+            action_steps: alert.action_steps,
+            cta: alert.cta,
+            actions: alert.actions
+          }
+        end
       end
     end
 

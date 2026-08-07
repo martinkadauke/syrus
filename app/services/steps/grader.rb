@@ -190,7 +190,14 @@ module Steps
 
     def try_plugin_parsers(absolute_path)
       Syrus::PluginRegistry.providers_for(:test_result_parser).each do |provider|
-        return provider.call(output_path: absolute_path) if provider.can_parse?(output_path: absolute_path)
+        can_parse = PerformanceLogging.plugin_call(extension_point: :test_result_parser, provider: provider, operation: :can_parse) do
+          provider.can_parse?(output_path: absolute_path)
+        end
+        next unless can_parse
+
+        return PerformanceLogging.plugin_call(extension_point: :test_result_parser, provider: provider, operation: :call) do
+          provider.call(output_path: absolute_path)
+        end
       end
       nil
     end

@@ -109,16 +109,38 @@ module App
     end
 
     def job_provider_setting_options
-      Job::PROVIDER_SETTINGS.map do |setting|
-        {
-          value: setting,
-          label: setting == "default" ? "Default" : App::Presentation.agent_provider_label(setting),
-          configured: setting == "default" || @user.agent_provider_configured?(setting)
-        }
+      PerformanceLogging.phase("job_detail.job.provider_setting_options", job_id: @job.id) do
+        Job::PROVIDER_SETTINGS.map do |setting|
+          {
+            value: setting,
+            label: setting == "default" ? "Default" : App::Presentation.agent_provider_label(setting),
+            configured: setting == "default" || PerformanceLogging.phase("job_detail.job.agent_provider_configured", job_id: @job.id, provider: setting) { @user.agent_provider_configured?(setting) }
+          }
+        end
       end
     end
 
     def job_json
+      workflow_agent_provider = PerformanceLogging.phase("job_detail.job.workflow_agent_provider", job_id: @job.id) { @job.workflow_agent_provider }
+      provider_availability = PerformanceLogging.phase("job_detail.job.provider_availability", job_id: @job.id, provider: workflow_agent_provider) do
+        App::ProviderAvailability.for_user(@user, workflow_agent_provider)
+      end
+      retry_state = PerformanceLogging.phase("job_detail.job.retry_state", job_id: @job.id) { ::App::RetryState.for(@job) }
+      approval_status = PerformanceLogging.phase("job_detail.job.approval_status", job_id: @job.id) { approval_status_json }
+      worker_health_correlation = PerformanceLogging.phase("job_detail.job.worker_health_correlation", job_id: @job.id) { worker_health_job_correlation_json }
+      source_chat = PerformanceLogging.phase("job_detail.job.source_chat", job_id: @job.id) { App::JobSourceChat.for(@job) }
+      workflows_count = PerformanceLogging.phase("job_detail.job.workflows_count", job_id: @job.id) { @job.workflows.size }
+      runs_count = PerformanceLogging.phase("job_detail.job.runs_count", job_id: @job.id) { @job.runs.size }
+      any_active_run = PerformanceLogging.phase("job_detail.job.any_active_run", job_id: @job.id) { @job.any_active_run? }
+      prepare_skip_reason = PerformanceLogging.phase("job_detail.job.prepare_skip_reason", job_id: @job.id) { @job.prepare_skip_reason }
+      start_blocked = PerformanceLogging.phase("job_detail.job.start_blocked", job_id: @job.id) do
+        {
+          reason: job_start_blocked_reason,
+          at: job_start_blocked_at,
+          details: job_start_blocked_details
+        }
+      end
+
       {
         id: @job.id,
         kind: @job.kind,
@@ -128,10 +150,10 @@ module App
         validity: @job.validity,
         triaging_reason: @job.triaging_reason,
         credential_mode: @job.credential_mode,
-        agent_provider: @job.workflow_agent_provider,
+        agent_provider: workflow_agent_provider,
         job_provider_setting: @job.job_provider_setting,
         job_provider_setting_options: job_provider_setting_options,
-        provider_availability: App::ProviderAvailability.for_user(@user, @job.workflow_agent_provider),
+        provider_availability: provider_availability,
         stack_base: @job.stack_base,
         parent_job_id: @job.parent_job_id,
         effective_base_branch: @job.effective_base_branch,
@@ -157,7 +179,7 @@ module App
         closure_reason: @job.closure_reason,
         failure_count: @job.failure_count,
         landing_failure_reason: @job.landing_failure_reason,
-        retry_state: ::App::RetryState.for(@job),
+        retry_state: retry_state,
         approved_at: iso8601(@job.approved_at),
         approved_via: @job.approved_via,
         approved_by_user_id: @job.approved_by_user_id,
@@ -165,7 +187,7 @@ module App
         owner_user: owner_user_json(@job.owner_user),
         approval_evidence: @job.approval_evidence,
         job_approvals: @job.job_approvals.includes(:user).map { |a| job_approval_json(a) },
-        approval_status: approval_status_json,
+        approval_status: approval_status,
         claimed_at: iso8601(@job.claimed_at),
         claimed_by_user: owner_json(@job.claimed_by_user),
         claimed_by_current_user: @job.claimed_by_user_id == @user.id,
@@ -176,13 +198,13 @@ module App
         epic_id: @job.epic_id,
         total_cost_usd: @job.display_total_cost_usd&.to_f,
         billed_runs_count: @job.billed_runs_count,
-        worker_health_correlation: worker_health_job_correlation_json,
-        source_chat: App::JobSourceChat.for(@job),
-        workflows_count: @job.workflows.size,
-        runs_count: @job.runs.size,
-        any_active_run: @job.any_active_run?,
-        prepare_skipped: @job.prepare_skip_reason.present?,
-        prepare_skip_reason: @job.prepare_skip_reason,
+        worker_health_correlation: worker_health_correlation,
+        source_chat: source_chat,
+        workflows_count: workflows_count,
+        runs_count: runs_count,
+        any_active_run: any_active_run,
+        prepare_skipped: prepare_skip_reason.present?,
+        prepare_skip_reason: prepare_skip_reason,
         created_at: iso8601(@job.created_at),
         updated_at: iso8601(@job.updated_at),
         started_at: iso8601(@job.started_at),
@@ -192,9 +214,9 @@ module App
         needs_attention_since: iso8601(@job.needs_attention_since),
         grace_period_expires_at: iso8601(@job.grace_period_expires_at),
         main_branch_repair: @job.main_branch_repair?,
-        start_blocked_reason: job_start_blocked_reason,
-        start_blocked_at: job_start_blocked_at,
-        start_blocked_details: job_start_blocked_details
+        start_blocked_reason: start_blocked.fetch(:reason),
+        start_blocked_at: start_blocked.fetch(:at),
+        start_blocked_details: start_blocked.fetch(:details)
       }.merge(deployment_stages_json)
     end
 

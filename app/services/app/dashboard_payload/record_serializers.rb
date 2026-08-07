@@ -10,7 +10,21 @@ module App
       # owner_user_json helpers through the include ancestry.
 
       def job_json(job)
-        owner_user = job_owner_user(job)
+        PerformanceLogging.phase("dashboard_job.serialize", job_id: job.id, view: view) do
+          dashboard_job_json(job)
+        end
+      end
+
+      def dashboard_job_json(job)
+        owner_user = PerformanceLogging.phase("dashboard_job.owner_user", job_id: job.id) { job_owner_user(job) }
+        workflow_agent_provider = PerformanceLogging.phase("dashboard_job.workflow_agent_provider", job_id: job.id) { job.workflow_agent_provider }
+        provider_availability = PerformanceLogging.phase("dashboard_job.provider_availability", job_id: job.id, provider: workflow_agent_provider) do
+          ::App::ProviderAvailability.for_user(user, workflow_agent_provider)
+        end
+        retry_state = PerformanceLogging.phase("dashboard_job.retry_state", job_id: job.id) { retry_state_for(job) }
+        repository = PerformanceLogging.phase("dashboard_job.repository", job_id: job.id) { repository_json(job.repository) }
+        source_chat = PerformanceLogging.phase("dashboard_job.source_chat", job_id: job.id) { App::JobSourceChat.for(job) }
+        tags = PerformanceLogging.phase("dashboard_job.tags", job_id: job.id, tag_count: job.tags.size) { job.tags.map { |tag| tag_json(tag) } }
 
         payload = {
           type: "job",
@@ -22,9 +36,9 @@ module App
           summary_state: summary_state(job),
           validity: job.validity,
           priority: job.priority,
-          agent_provider: job.workflow_agent_provider,
+          agent_provider: workflow_agent_provider,
           job_provider_setting: job.job_provider_setting,
-          provider_availability: ::App::ProviderAvailability.for_user(user, job.workflow_agent_provider),
+          provider_availability: provider_availability,
           total_cost_usd: job.display_total_cost_usd&.to_f,
           issue_number: job.issue_number,
           issue_url: App::Presentation.job_issue_url(job),
@@ -46,7 +60,7 @@ module App
           manual_paused: job.manual_paused?,
           manual_paused_at: job.manual_paused_at&.iso8601,
           manual_paused_by_user: owner_user_json(job.manual_paused_by_user),
-          retry_state: retry_state_for(job),
+          retry_state: retry_state,
           created_at: job.created_at&.iso8601,
           updated_at: job.updated_at&.iso8601,
           started_at: job.started_at&.iso8601,
@@ -63,11 +77,11 @@ module App
           pr_mergeable_checked_at: job.pr_mergeable_checked_at&.iso8601,
           commits_behind_base: job.commits_behind_base,
           workflows_count: workflows_count_for(job),
-          repository: repository_json(job.repository),
+          repository: repository,
           epic: job_epic_json(job.epic),
           owner_badge: owner_badge_for(owner_user),
-          tags: job.tags.map { |tag| tag_json(tag) },
-          source_chat: App::JobSourceChat.for(job),
+          tags: tags,
+          source_chat: source_chat,
           needs_attention: job.needs_attention?,
           needs_attention_reason: job.needs_attention_reason,
           paths: {
@@ -114,7 +128,9 @@ module App
       def deployment_stages_for(repository)
         @deployment_stages_by_repository_id ||= {}
         @deployment_stages_by_repository_id.fetch(repository.id) do
-          @deployment_stages_by_repository_id[repository.id] = RepoDeploymentStagesReader.for_repository(repository).stages
+          @deployment_stages_by_repository_id[repository.id] = PerformanceLogging.phase("dashboard_job.deployment_stages", repository_id: repository.id) do
+            RepoDeploymentStagesReader.for_repository(repository).stages
+          end
         end
       end
 
@@ -214,8 +230,14 @@ module App
       end
 
       def workflow_json(workflow)
+        PerformanceLogging.phase("dashboard_workflow.serialize_one", workflow_id: workflow.id, trigger_kind: workflow.trigger_kind) do
+          dashboard_workflow_json(workflow)
+        end
+      end
+
+      def dashboard_workflow_json(workflow)
         job = workflow.job
-        owner_user = job_owner_user(job)
+        owner_user = PerformanceLogging.phase("dashboard_workflow.owner_user", workflow_id: workflow.id, job_id: job.id) { job_owner_user(job) }
 
         {
           type: "workflow",

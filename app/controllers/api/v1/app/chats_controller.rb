@@ -1223,8 +1223,24 @@ module Api
         ].freeze
 
         def chat_json(chat_session)
-          repository = chat_session.repository
-          effective_provider = chat_session.effective_chat_provider
+          PerformanceLogging.phase("chat_json", chat_id: chat_session.id) do
+            chat_session_json(chat_session)
+          end
+        end
+
+        def chat_session_json(chat_session)
+          repository = PerformanceLogging.phase("chat_json.repository", chat_id: chat_session.id) { chat_session.repository }
+          effective_provider = PerformanceLogging.phase("chat_json.effective_provider", chat_id: chat_session.id) { chat_session.effective_chat_provider }
+          provider_availability = PerformanceLogging.phase("chat_json.provider_availability", chat_id: chat_session.id, provider: effective_provider) do
+            ::App::ProviderAvailability.for_user(Current.user, effective_provider)
+          end
+          chat_provider_options_payload = PerformanceLogging.phase("chat_json.provider_options", chat_id: chat_session.id, provider: effective_provider) do
+            chat_provider_options(chat_session)
+          end
+          available_chat_models_payload = PerformanceLogging.phase("chat_json.available_models", chat_id: chat_session.id, provider: effective_provider) do
+            available_chat_models_for(chat_session)
+          end
+
           {
             id: chat_session.id,
             title: chat_session.title.presence || ChatSession.fallback_title_for(repository),
@@ -1235,10 +1251,10 @@ module Api
             chat_provider: chat_session.chat_provider,
             effective_chat_provider: effective_provider,
             effective_chat_provider_label: chat_provider_label(effective_provider),
-            provider_availability: ::App::ProviderAvailability.for_user(Current.user, effective_provider),
-            chat_provider_options: chat_provider_options(chat_session),
+            provider_availability: provider_availability,
+            chat_provider_options: chat_provider_options_payload,
             chat_model: chat_session.chat_model,
-            available_chat_models: available_chat_models_for(chat_session),
+            available_chat_models: available_chat_models_payload,
             mode: chat_session.mode,
             local_daemon_state: chat_session.local_daemon_state,
             local_daemon_repo: chat_session.local_daemon_repo,
@@ -1252,11 +1268,13 @@ module Api
             cumulative_input_tokens: chat_session.cumulative_input_tokens.to_i,
             cumulative_output_tokens: chat_session.cumulative_output_tokens.to_i,
             cumulative_cost_usd: chat_session.cumulative_cost.to_f,
-            pending_proposal_count: chat_session.proposals.where(state: "proposed").count +
-              chat_session.pending_actions.where(state: "pending").count,
-            confirmed_proposal_count: chat_session.proposals.confirmed.count,
-            linked_direct_job_count: Job.where(linked_chat_id: chat_session.id, kind: "direct").count,
-            scratchpad_items_count: chat_session.scratchpad_items.count,
+            pending_proposal_count: PerformanceLogging.phase("chat_json.pending_proposal_count", chat_id: chat_session.id) do
+              chat_session.proposals.where(state: "proposed").count +
+                chat_session.pending_actions.where(state: "pending").count
+            end,
+            confirmed_proposal_count: PerformanceLogging.phase("chat_json.confirmed_proposal_count", chat_id: chat_session.id) { chat_session.proposals.confirmed.count },
+            linked_direct_job_count: PerformanceLogging.phase("chat_json.linked_direct_job_count", chat_id: chat_session.id) { Job.where(linked_chat_id: chat_session.id, kind: "direct").count },
+            scratchpad_items_count: PerformanceLogging.phase("chat_json.scratchpad_items_count", chat_id: chat_session.id) { chat_session.scratchpad_items.count },
             coding_checkout_uncommitted: chat_session.coding_checkout_uncommitted?,
             coding_checkout_branch: chat_session.coding_checkout_branch,
             coding_relay_ready: chat_session.coding_relay_address.present?,

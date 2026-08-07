@@ -86,23 +86,31 @@ module ChatIndexPayload
   end
 
   def chat_index_group_json(key:, label:, repository_id:, chats:, has_more:)
-    {
-      key: key,
-      label: label,
-      repository_id: repository_id,
-      chats: chats.map { |chat_session| chat_index_json(chat_session) },
-      has_more: has_more,
-      active_at: chats.map { |chat_session| chat_activity_timestamp(chat_session) }.max
-    }
+    PerformanceLogging.phase("chat_index.group.serialize", repository_id: repository_id, count: chats.size) do
+      {
+        key: key,
+        label: label,
+        repository_id: repository_id,
+        chats: PerformanceLogging.phase("chat_index.group.chats", repository_id: repository_id, count: chats.size) do
+          chats.map { |chat_session| chat_index_json(chat_session) }
+        end,
+        has_more: has_more,
+        active_at: PerformanceLogging.phase("chat_index.group.active_at", repository_id: repository_id, count: chats.size) do
+          chats.map { |chat_session| chat_activity_timestamp(chat_session) }.max
+        end
+      }
+    end
   end
 
   def chat_index_json(chat_session)
-    chat_json(chat_session).merge(
-      last_message_at: chat_session.last_message_at&.iso8601,
-      unread: chat_unread?(chat_session),
-      created_at: chat_session.created_at.iso8601,
-      updated_at: chat_session.updated_at.iso8601
-    )
+    PerformanceLogging.phase("chat_index.chat.serialize", chat_id: chat_session.id) do
+      chat_json(chat_session).merge(
+        last_message_at: chat_session.last_message_at&.iso8601,
+        unread: PerformanceLogging.phase("chat_index.chat.unread", chat_id: chat_session.id) { chat_unread?(chat_session) },
+        created_at: chat_session.created_at.iso8601,
+        updated_at: chat_session.updated_at.iso8601
+      )
+    end
   end
 
   def paginated_chat_index_group(scope, before_chat: nil)

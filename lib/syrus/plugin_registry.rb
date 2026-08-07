@@ -57,15 +57,23 @@ module Syrus
       # belong to currently-enabled plugins. Falls back to all registered
       # plugins when the plugin_records table doesn't exist yet.
       def providers_for(extension_point)
-        plugins = @mutex.synchronize { @plugins.dup }
+        performance_phase("plugin_registry.providers_for", extension_point: extension_point) do
+          plugins = performance_phase("plugin_registry.providers_for.snapshot", extension_point: extension_point) do
+            @mutex.synchronize { @plugins.dup }
+          end
 
-        begin
-          records = PluginRecord.where(name: plugins.map(&:name)).index_by(&:name)
-          plugins
-            .select { |m| records.fetch(m.name, nil)&.enabled? || !records.key?(m.name) }
-            .flat_map { |m| Array(m.provides[extension_point]) }
-        rescue ActiveRecord::ActiveRecordError
-          plugins.flat_map { |m| Array(m.provides[extension_point]) }
+          begin
+            records = performance_phase("plugin_registry.providers_for.records", extension_point: extension_point, plugin_count: plugins.size) do
+              PluginRecord.where(name: plugins.map(&:name)).index_by(&:name)
+            end
+            performance_phase("plugin_registry.providers_for.filter", extension_point: extension_point, plugin_count: plugins.size) do
+              plugins
+                .select { |m| records.fetch(m.name, nil)&.enabled? || !records.key?(m.name) }
+                .flat_map { |m| Array(m.provides[extension_point]) }
+            end
+          rescue ActiveRecord::ActiveRecordError
+            plugins.flat_map { |m| Array(m.provides[extension_point]) }
+          end
         end
       end
 
@@ -73,16 +81,24 @@ module Syrus
       # current enabled state from PluginRecord. Falls back to enabled: true
       # for every plugin when the table doesn't exist yet.
       def all_plugins
-        plugins = @mutex.synchronize { @plugins.dup }
-
-        begin
-          records = PluginRecord.all.index_by(&:name)
-          plugins.map do |m|
-            record = records[m.name]
-            record ? m.with(enabled: record.enabled) : m
+        performance_phase("plugin_registry.all_plugins") do
+          plugins = performance_phase("plugin_registry.all_plugins.snapshot") do
+            @mutex.synchronize { @plugins.dup }
           end
-        rescue ActiveRecord::ActiveRecordError
-          plugins
+
+          begin
+            records = performance_phase("plugin_registry.all_plugins.records", plugin_count: plugins.size) do
+              PluginRecord.all.index_by(&:name)
+            end
+            performance_phase("plugin_registry.all_plugins.annotate", plugin_count: plugins.size) do
+              plugins.map do |m|
+                record = records[m.name]
+                record ? m.with(enabled: record.enabled) : m
+              end
+            end
+          rescue ActiveRecord::ActiveRecordError
+            plugins
+          end
         end
       end
 
@@ -95,6 +111,14 @@ module Syrus
       end
 
       private
+
+      def performance_phase(name, metadata = {}, &block)
+        if defined?(PerformanceLogging)
+          PerformanceLogging.phase(name, metadata, &block)
+        else
+          yield
+        end
+      end
 
       def validate_provides!(provides)
         provides.each do |key, klass|

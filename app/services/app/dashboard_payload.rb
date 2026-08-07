@@ -174,7 +174,9 @@ module App
     attr_reader :user, :params
 
     def provider_availability_by_provider
-      @provider_availability_by_provider ||= ::App::ProviderAvailability.all_for_user(user)
+      @provider_availability_by_provider ||= PerformanceLogging.phase("dashboard_provider_availability.all_for_user") do
+        ::App::ProviderAvailability.all_for_user(user)
+      end
     end
 
     def provider_availability_for(provider)
@@ -461,11 +463,13 @@ module App
     end
 
     def counts
-      @counts ||= {
-        jobs: jobs_base_scope.count,
-        epics: epics_base_scope.where.not(state: Epic::ARCHIVED_STATE).count,
-        workflows: workflows_base_scope.count
-      }
+      @counts ||= PerformanceLogging.phase("dashboard_counts") do
+        {
+          jobs: PerformanceLogging.phase("dashboard_counts.jobs") { jobs_base_scope.count },
+          epics: PerformanceLogging.phase("dashboard_counts.epics") { epics_base_scope.where.not(state: Epic::ARCHIVED_STATE).count },
+          workflows: PerformanceLogging.phase("dashboard_counts.workflows") { workflows_base_scope.count }
+        }
+      end
     end
 
     def rows_controls_json
@@ -567,13 +571,19 @@ module App
 
     def preload_job_runtime_state(jobs)
       job_ids = jobs.map(&:id)
-      @job_runtime_workflow_counts_by_job_id = job_ids.empty? ? {} : Workflow.where(job_id: job_ids).group(:job_id).count
-      @job_runtime_latest_runs_by_job_id = latest_runs_by_job_id(job_ids)
-      @job_runtime_latest_workflows_by_job_id = latest_workflows_by_job_id(job_ids)
+      @job_runtime_workflow_counts_by_job_id = PerformanceLogging.phase("dashboard_jobs.preload.workflow_counts", count: job_ids.size) do
+        job_ids.empty? ? {} : Workflow.where(job_id: job_ids).group(:job_id).count
+      end
+      @job_runtime_latest_runs_by_job_id = PerformanceLogging.phase("dashboard_jobs.preload.latest_runs", count: job_ids.size) { latest_runs_by_job_id(job_ids) }
+      @job_runtime_latest_workflows_by_job_id = PerformanceLogging.phase("dashboard_jobs.preload.latest_workflows", count: job_ids.size) { latest_workflows_by_job_id(job_ids) }
       run_ids = @job_runtime_latest_runs_by_job_id.values.map(&:id)
-      @job_runtime_run_diagnostics_by_run_id = run_ids.empty? ? {} : RunDiagnostic.where(run_id: run_ids).index_by(&:run_id)
-      @job_runtime_active_job_ids = job_ids.empty? ? {} : Run.active.where(job_id: job_ids).distinct.pluck(:job_id).index_with(true)
-      @job_runtime_paused_job_ids = paused_job_ids(job_ids).index_with(true)
+      @job_runtime_run_diagnostics_by_run_id = PerformanceLogging.phase("dashboard_jobs.preload.run_diagnostics", count: run_ids.size) do
+        run_ids.empty? ? {} : RunDiagnostic.where(run_id: run_ids).index_by(&:run_id)
+      end
+      @job_runtime_active_job_ids = PerformanceLogging.phase("dashboard_jobs.preload.active_jobs", count: job_ids.size) do
+        job_ids.empty? ? {} : Run.active.where(job_id: job_ids).distinct.pluck(:job_id).index_with(true)
+      end
+      @job_runtime_paused_job_ids = PerformanceLogging.phase("dashboard_jobs.preload.paused_jobs", count: job_ids.size) { paused_job_ids(job_ids).index_with(true) }
     end
 
     def paused_job_ids(job_ids)

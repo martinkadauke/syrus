@@ -59,8 +59,16 @@ module SyrusMcp
       policy_allowed = McpToolPolicy.for(context).map(&:tool_name).to_set
       managed_names  = SyrusMcp::CoreToolSet::POLICY_MANAGED_NAMES
 
-      Syrus::PluginRegistry.providers_for(:mcp_tool_set)
-        .select { |ts| ts.available_for?(repository) }
+      tool_sets = PerformanceLogging.phase("mcp_sidecar.plugin_tool_sets", run_id: @run_id, repository_id: repository.id) do
+        Syrus::PluginRegistry.providers_for(:mcp_tool_set)
+      end
+
+      tool_sets
+        .select do |ts|
+          PerformanceLogging.plugin_call(extension_point: :mcp_tool_set, provider: ts, operation: :available_for) do
+            ts.available_for?(repository)
+          end
+        end
         .flat_map { |ts| mcp_tools_for(ts) }
         .select { |tool|
           name = tool.tool_name
@@ -71,13 +79,19 @@ module SyrusMcp
     end
 
     def mcp_tools_for(tool_set_class)
-      tool_set_class.tool_definitions.map do |defn|
+      definitions = PerformanceLogging.plugin_call(extension_point: :mcp_tool_set, provider: tool_set_class, operation: :tool_definitions) do
+        tool_set_class.tool_definitions
+      end
+
+      definitions.map do |defn|
         MCP::Tool.define(
           name: defn[:name],
           description: defn[:description],
           input_schema: defn[:input_schema]
         ) do |server_context:, **params|
-          tool_set_class.new.handle(defn[:name], params, server_context)
+          PerformanceLogging.plugin_call(extension_point: :mcp_tool_set, provider: tool_set_class, operation: "handle.#{defn[:name]}") do
+            tool_set_class.new.handle(defn[:name], params, server_context)
+          end
         end
       end
     end

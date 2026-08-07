@@ -1,27 +1,31 @@
 module Admin
   class PluginsPayload
     def as_json(*)
-      {
-        plugins: Syrus::PluginRegistry.all_plugins.map { |manifest| plugin_payload(manifest) }
-      }
+      PerformanceLogging.phase("admin_plugins_payload") do
+        {
+          plugins: Syrus::PluginRegistry.all_plugins.map { |manifest| plugin_payload(manifest) }
+        }
+      end
     end
 
     private
 
     def plugin_payload(manifest)
-      spec = gem_spec_for(manifest)
-      metadata = manifest.metadata.with_indifferent_access
+      PerformanceLogging.phase("admin_plugins.plugin", plugin: manifest.name) do
+        spec = PerformanceLogging.phase("admin_plugins.plugin.gem_spec", plugin: manifest.name) { gem_spec_for(manifest) }
+        metadata = manifest.metadata.with_indifferent_access
 
-      {
-        name: manifest.name,
-        version: manifest.version,
-        enabled: manifest.enabled?,
-        description: manifest.description.presence || spec&.summary || metadata[:description],
-        homepage: manifest.homepage.presence || spec&.homepage || metadata[:homepage],
-        author: author_for(spec, metadata),
-        source: source_for(spec, metadata),
-        extension_points: extension_points_payload(manifest)
-      }
+        {
+          name: manifest.name,
+          version: manifest.version,
+          enabled: manifest.enabled?,
+          description: manifest.description.presence || spec&.summary || metadata[:description],
+          homepage: manifest.homepage.presence || spec&.homepage || metadata[:homepage],
+          author: author_for(spec, metadata),
+          source: source_for(spec, metadata),
+          extension_points: PerformanceLogging.phase("admin_plugins.plugin.extension_points", plugin: manifest.name) { extension_points_payload(manifest) }
+        }
+      end
     end
 
     def extension_points_payload(manifest)
@@ -48,7 +52,7 @@ module Admin
     end
 
     def agent_provider_availability(provider)
-      available = provider.respond_to?(:available?) && provider.available?
+      available = provider.respond_to?(:available?) && PerformanceLogging.plugin_call(extension_point: :agent_provider, provider: provider, operation: :available) { provider.available? }
       {
         status: available ? "available" : "unavailable",
         label: available ? "Available" : "Unavailable"
@@ -62,7 +66,9 @@ module Admin
     end
 
     def input_source_availability(provider)
-      configured_count = InputSource.where(type: provider.name).count
+      configured_count = PerformanceLogging.plugin_call(extension_point: :input_source, provider: provider, operation: :configured_count) do
+        InputSource.where(type: provider.name).count
+      end
       {
         status: configured_count.positive? ? "configured" : "not_configured",
         label: configured_count.positive? ? "Configured" : "Not configured",

@@ -11,7 +11,15 @@ module App
       # owner_json helpers through the include ancestry.
 
       def workflows_json
-        paginated_workflows.map do |workflow|
+        PerformanceLogging.phase("job_detail.workflows.serialize", job_id: @job.id, page: workflows_page) do
+          paginated_workflows.map do |workflow|
+            workflow_json(workflow)
+          end
+        end
+      end
+
+      def workflow_json(workflow)
+        PerformanceLogging.phase("job_detail.workflow.serialize", job_id: @job.id, workflow_id: workflow.id) do
           steps = ordered_steps_for(workflow)
           latest_step = steps.last
           {
@@ -34,7 +42,9 @@ module App
             app_force_push_branch_path: "/api/v1/app/jobs/#{@job.id}/workflows/#{workflow.id}/force_push_branch",
             app_discard_branch_output_path: "/api/v1/app/jobs/#{@job.id}/workflows/#{workflow.id}/discard_branch_output",
             failure_classification: workflow_failure_classification_json(workflow),
-            steps: steps.map { |step| step_json(step, workflow: workflow, latest_step: latest_step) }
+            steps: PerformanceLogging.phase("job_detail.workflow.steps", job_id: @job.id, workflow_id: workflow.id, step_count: steps.size) do
+              steps.map { |step| step_json(step, workflow: workflow, latest_step: latest_step) }
+            end
           }
         end
       end
@@ -57,9 +67,12 @@ module App
       end
 
       def paginated_workflows
-        @paginated_workflows ||= workflows_scope
-          .offset((workflows_page - 1) * WORKFLOWS_PER_PAGE)
-          .limit(WORKFLOWS_PER_PAGE)
+        @paginated_workflows ||= PerformanceLogging.phase("job_detail.workflows.query", job_id: @job.id, page: workflows_page) do
+          workflows_scope
+            .offset((workflows_page - 1) * WORKFLOWS_PER_PAGE)
+            .limit(WORKFLOWS_PER_PAGE)
+            .to_a
+        end
       end
 
       def workflows_scope
@@ -69,7 +82,7 @@ module App
       end
 
       def total_workflows
-        @total_workflows ||= @job.workflows.count
+        @total_workflows ||= PerformanceLogging.phase("job_detail.workflows.total", job_id: @job.id) { @job.workflows.count }
       end
 
       def workflows_page
@@ -98,23 +111,28 @@ module App
       end
 
       def step_json(step, workflow:, latest_step:)
-        {
-          id: step.id,
-          kind: step.kind,
-          display_name: step_display_name(step),
-          display_status: step_display_status(step),
-          position: step.position,
-          iteration: step.iteration,
-          loop_id: step.loop_id,
-          state: step.state,
-          started_at: iso8601(step.started_at),
-          finished_at: iso8601(step.finished_at),
-          created_at: iso8601(step.created_at),
-          updated_at: iso8601(step.updated_at),
-          details: step.details.presence,
-          latest: step == latest_step,
-          runs: ordered_runs_for(step).map { |run| run_json(run, workflow: workflow) }
-        }
+        PerformanceLogging.phase("job_detail.step.serialize", job_id: @job.id, workflow_id: workflow.id, step_id: step.id, kind: step.kind) do
+          runs = ordered_runs_for(step)
+          {
+            id: step.id,
+            kind: step.kind,
+            display_name: step_display_name(step),
+            display_status: step_display_status(step),
+            position: step.position,
+            iteration: step.iteration,
+            loop_id: step.loop_id,
+            state: step.state,
+            started_at: iso8601(step.started_at),
+            finished_at: iso8601(step.finished_at),
+            created_at: iso8601(step.created_at),
+            updated_at: iso8601(step.updated_at),
+            details: step.details.presence,
+            latest: step == latest_step,
+            runs: PerformanceLogging.phase("job_detail.step.runs", job_id: @job.id, workflow_id: workflow.id, step_id: step.id, run_count: runs.size) do
+              runs.map { |run| run_json(run, workflow: workflow) }
+            end
+          }
+        end
       end
 
       def step_display_name(step)
@@ -133,6 +151,12 @@ module App
 
       def run_json(run, workflow:)
         session = run.claude_session
+        command_spans = PerformanceLogging.phase("job_detail.run.command_spans", job_id: @job.id, run_id: run.id) do
+          run.command_spans.ordered.map { |span| command_span_json(span) }
+        end
+        worker_health_correlation = PerformanceLogging.phase("job_detail.run.worker_health_correlation", job_id: @job.id, run_id: run.id) do
+          WorkerHealthRunCorrelation.for_run(run, sample_limit: 0)
+        end
         {
           id: run.id,
           state: run.state,
@@ -165,8 +189,8 @@ module App
           run_diagnostic: run_diagnostic_json(run.run_diagnostic),
           health_snapshots: latest_health_snapshot_for(run).then { |snapshot| snapshot ? [ health_snapshot_json(snapshot) ] : [] },
           active_process: active_process_json(run),
-          command_spans: run.command_spans.ordered.map { |span| command_span_json(span) },
-          worker_health_correlation: WorkerHealthRunCorrelation.for_run(run, sample_limit: 0),
+          command_spans: command_spans,
+          worker_health_correlation: worker_health_correlation,
           agent_session: agent_session_json(session),
           can_stop: run.may_cancel?,
           can_diagnose: run.queued? || run.running?,

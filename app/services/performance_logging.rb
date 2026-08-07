@@ -179,6 +179,15 @@ module PerformanceLogging
     end
   end
 
+  def plugin_call(extension_point:, provider:, operation:)
+    phase(
+      "plugin.#{extension_point}.#{operation}",
+      extension_point: extension_point,
+      provider: plugin_provider_name(provider),
+      operation: operation
+    ) { yield }
+  end
+
   def slow_request_threshold_ms
     threshold_from_env("SYRUS_PERFORMANCE_SLOW_REQUEST_MS", DEFAULT_SLOW_REQUEST_MS)
   end
@@ -254,6 +263,16 @@ module PerformanceLogging
       "app_revision" => SyrusVersion.current,
       "pid" => Process.pid
     }
+  end
+
+  def plugin_provider_name(provider)
+    if provider.respond_to?(:name)
+      provider.name
+    else
+      provider.class.name
+    end.presence || provider.to_s
+  rescue StandardError
+    provider.to_s
   end
 
   def request_context

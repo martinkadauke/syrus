@@ -54,7 +54,9 @@ module Api
         end
 
         def available_input_source_providers
-          Syrus::PluginRegistry.providers_for(:input_source)
+          PerformanceLogging.phase("input_sources.providers") do
+            Syrus::PluginRegistry.providers_for(:input_source)
+          end
         end
 
         def source_for(repository, provider)
@@ -82,7 +84,7 @@ module Api
         end
 
         def schema_updates(provider, values)
-          schema = provider.new.config_schema
+          schema = PerformanceLogging.plugin_call(extension_point: :input_source, provider: provider, operation: :config_schema) { provider.new.config_schema }
           config_updates = {}
           credential_updates = {}
 
@@ -102,7 +104,8 @@ module Api
         end
 
         def credential_placeholders(source, provider)
-          provider.new.config_schema.each_with_object({}) do |field, values|
+          schema = PerformanceLogging.plugin_call(extension_point: :input_source, provider: provider, operation: :config_schema) { provider.new.config_schema }
+          schema.each_with_object({}) do |field, values|
             next unless credential_field?(field)
 
             key = field.fetch(:key).to_s
