@@ -30,21 +30,22 @@ module Steps
 
     def fetch_pending_branches
       git = streaming_git(env: { "GIT_TERMINAL_PROMPT" => "0" })
-      current_branch = current_branch_name(git)
       fetched_branches = {}
+      abort_rebase_if_present(git)
 
       GithubAuthenticatedGit.run(repository: repository, user: job.user, git: git, operation_type: "git_stack_rebase_fetch", log: method(:log)) do |push_url|
         pending_entries.each do |entry|
           branch = entry.fetch("branch_name")
           base = entry.fetch("base_branch")
           fetch_remote_branch_once(git, push_url, branch, fetched_branches)
-          if branch == current_branch
-            git.run("reset", "--hard", "refs/remotes/origin/#{branch}", chdir: workspace.path.to_s)
-          else
-            git.run("branch", "-f", branch, "refs/remotes/origin/#{branch}", chdir: workspace.path.to_s)
-          end
           fetch_remote_branch_once(git, push_url, base, fetched_branches)
         end
+      end
+
+      detach_worktree(git) if pending_entries.any?
+      pending_entries.each do |entry|
+        branch = entry.fetch("branch_name")
+        git.run("branch", "-f", branch, "refs/remotes/origin/#{branch}", chdir: workspace.path.to_s)
       end
       git.run("checkout", pending_entries.first.fetch("branch_name"), chdir: workspace.path.to_s) if pending_entries.any?
     end
@@ -60,10 +61,32 @@ module Steps
       git.run("fetch", push_url, "refs/heads/#{branch}:refs/remotes/origin/#{branch}", chdir: workspace.path.to_s)
     end
 
-    def current_branch_name(git)
-      git.run("rev-parse", "--abbrev-ref", "HEAD", chdir: workspace.path.to_s).strip
+    def detach_worktree(git)
+      git.run("checkout", "--detach", "HEAD", chdir: workspace.path.to_s)
+    end
+
+    def abort_rebase_if_present(git)
+      return unless rebase_in_progress?(git)
+
+      log("stack_agent_rebase: aborting leftover rebase before resetting stack branches")
+      git.run("rebase", "--abort", chdir: workspace.path.to_s)
     rescue GitRunner::GitError
       nil
+    end
+
+    def rebase_in_progress?(git)
+      path = git.run("rev-parse", "--git-path", "rebase-merge", chdir: workspace.path.to_s).strip
+      return true if path.present? && File.exist?(absolute_git_path(path))
+
+      path = git.run("rev-parse", "--git-path", "rebase-apply", chdir: workspace.path.to_s).strip
+      path.present? && File.exist?(absolute_git_path(path))
+    rescue GitRunner::GitError
+      false
+    end
+
+    def absolute_git_path(path)
+      pathname = Pathname.new(path)
+      pathname.absolute? ? pathname : workspace.path.join(pathname)
     end
 
     def rev_parse(ref)

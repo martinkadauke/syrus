@@ -26,7 +26,7 @@ RSpec.describe Steps::StackAgentRebase do
   let(:step) { workflow.steps.find_by!(kind: "stack_agent_rebase") }
   let(:run) { Run.create!(job: job, step: step, trigger_kind: "stack_rebase") }
 
-  it "does not fetch the checked-out branch into itself before an agent stack rebase" do
+  it "detaches before resetting pending stack branches for an agent stack rebase retry" do
     workflow.set_artifact!(
       StackRebasePlan::AGENT_PENDING_ARTIFACT,
       workflow.artifact(StackRebasePlan::STACK_ARTIFACT)
@@ -43,10 +43,6 @@ RSpec.describe Steps::StackAgentRebase do
       .and_return(instance_double(GithubClient, access_token: "token"))
     allow(repository).to receive(:authenticated_push_url).with("token").and_return(push_url)
     allow(git).to receive(:run).and_return("")
-    allow(git).to receive(:run)
-      .with("rev-parse", "--abbrev-ref", "HEAD", chdir: "/tmp/workspace")
-      .and_return(job.branch_name)
-
     handler.send(:fetch_pending_branches)
 
     expect(git).not_to have_received(:run).with(
@@ -61,9 +57,11 @@ RSpec.describe Steps::StackAgentRebase do
       "refs/heads/#{job.branch_name}:refs/remotes/origin/#{job.branch_name}",
       chdir: "/tmp/workspace"
     )
+    expect(git).to have_received(:run).with("checkout", "--detach", "HEAD", chdir: "/tmp/workspace")
     expect(git).to have_received(:run).with(
-      "reset",
-      "--hard",
+      "branch",
+      "-f",
+      job.branch_name,
       "refs/remotes/origin/#{job.branch_name}",
       chdir: "/tmp/workspace"
     )
@@ -74,5 +72,6 @@ RSpec.describe Steps::StackAgentRebase do
       "refs/remotes/origin/#{child.branch_name}",
       chdir: "/tmp/workspace"
     )
+    expect(git).to have_received(:run).with("checkout", job.branch_name, chdir: "/tmp/workspace")
   end
 end
