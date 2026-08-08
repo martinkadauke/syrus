@@ -67,51 +67,6 @@ RSpec.describe McpToolPolicy do
       expect(tools).to include(Mcp::Tools::ReportMainConcernTool)
     end
 
-    it "includes performance diagnostics for tkadauke/syrus implementation runs" do
-      syrus_repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
-      syrus_run = Factories.job(repository: syrus_repository, user: user).initial_run
-      context = McpToolContext.from_run(syrus_run)
-
-      expect(described_class.for(context)).to include(Mcp::Tools::ReadPerformanceDiagnosticsTool)
-    end
-
-    it "includes Syrus log search for tkadauke/syrus implementation runs" do
-      syrus_repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
-      syrus_run = Factories.job(repository: syrus_repository, user: user).initial_run
-      context = McpToolContext.from_run(syrus_run)
-
-      expect(described_class.for(context)).to include(Mcp::Tools::ReadSyrusLogsTool)
-    end
-
-    it "includes performance diagnostics for registered Syrus forks" do
-      syrus_fork = Factories.repository(user: user, owner: "acme", name: "syrus-fork", upstream_owner: "tkadauke", upstream_name: "syrus")
-      syrus_run = Factories.job(repository: syrus_fork, user: user).initial_run
-      context = McpToolContext.from_run(syrus_run)
-
-      expect(described_class.for(context)).to include(Mcp::Tools::ReadPerformanceDiagnosticsTool)
-      expect(described_class.for(context)).to include(Mcp::Tools::ReadSyrusLogsTool)
-    end
-
-    it "excludes performance diagnostics for normal non-Syrus repositories" do
-      context = McpToolContext.from_run(run)
-
-      expect(described_class.for(context)).not_to include(Mcp::Tools::ReadPerformanceDiagnosticsTool)
-      expect(described_class.for(context)).not_to include(Mcp::Tools::ReadSyrusLogsTool)
-    end
-
-    it "excludes performance diagnostics from non-implementation workflow roles" do
-      syrus_repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
-      context = McpToolContext.new(
-        surface: :run,
-        role: AgentRole::WORKFLOW_ADVERSARIAL_REVIEWER,
-        user: user,
-        repository: syrus_repository
-      )
-
-      expect(described_class.for(context)).not_to include(Mcp::Tools::ReadPerformanceDiagnosticsTool)
-      expect(described_class.for(context)).not_to include(Mcp::Tools::ReadSyrusLogsTool)
-    end
-
     it "returns submit_summary, submit_test_plan, and submit_reconciliation_feedback for the reconciliation_feedback role" do
       context = McpToolContext.new(surface: :run, role: AgentRole::WORKFLOW_RECONCILIATION_FEEDBACK, user: user)
       tools   = described_class.for(context)
@@ -224,32 +179,6 @@ RSpec.describe McpToolPolicy do
       expect(described_class.for(context)).not_to include(Mcp::Tools::SubmitSummaryTool, Mcp::Tools::SubmitTestPlanTool)
     end
 
-    it "includes Syrus log search for insight runs when operational logging is enabled on tkadauke/syrus" do
-      set_operational_log_indexing(true)
-      syrus_repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
-
-      expect(described_class.for(agent_insight_context(syrus_repository))).to include(Mcp::Tools::ReadSyrusLogsTool)
-    end
-
-    it "includes Syrus log search for insight runs on registered Syrus forks" do
-      set_operational_log_indexing(true)
-      syrus_fork = Factories.repository(user: user, owner: "acme", name: "syrus-fork", upstream_owner: "tkadauke", upstream_name: "syrus")
-
-      expect(described_class.for(agent_insight_context(syrus_fork))).to include(Mcp::Tools::ReadSyrusLogsTool)
-    end
-
-    it "excludes Syrus log search for insight runs when operational logging is disabled" do
-      set_operational_log_indexing(false)
-      syrus_repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
-
-      expect(described_class.for(agent_insight_context(syrus_repository))).not_to include(Mcp::Tools::ReadSyrusLogsTool)
-    end
-
-    it "excludes Syrus log search for insight runs on non-Syrus repositories" do
-      set_operational_log_indexing(true)
-
-      expect(described_class.for(agent_insight_context(repository))).not_to include(Mcp::Tools::ReadSyrusLogsTool)
-    end
   end
 
   describe "chat planner role" do

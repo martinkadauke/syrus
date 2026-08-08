@@ -8,6 +8,10 @@ RSpec.describe "API: /api/v1/app/input_sources", type: :request do
     JSON.parse(response.body)
   end
 
+  before do
+    PluginRecord.find_by!(name: "syrus-linear-source").update!(enabled: true)
+  end
+
   it "401s when signed out" do
     get "/api/v1/app/repositories/#{repository.id}/input_sources/linear"
     expect(response).to have_http_status(:unauthorized)

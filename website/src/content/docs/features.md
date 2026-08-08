@@ -632,13 +632,15 @@ pre-deploy timings do not hide whether a new deploy helped; admins can switch
 to all revisions when investigating rolling-deploy overlap. The in-app
 diagnostics buffer is cache-backed, capped at 200 events, and expires after 6
 hours; structured log retention follows the deployment's log sink policy.
-Implementation workflow agents working on `tkadauke/syrus` or a registered
-fork of that repository also receive the read-only
-`read_performance_diagnostics` MCP tool. Scheduled prompts that target Syrus
-performance work can ask the agent to call it before editing code. The tool
-uses the same current-revision/all-revisions filtering as the admin payload,
-returns bounded grouped summaries, and only includes sanitized raw recent
-events when explicitly requested.
+When the bundled `syrus_dev` plugin is enabled, Admin → Performance and the
+admin performance API expose the same diagnostics payload. Implementation
+workflow agents working on `tkadauke/syrus` or a registered fork of that
+repository also receive the read-only `read_performance_diagnostics` MCP tool
+through that plugin. Scheduled prompts that target Syrus performance work can
+ask the agent to call it before editing code. The tool uses the same
+current-revision/all-revisions filtering as the admin payload, returns bounded
+grouped summaries, and only includes sanitized raw recent events when
+explicitly requested.
 
 ## Direct Jobs
 
@@ -684,9 +686,10 @@ flow, while Linear can poll a team and optional label filter.
 
 Admins can open **Admin → Plugins** to inspect the plugin registry without
 checking the Gemfile. The page lists each registered plugin's version,
-enabled state, extension point classes, and basic author/source metadata when
-available. It is informational only; installing or removing plugins still
-requires changing the Gemfile and restarting Syrus.
+enabled state, default enabled policy, disableability, category, extension
+point classes, and basic author/source metadata when available. Disableable
+installed plugins can be toggled live for new requests and sidecars. Installing
+or removing plugins still requires changing the Gemfile and restarting Syrus.
 
 ## GitHub App And PAT Behavior
 

@@ -93,7 +93,7 @@ module Syrus
 
           begin
             records = performance_phase("plugin_registry.providers_for.records", extension_point: extension_point, plugin_count: plugins.size) do
-              PluginRecord.where(name: plugins.map(&:name)).index_by(&:name)
+              records_for(plugins)
             end
             performance_phase("plugin_registry.providers_for.filter", extension_point: extension_point, plugin_count: plugins.size) do
               plugins
@@ -117,7 +117,7 @@ module Syrus
 
           begin
             records = performance_phase("plugin_registry.all_plugins.records", plugin_count: plugins.size) do
-              PluginRecord.all.index_by(&:name)
+              records_for(plugins)
             end
             performance_phase("plugin_registry.all_plugins.annotate", plugin_count: plugins.size) do
               plugins.map do |m|
@@ -156,6 +156,27 @@ module Syrus
         return true unless manifest.disableable?
 
         record.effective_enabled?
+      end
+
+      def records_for(plugins)
+        records = PluginRecord.where(name: plugins.map(&:name)).index_by(&:name)
+        missing = plugins.reject { |manifest| records.key?(manifest.name) }
+        missing.each do |manifest|
+          upsert_plugin_record!(
+            name: manifest.name,
+            default_enabled: manifest.default_enabled,
+            disableable: manifest.disableable,
+            metadata: manifest.metadata.to_h.merge(
+              version: manifest.version,
+              description: manifest.description,
+              homepage: manifest.homepage,
+              icon_url: manifest.icon_url,
+              category: manifest.category
+            ).compact
+          )
+          records[manifest.name] = PluginRecord.find_by!(name: manifest.name)
+        end
+        records
       end
 
       def manifest_with_record(manifest, record)

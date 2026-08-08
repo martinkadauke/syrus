@@ -22,8 +22,6 @@ module SyrusMcp
       ::Mcp::Tools::StartPreviewTool,
       ::Mcp::Tools::StopPreviewTool,
       ::Mcp::Tools::ReadPreviewLogTool,
-      ::Mcp::Tools::ReadPerformanceDiagnosticsTool,
-      ::Mcp::Tools::ReadSyrusLogsTool,
       ::Mcp::Tools::ReportMainConcernTool,
       ::Mcp::Tools::SubmitSummaryTool,
       ::Mcp::Tools::SubmitTestPlanTool,

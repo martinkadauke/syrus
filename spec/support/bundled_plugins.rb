@@ -69,5 +69,19 @@ RSpec.configure do |config|
         provides: { input_source: InputSources::Linear }
       )
     end
+
+    unless registered_names.include?("syrus_dev")
+      Syrus::PluginRegistry.register(
+        name:            "syrus_dev",
+        version:         SyrusDev::VERSION,
+        default_enabled: false,
+        disableable:     true,
+        category:        "dev",
+        provides: {
+          admin_page:   SyrusDev::AdminPages,
+          mcp_tool_set: SyrusDev::WorkflowToolSet
+        }
+      )
+    end
   end
 end

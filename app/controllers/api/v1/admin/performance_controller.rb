@@ -3,7 +3,9 @@ module Api
     module Admin
       class PerformanceController < BaseController
         def show
-          render json: PerformanceLogging.suppress { ::Admin::PerformancePayload.new(params: params).as_json }
+          return render json: { error: "syrus_dev_plugin_disabled" }, status: :not_found unless SyrusDev.enabled?
+
+          render json: PerformanceLogging.suppress { ::SyrusDev::PerformancePayload.new(params: params).as_json }
         end
       end
     end

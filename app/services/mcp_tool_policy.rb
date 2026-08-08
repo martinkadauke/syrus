@@ -108,11 +108,6 @@ class McpToolPolicy
       Mcp::Tools::StopPreviewTool,
       Mcp::Tools::ReadPreviewLogTool
     ]
-    if @context.role == AgentRole::WORKFLOW_IMPLEMENT && self.class.syrus_repository?(@context.repository)
-      base << Mcp::Tools::ReadPerformanceDiagnosticsTool
-      base << Mcp::Tools::ReadSyrusLogsTool
-    end
-
     if @context.role == AgentRole::WORKFLOW_ADVERSARIAL_REVIEWER
       base + [ Mcp::Tools::SubmitAdversarialReviewTool ]
     elsif @context.role == AgentRole::WORKFLOW_RECONCILIATION_FEEDBACK
@@ -242,12 +237,7 @@ class McpToolPolicy
       tools << Mcp::Tools::ListRecentWorkflowsTool
       tools << Mcp::Tools::ReadInsightRunTranscriptTool
     end
-    tools << Mcp::Tools::ReadSyrusLogsTool if insight_operational_log_search_available?
     tools
-  end
-
-  def insight_operational_log_search_available?
-    Feature.operational_log_indexing_enabled? && self.class.syrus_repository?(@context.repository)
   end
 
   def insight_read_tools

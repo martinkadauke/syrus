@@ -30,6 +30,8 @@ gem "my_plugin", path: "plugins/my_plugin"
 | `:agent_provider` | `Syrus::Plugin::AgentProvider`        | `.provider_key`, `.display_name`, `.available?`, `#invoke` |
 | `:mcp_tool_set`   | `Syrus::Plugin::McpToolSet`           | `.tool_definitions`, `.available_for?`, `#handle` |
 | `:input_source`   | `Syrus::Plugin::InputSource`          | `#poll!`, `#validate_credentials!`, `#config_schema`, `#dedup_key` |
+| `:admin_page`     | `Syrus::Plugin::AdminPage`            | `.admin_pages` |
+| `:chat_mcp_tool_set` | `Syrus::Plugin::ChatMcpToolSet`    | `.tool_definitions(tier:)`, `.available_for?(session, tier:)`, `#handle` |
 
 A plugin can register any combination of extension points in a single call:
 
@@ -42,6 +44,7 @@ Syrus::PluginRegistry.register(
   provides:    {
     agent_provider: MyPlugin::AgentProvider,
     mcp_tool_set:   MyPlugin::McpToolSet,
+    admin_page:     MyPlugin::AdminPages,
   }
 )
 ```
@@ -62,20 +65,29 @@ point implementations automatically.
 ## Enable / disable a plugin
 
 `PluginRecord` is an ActiveRecord model backed by the `plugin_records` table.
-Each registered plugin gets a row automatically on first boot (via
-`PluginRecord.find_or_create_by!(name:)` inside `register`).
+Each registered plugin gets a row automatically on first boot. The manifest can
+set `default_enabled:`, `disableable:`, and `category:`; existing enabled state
+is preserved across restarts.
 
 - **Disabling** (`PluginRecord#enabled = false`) takes effect immediately for new
   requests — `providers_for` re-queries the DB. The gem itself remains in memory
   until restart.
-- **Re-enabling** a previously disabled plugin requires a **restart**. The gem's
-  engine won't have registered itself if it was never loaded into the current
-  process; toggling `enabled` back to `true` without restarting will not restore
-  its extension point implementations.
+- **Re-enabling** a previously disabled installed plugin also takes effect
+  immediately for new requests because the engine has already registered its
+  providers in the current process.
+- **Installing or removing** a plugin still requires changing the Gemfile,
+  running Bundler, and restarting Rails so the engine initializer runs or
+  disappears.
+- **Non-disableable** plugins are forced enabled. Use this for core extension
+  points the app cannot run without.
 
 ```ruby
 PluginRecord.find_by!(name: "syrus-claude-agent").update!(enabled: false)
 ```
+
+Bundled `syrus_dev` is disabled by default and owns Syrus-development-only
+diagnostics, including the Performance admin page and the
+`read_performance_diagnostics` / `read_syrus_logs` workflow MCP tools.
 
 ## Querying the registry
 

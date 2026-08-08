@@ -25,7 +25,7 @@ RSpec.describe SyrusMcp::CoreToolSet do
       expect(names).to contain_exactly(
         "read_live_state",
         "read_memory", "write_memory", "delete_memory", "search_memories", "list_memories",
-        "get_coverage_report", "read_run_worker_health", "read_performance_diagnostics", "read_syrus_logs",
+        "get_coverage_report", "read_run_worker_health",
         "start_preview", "stop_preview", "read_preview_log",
         "report_main_concern",
         "submit_summary", "submit_test_plan", "submit_job_metadata", "submit_adversarial_review",

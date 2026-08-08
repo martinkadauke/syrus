@@ -28,6 +28,12 @@ PATH
     syrus_core_tools (0.1.0)
       rails (>= 8.0)
 
+PATH
+  remote: plugins/syrus_dev
+  specs:
+    syrus_dev (0.1.0)
+      rails (>= 8.1)
+
 GEM
   remote: https://rubygems.org/
   specs:
@@ -564,6 +570,7 @@ DEPENDENCIES
   syrus_claude_agent!
   syrus_codex_agent!
   syrus_core_tools!
+  syrus_dev!
   syrus_github_source!
   syrus_linear_source!
   tailwindcss-rails
@@ -749,6 +756,7 @@ CHECKSUMS
   syrus_claude_agent (0.1.0)
   syrus_codex_agent (0.1.0)
   syrus_core_tools (0.1.0)
+  syrus_dev (0.1.0)
   syrus_github_source (0.1.0)
   syrus_linear_source (0.1.0)
   tailwindcss-rails (4.4.0) sha256=efa2961351a52acebe616e645a81a30bb4f27fde46cc06ce7688d1cd1131e916

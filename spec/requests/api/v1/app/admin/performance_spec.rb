@@ -13,6 +13,7 @@ RSpec.describe "API: /api/v1/app/admin/performance", type: :request do
     allow(SyrusVersion).to receive(:current).and_return("new-sha")
     Feature.where(slug: "performance_logging").delete_all
     Feature.create!(slug: "performance_logging", category: "Operations", name: "Performance logging", enabled: true)
+    PluginRecord.find_by!(name: "syrus_dev").update!(enabled: true)
     Current.reset
     PerformanceLogging::Store.clear!
     PerformanceLogging::Store.append(
@@ -81,5 +82,15 @@ RSpec.describe "API: /api/v1/app/admin/performance", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["events"].map { |event| event["app_revision"] }).to contain_exactly("new-sha", "old-sha")
+  end
+
+  it "404s when the Syrus Dev plugin is disabled" do
+    PluginRecord.find_by!(name: "syrus_dev").update!(enabled: false)
+    sign_in_as(admin)
+
+    get "/api/v1/app/admin/performance"
+
+    expect(response).to have_http_status(:not_found)
+    expect(parse_body).to include("error" => "syrus_dev_plugin_disabled")
   end
 end

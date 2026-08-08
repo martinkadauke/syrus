@@ -8,11 +8,16 @@ boot through `Syrus::PluginRegistry`. The registry currently supports:
 - `input_source`
 - `test_result_parser`
 - `coverage_analyzer`
+- `preview_provider`
+- `admin_page`
+- `chat_mcp_tool_set`
 
 Operators can inspect the registered plugins from **Admin → Plugins**
-(`/admin/plugins`). The page is read-only: it shows each plugin's name,
-version, enabled state, author/source metadata when available, and every class
-registered for an extension point.
+(`/admin/plugins`). The page shows each plugin's name, version, enabled state,
+default enabled state, disableability policy, category, author/source metadata
+when available, and every class registered for an extension point. Disableable
+installed plugins can be enabled or disabled live; new requests and sidecars use
+the latest `PluginRecord` state through `PluginRegistry.providers_for`.
 
 Availability is reported per extension point. Agent providers run the provider
 class's `.available?` check. Input sources show how many repository
@@ -24,3 +29,16 @@ as registered parser classes.
 Plugin install and uninstall remain manual operations: edit the Gemfile, run
 Bundler, run migrations if the plugin ships any, and restart the Rails
 processes so plugin engine initializers register with the in-memory registry.
+Non-disableable plugins are forced enabled and should be reserved for core
+runtime pieces.
+
+Bundled plugins:
+
+- `syrus_core_tools` — non-disableable core workflow MCP tools.
+- `syrus-claude-agent` / `syrus-codex-agent` — default-enabled agent providers.
+- `syrus-github-source` — default-enabled GitHub issue/PR polling source.
+- `syrus-linear-source` — installed but disabled by default until configured.
+- `syrus_dev` — installed but disabled by default. It owns Syrus-development-only
+  diagnostics such as Admin → Performance and the `read_performance_diagnostics`
+  / `read_syrus_logs` workflow MCP tools. Enable it only on instances where
+  agents or operators should inspect Syrus's own production behavior.

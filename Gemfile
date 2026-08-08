@@ -44,6 +44,9 @@ gem "mcp"
 # Bundled plugin: built-in MCP tool set for workflow sidecar agents.
 gem "syrus_core_tools", path: "plugins/syrus_core_tools"
 
+# Bundled plugin: Syrus development diagnostics and internal tooling.
+gem "syrus_dev", path: "plugins/syrus_dev"
+
 # Best-effort text extraction for repository documents exposed to chat agents.
 gem "docx"
 gem "pdf-reader"

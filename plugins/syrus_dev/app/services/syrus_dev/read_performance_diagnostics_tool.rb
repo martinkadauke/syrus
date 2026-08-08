@@ -1,6 +1,6 @@
 require "mcp"
 
-module Mcp::Tools
+module SyrusDev
   class ReadPerformanceDiagnosticsTool < MCP::Tool
     tool_name "read_performance_diagnostics"
 
@@ -31,18 +31,18 @@ module Mcp::Tools
     )
 
     class << self
-      def call(server_context:, limit: Admin::PerformancePayload::DEFAULT_LIMIT, revision_scope: "current", include_events: false)
+      def call(server_context:, limit: PerformancePayload::DEFAULT_LIMIT, revision_scope: "current", include_events: false)
         context = McpToolContext.from_server_context(server_context)
         return Mcp::Tools.not_authorized unless context.role == AgentRole::WORKFLOW_IMPLEMENT
         return Mcp::Tools.invalid("performance diagnostics are only available for Syrus repositories") unless McpToolPolicy.syrus_repository?(context.repository)
 
         payload = PerformanceLogging.suppress do
-          Admin::PerformancePayload.new(params: { limit: limit, revision_scope: revision_scope }).as_json
+          PerformancePayload.new(params: { limit: limit, revision_scope: revision_scope }).as_json
         end
         payload = sanitized_payload(payload, include_events: include_events)
         MCP::Tool::Response.new([ { type: "text", text: JSON.generate(payload) } ])
       rescue StandardError => e
-        Rails.logger.error("[SyrusMcp::ReadPerformanceDiagnosticsTool] #{e.class}: #{e.message}")
+        Rails.logger.error("[SyrusDev::ReadPerformanceDiagnosticsTool] #{e.class}: #{e.message}")
         MCP::Tool::Response.new([ { type: "text", text: "Error: #{e.class}: #{e.message}" } ], error: true)
       end
 

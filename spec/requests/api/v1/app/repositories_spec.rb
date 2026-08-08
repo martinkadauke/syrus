@@ -260,6 +260,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
   it "returns the new repository form payload" do
     sign_in_as(user)
     user.update!(agent_provider: "codex")
+    PluginRecord.find_by!(name: "syrus-linear-source").update!(enabled: true)
 
     get "/api/v1/app/repositories/new"
 

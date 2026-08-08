@@ -248,5 +248,58 @@ RSpec.describe Mcp::Sidecar do
 
       expect(response[:error]).to be_present
     end
+
+    it "excludes tools from a tool set whose available_for? returns false" do
+      unavailable_tool_set = Class.new do
+        include Syrus::Plugin::McpToolSet
+        def self.available_for?(_repo) = false
+        def self.tool_definitions
+          [ { name: "secret_tool", description: "Hidden.", input_schema: {} } ]
+        end
+        def handle(tool_name, params, context) = nil
+      end
+
+      Syrus::PluginRegistry.register(
+        name: "unavailable_plugin",
+        version: "0.1.0",
+        provides: { mcp_tool_set: unavailable_tool_set }
+      )
+
+      response = jsonrpc(server_for(run), "tools/list", id: 1)
+      tool_names = response[:result][:tools].map { |t| t[:name] }
+
+      expect(tool_names).not_to include("secret_tool")
+      expect(tool_names).to include("submit_summary")
+    end
+
+    it "does not advertise Syrus Dev diagnostics while the plugin is disabled" do
+      PluginRecord.find_by!(name: "syrus_dev").update!(enabled: false)
+
+      response = jsonrpc(server_for(run), "tools/list", id: 1)
+      tool_names = response[:result][:tools].map { |t| t[:name] }
+
+      expect(tool_names).not_to include("read_performance_diagnostics", "read_syrus_logs")
+    end
+
+    it "advertises Syrus Dev diagnostics for Syrus implementation runs when enabled" do
+      syrus_repository = Factories.repository(user: run.job.user, owner: "tkadauke", name: "syrus")
+      syrus_run = Factories.job(repository: syrus_repository, user: run.job.user).initial_run
+
+      PluginRecord.find_by!(name: "syrus_dev").update!(enabled: true)
+
+      response = jsonrpc(server_for(syrus_run), "tools/list", id: 1)
+      tool_names = response[:result][:tools].map { |t| t[:name] }
+
+      expect(tool_names).to include("read_performance_diagnostics", "read_syrus_logs")
+    end
+
+    it "does not advertise Syrus Dev diagnostics for non-Syrus repositories" do
+      PluginRecord.find_by!(name: "syrus_dev").update!(enabled: true)
+
+      response = jsonrpc(server_for(run), "tools/list", id: 1)
+      tool_names = response[:result][:tools].map { |t| t[:name] }
+
+      expect(tool_names).not_to include("read_performance_diagnostics", "read_syrus_logs")
+    end
   end
 end

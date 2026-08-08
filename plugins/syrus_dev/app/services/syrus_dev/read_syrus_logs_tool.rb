@@ -1,6 +1,6 @@
 require "mcp"
 
-module Mcp::Tools
+module SyrusDev
   class ReadSyrusLogsTool < MCP::Tool
     tool_name "read_syrus_logs"
 
@@ -70,7 +70,7 @@ module Mcp::Tools
           }
         ])
       rescue StandardError => e
-        Rails.logger.error("[SyrusMcp::ReadSyrusLogsTool] #{e.class}: #{e.message}")
+        Rails.logger.error("[SyrusDev::ReadSyrusLogsTool] #{e.class}: #{e.message}")
         MCP::Tool::Response.new([ { type: "text", text: "Error: #{e.class}: #{e.message}" } ], error: true)
       end
 
@@ -106,7 +106,7 @@ module Mcp::Tools
             level: level_s,
             role: Mcp::Tools.utf8(role).strip.safe_byteslice(0, 100).presence,
             hostname: Mcp::Tools.utf8(hostname).strip.safe_byteslice(0, 255).presence,
-            limit: [[limit.to_i, 1].max, OperationalLogIndex::MAX_LIMIT].min
+            limit: [[ limit.to_i, 1 ].max, OperationalLogIndex::MAX_LIMIT].min
           }
         }
       rescue ArgumentError => e

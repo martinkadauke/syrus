@@ -1,4 +1,4 @@
-module Admin
+module SyrusDev
   class PerformancePayload
     DEFAULT_LIMIT = 100
 

@@ -29,7 +29,7 @@ module Mcp
         tools: lambda {
           Tools.with_database_connection do
             context = McpToolContext.from_run(Run.includes(:step, job: :repository).find(run_id))
-            McpToolPolicy.for(context)
+            McpToolPolicy.for(context) + plugin_workflow_tools_for(context)
           end
         },
         server_context: -> { { run_id: run_id } }
@@ -93,6 +93,39 @@ module Mcp
           input_schema: defn[:input_schema]
         ) do |server_context:, **params|
           PerformanceLogging.plugin_call(extension_point: :chat_mcp_tool_set, provider: tool_set_class, operation: "handle.#{defn[:name]}") do
+            tool_set_class.new.handle(defn[:name], params, server_context)
+          end
+        end
+      end
+    end
+
+    def self.plugin_workflow_tools_for(context)
+      tool_sets = PerformanceLogging.phase("workflow_mcp_sidecar.plugin_tool_sets", repository_id: context.repository&.id) do
+        Syrus::PluginRegistry.providers_for(:mcp_tool_set)
+      end
+
+      tool_sets
+        .select do |tool_set|
+          PerformanceLogging.plugin_call(extension_point: :mcp_tool_set, provider: tool_set, operation: :available_for) do
+            tool_set.available_for?(context.repository)
+          end
+        end
+        .flat_map { |tool_set| workflow_mcp_tools_for(tool_set) }
+    end
+
+    def self.workflow_mcp_tools_for(tool_set_class)
+      definitions = PerformanceLogging.plugin_call(extension_point: :mcp_tool_set, provider: tool_set_class, operation: :tool_definitions) do
+        tool_set_class.tool_definitions
+      end
+      policy_managed_names = defined?(SyrusMcp::CoreToolSet::POLICY_MANAGED_NAMES) ? SyrusMcp::CoreToolSet::POLICY_MANAGED_NAMES : []
+
+      definitions.reject { |defn| policy_managed_names.include?(defn[:name]) }.map do |defn|
+        MCP::Tool.define(
+          name: defn[:name],
+          description: defn[:description],
+          input_schema: defn[:input_schema]
+        ) do |server_context:, **params|
+          PerformanceLogging.plugin_call(extension_point: :mcp_tool_set, provider: tool_set_class, operation: "handle.#{defn[:name]}") do
             tool_set_class.new.handle(defn[:name], params, server_context)
           end
         end
