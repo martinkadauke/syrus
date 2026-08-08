@@ -23,7 +23,13 @@ bin/rails db:test:prepare
 bundle exec rake parallel:prepare
 spec_file_count=""
 if [ "$#" -eq 0 ]; then
-  spec_file_count="$(find spec -type f -name '*_spec.rb' | wc -l | tr -d ' ')"
+  spec_file_count="$(
+    {
+      find spec -type f -name '*_spec.rb'
+      find plugins -path '*/spec/*_spec.rb' -type f
+      find plugins -path '*/spec/**/*_spec.rb' -type f
+    } | sort -u | wc -l | tr -d ' '
+  )"
 else
   selected_spec_file_count=0
   for arg in "$@"; do
@@ -57,11 +63,19 @@ fi
 
 start_time="$SECONDS"
 set +e
-bundle exec parallel_rspec \
-  -n "$PARALLEL_TEST_PROCESSORS" \
-  --quiet \
-  --exec-args bin/rspec-worker \
-  "$@"
+if [ "$#" -eq 0 ]; then
+  bundle exec parallel_rspec \
+    -n "$PARALLEL_TEST_PROCESSORS" \
+    --quiet \
+    --exec-args bin/rspec-worker \
+    spec plugins
+else
+  bundle exec parallel_rspec \
+    -n "$PARALLEL_TEST_PROCESSORS" \
+    --quiet \
+    --exec-args bin/rspec-worker \
+    "$@"
+fi
 status="$?"
 set -e
 
