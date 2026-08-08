@@ -526,6 +526,15 @@ Rails.application.routes.draw do
   get "admin/installations", to: "spa#show", as: :admin_installations
   get "admin/github_app/register", to: "spa#show", as: :admin_github_app_register
   get "admin/github_app/confirm", to: "spa#show", as: :admin_github_app_confirm
+  get "admin/*path", to: "spa#show", as: :admin_plugin_spa, constraints: lambda { |request|
+    Syrus::PluginRegistry.all_plugins.any? do |manifest|
+      metadata = manifest.metadata.with_indifferent_access
+      Array(metadata[:routes]).any? do |route|
+        route = route.to_h.with_indifferent_access
+        route[:controller].to_s == "spa#show" && route[:path].to_s == request.path
+      end
+    end
+  }
 
   namespace :admin do
     # Raw transcript download for offline analysis.

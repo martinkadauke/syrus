@@ -9,7 +9,19 @@ RSpec.describe "SPA shell", type: :request do
       .split("\n]\n\nexport function App", 2)
       .fetch(0)
 
-    route_table.scan(/path:\s*"([^"]+)"/).flatten.uniq
+    route_table.scan(/path:\s*"([^"]+)"/).flatten.reject { |route| route.include?("*") }.uniq
+  end
+
+  def installed_plugin_spa_routes
+    Syrus::PluginRegistry.all_plugins.flat_map do |manifest|
+      metadata = manifest.metadata.with_indifferent_access
+      Array(metadata[:routes]).filter_map do |route|
+        route = route.to_h.symbolize_keys
+        path = route[:path].to_s
+        controller = route[:controller].to_s
+        path if controller == "spa#show" && path.start_with?("/")
+      end
+    end
   end
 
   def representative_frontend_path(route)
@@ -161,7 +173,7 @@ RSpec.describe "SPA shell", type: :request do
   end
 
   it "routes every React app route through the SPA shell" do
-    frontend_app_routes.each do |route|
+    (frontend_app_routes + installed_plugin_spa_routes).uniq.each do |route|
       path = representative_frontend_path(route)
       recognized = Rails.application.routes.recognize_path(path, method: :get)
 

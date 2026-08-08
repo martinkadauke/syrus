@@ -8,6 +8,29 @@ module SyrusDev
         disableable:     true,
         category:        "dev",
         description:     "Syrus development diagnostics and internal tooling.",
+        frontend: {
+          routes: {
+            "syrus_dev/AdminPerformance" => "app/frontend/routes/AdminPerformance.tsx"
+          },
+          i18n: [ "app/frontend/i18n/locales/*/syrus_dev.json" ]
+        },
+        routes: [
+          {
+            verb: "GET",
+            path: "/api/v1/app/admin/performance",
+            controller: "api/v1/app/admin/performance#show"
+          },
+          {
+            verb: "GET",
+            path: "/api/v1/admin/performance",
+            controller: "api/v1/admin/performance#show"
+          },
+          {
+            verb: "GET",
+            path: "/admin/performance",
+            controller: "spa#show"
+          }
+        ],
         provides: {
           admin_page:   SyrusDev::AdminPages,
           mcp_tool_set: SyrusDev::WorkflowToolSet

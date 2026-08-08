@@ -26,6 +26,8 @@ module Admin
           homepage: manifest.homepage.presence || spec&.homepage || metadata[:homepage],
           author: author_for(spec, metadata),
           source: source_for(spec, metadata),
+          frontend: metadata[:frontend].presence || {},
+          routes: Array(metadata[:routes]).map { |route| route.to_h },
           extension_points: PerformanceLogging.phase("admin_plugins.plugin.extension_points", plugin: manifest.name) { extension_points_payload(manifest) }
         }
       end

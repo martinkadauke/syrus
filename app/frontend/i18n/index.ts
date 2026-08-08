@@ -1,4 +1,5 @@
 import i18n from "i18next"
+import type { Resource, ResourceLanguage } from "i18next"
 import { initReactI18next } from "react-i18next"
 
 import enCommon from "./locales/en/common.json"
@@ -47,56 +48,76 @@ const storedLocale = bootstrap?.current_user?.locale
 const browserLocale = navigator.language?.split("-")[0]
 const supportedLocales = ["en", "de", "la"]
 const detectedLocale = storedLocale ?? (supportedLocales.includes(browserLocale) ? browserLocale : undefined)
+const pluginLocaleModules = import.meta.glob<Record<string, unknown>>(
+  "../../../plugins/*/app/frontend/i18n/locales/*/*.json",
+  { eager: true, import: "default" }
+)
+const pluginNamespaces = new Set<string>()
+const resources: Resource = {
+  en: {
+    common: enCommon,
+    nav: enNav,
+    jobs: enJobs,
+    epics: enEpics,
+    dashboard: enDashboard,
+    chat: enChat,
+    settings: enSettings,
+    admin: enAdmin,
+    auth: enAuth,
+    landing: enLanding,
+    insights: enInsights,
+    tours: enTours
+  },
+  de: {
+    common: deCommon,
+    nav: deNav,
+    jobs: deJobs,
+    epics: deEpics,
+    dashboard: deDashboard,
+    chat: deChat,
+    settings: deSettings,
+    admin: deAdmin,
+    auth: deAuth,
+    landing: deLanding,
+    insights: deInsights,
+    tours: deTours
+  },
+  la: {
+    common: laCommon,
+    nav: laNav,
+    jobs: laJobs,
+    epics: laEpics,
+    dashboard: laDashboard,
+    chat: laChat,
+    settings: laSettings,
+    admin: laAdmin,
+    auth: laAuth,
+    landing: laLanding,
+    insights: laInsights,
+    tours: laTours
+  }
+}
+
+for (const [path, messages] of Object.entries(pluginLocaleModules)) {
+  const match = path.match(/\/locales\/([^/]+)\/([^/.]+)\.json$/)
+  if (!match) continue
+
+  const [, locale, namespace] = match
+  if (!supportedLocales.includes(locale)) continue
+
+  pluginNamespaces.add(namespace)
+  resources[locale as keyof typeof resources] = {
+    ...resources[locale as keyof typeof resources],
+    [namespace]: messages as ResourceLanguage
+  }
+}
 
 i18n.use(initReactI18next).init({
   lng: detectedLocale,
   fallbackLng: "en",
   defaultNS: "common",
-  ns: ["common", "nav", "jobs", "epics", "dashboard", "chat", "settings", "admin", "auth", "landing", "insights", "tours"],
-  resources: {
-    en: {
-      common: enCommon,
-      nav: enNav,
-      jobs: enJobs,
-      epics: enEpics,
-      dashboard: enDashboard,
-      chat: enChat,
-      settings: enSettings,
-      admin: enAdmin,
-      auth: enAuth,
-      landing: enLanding,
-      insights: enInsights,
-      tours: enTours
-    },
-    de: {
-      common: deCommon,
-      nav: deNav,
-      jobs: deJobs,
-      epics: deEpics,
-      dashboard: deDashboard,
-      chat: deChat,
-      settings: deSettings,
-      admin: deAdmin,
-      auth: deAuth,
-      landing: deLanding,
-      insights: deInsights,
-      tours: deTours
-    },
-    la: {
-      common: laCommon,
-      nav: laNav,
-      jobs: laJobs,
-      epics: laEpics,
-      dashboard: laDashboard,
-      chat: laChat,
-      settings: laSettings,
-      admin: laAdmin,
-      auth: laAuth,
-      landing: laLanding,
-      insights: laInsights,
-      tours: laTours
-    }
-  },
+  ns: ["common", "nav", "jobs", "epics", "dashboard", "chat", "settings", "admin", "auth", "landing", "insights", "tours", ...pluginNamespaces],
+  resources,
   interpolation: {
     escapeValue: false
   }

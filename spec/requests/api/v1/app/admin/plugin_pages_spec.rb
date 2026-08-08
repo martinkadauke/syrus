@@ -38,8 +38,10 @@ RSpec.describe "API: /api/v1/app/admin/plugin_pages", type: :request do
           {
             id: "dev.performance",
             label: "Performance",
+            label_key: "dev:nav_performance",
             path: "/admin/performance",
             paths: [ "/admin/performance" ],
+            component: "dev/AdminPerformance",
             order: 50
           }
         ]
@@ -54,9 +56,29 @@ RSpec.describe "API: /api/v1/app/admin/plugin_pages", type: :request do
       include(
         "id" => "dev.performance",
         "label" => "Performance",
+        "label_key" => "dev:nav_performance",
         "path" => "/admin/performance",
         "paths" => [ "/admin/performance" ],
+        "component" => "dev/AdminPerformance",
         "order" => 50
+      )
+    )
+  end
+
+  it "returns syrus_dev admin page metadata from the plugin contract" do
+    sign_in_as(admin)
+    PluginRecord.find_by!(name: "syrus_dev").update!(enabled: true)
+
+    get "/api/v1/app/admin/plugin_pages"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.fetch("pages")).to include(
+      include(
+        "id" => "syrus_dev.performance",
+        "label_key" => "syrus_dev:nav_performance",
+        "path" => "/admin/performance",
+        "paths" => [ "/admin/performance" ],
+        "component" => "syrus_dev/AdminPerformance"
       )
     )
   end

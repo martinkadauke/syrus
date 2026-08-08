@@ -20,6 +20,13 @@ when available, and every class registered for an extension point. Disableable
 installed plugins can be enabled or disabled live; new requests and sidecars use
 the latest `PluginRecord` state through `PluginRegistry.providers_for`.
 
+Installation and enablement are deliberately separate. Installed plugin gems are
+loaded at boot, so their Ruby code, controllers, frontend modules, and i18n
+files are available after deploy/restart. Runtime enablement only decides
+whether extension points are visible or usable. Disabling a plugin hides admin
+pages and removes providers/tools from registry lookups, but it does not unload
+compiled JavaScript or locale strings.
+
 Availability is reported per extension point. Agent and chat providers run the
 provider class's `.available?` check. Input sources show how many repository
 `InputSource` records use that source class. MCP tool sets are listed as
@@ -28,10 +35,22 @@ that invokes the sidecar. Test result parsers and coverage analyzers are listed
 as registered parser classes.
 
 Plugin install and uninstall remain manual operations: edit the Gemfile, run
-Bundler, run migrations if the plugin ships any, and restart the Rails
-processes so plugin engine initializers register with the in-memory registry.
+Bundler, run migrations if the plugin ships any, rebuild frontend assets when
+the plugin ships JS/i18n, and restart the Rails processes so plugin engine
+initializers register with the in-memory registry.
 Non-disableable plugins are forced enabled and should be reserved for core
 runtime pieces.
+
+Admin-page plugins should declare:
+
+- `admin_page` provider metadata with `id`, fallback `label`, `label_key`,
+  `path`, `paths`, `component`, and `order`.
+- install-time `frontend.routes` metadata mapping component keys such as
+  `syrus_dev/AdminPerformance` to plugin frontend files.
+- install-time `frontend.i18n` metadata listing plugin locale files.
+- install-time `routes` metadata for API and SPA routes. The host serves
+  `/admin/*` through the SPA for plugin pages while concrete API controllers can
+  live inside the plugin engine.
 
 Bundled plugins:
 

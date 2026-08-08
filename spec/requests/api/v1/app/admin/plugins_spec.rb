@@ -41,6 +41,19 @@ RSpec.describe "API: /api/v1/app/admin/plugins", type: :request do
       homepage: "https://example.test/plugin",
       author: "Ada",
       source: "internal",
+      frontend: {
+        routes: {
+          "visibility/Admin" => "app/frontend/routes/Admin.tsx"
+        },
+        i18n: [ "app/frontend/i18n/locales/*/visibility.json" ]
+      },
+      routes: [
+        {
+          verb: "GET",
+          path: "/admin/visibility",
+          controller: "visibility/admin#show"
+        }
+      ],
       provides: {
         agent_provider: AdminPluginsSpec::AvailableProvider,
         input_source: AdminPluginsSpec::CustomInputSource
@@ -60,7 +73,20 @@ RSpec.describe "API: /api/v1/app/admin/plugins", type: :request do
       "description" => "Adds visible things.",
       "homepage" => "https://example.test/plugin",
       "author" => "Ada",
-      "source" => "internal"
+      "source" => "internal",
+      "frontend" => {
+        "routes" => {
+          "visibility/Admin" => "app/frontend/routes/Admin.tsx"
+        },
+        "i18n" => [ "app/frontend/i18n/locales/*/visibility.json" ]
+      },
+      "routes" => [
+        {
+          "verb" => "GET",
+          "path" => "/admin/visibility",
+          "controller" => "visibility/admin#show"
+        }
+      ]
     )
     expect(plugin.fetch("extension_points")).to contain_exactly(
       include(

@@ -8,13 +8,20 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "strict": true,
+    "types": ["vite/client"],
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "paths": {
+      "@app/*": ["app/frontend/*"],
+      "@plugins/*": ["plugins/*"]
+    }
   },
-  "include": ["app/frontend", "vite.config.ts"]
+  "include": ["app/frontend", "plugins/*/app/frontend", "vite.config.ts"]
 }

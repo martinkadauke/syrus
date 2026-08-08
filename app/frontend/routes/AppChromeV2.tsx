@@ -448,7 +448,11 @@ function AdminSubnav({ featureFlags, normalizedPath, prefix }: { featureFlags: R
   ]
   const items = [
     ...adminNavItems.slice(0, -1),
-    ...(pluginPages.data?.pages || []).map((page) => ({ label: page.label, to: page.path, paths: page.paths })),
+    ...(pluginPages.data?.pages || []).map((page) => ({
+      label: page.label_key ? t(page.label_key, { defaultValue: page.label }) : page.label,
+      to: page.path,
+      paths: page.paths
+    })),
     ...(hasFeatureFlags(featureFlags) ? [{ label: t("admin:nav_features"), to: "/admin/features", paths: ["/admin/features"] }] : []),
     adminNavItems[adminNavItems.length - 1]
   ]

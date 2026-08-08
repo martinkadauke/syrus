@@ -7,6 +7,14 @@ at boot.
 External (third-party) plugins are installed the same way as any gem: add them to
 `Gemfile`, run `bundle install`, then restart the server.
 
+Plugins have two separate states:
+
+- **Installed** means the gem is in the bundle and the app has restarted. Ruby
+  code, controllers, frontend modules, and locale files are available.
+- **Enabled** means `PluginRecord.enabled` allows the registered extension
+  points to be visible/usable at runtime. Disabling a plugin does not remove its
+  compiled JavaScript or loaded locale strings.
+
 ## Quick start
 
 Scaffold a new bundled plugin:
@@ -34,6 +42,23 @@ gem "my_plugin", path: "plugins/my_plugin"
 | `:admin_page`     | `Syrus::Plugin::AdminPage`            | `.admin_pages` |
 | `:chat_mcp_tool_set` | `Syrus::Plugin::ChatMcpToolSet`    | `.tool_definitions(tier:)`, `.available_for?(session, tier:)`, `#handle` |
 
+Admin page providers return page metadata:
+
+```ruby
+{
+  id: "my_plugin.performance",
+  label: "Performance",
+  label_key: "my_plugin:nav_performance",
+  path: "/admin/my_plugin/performance",
+  paths: [ "/admin/my_plugin/performance" ],
+  component: "my_plugin/AdminPerformance",
+  order: 40
+}
+```
+
+`label` is the fallback. `label_key` should resolve from a plugin locale file,
+and `component` must match an installed frontend route module key.
+
 A plugin can register any combination of extension points in a single call:
 
 ```ruby
@@ -42,6 +67,16 @@ Syrus::PluginRegistry.register(
   version:     MyPlugin::VERSION,
   description: "One-or-two sentence summary shown in the settings UI.",
   homepage:    "https://github.com/example/my_plugin",
+  frontend:    {
+    routes: {
+      "my_plugin/AdminPerformance" => "app/frontend/routes/AdminPerformance.tsx"
+    },
+    i18n: [ "app/frontend/i18n/locales/*/my_plugin.json" ]
+  },
+  routes:      [
+    { verb: "GET", path: "/admin/my_plugin/performance", controller: "spa#show" },
+    { verb: "GET", path: "/api/v1/app/admin/my_plugin/performance", controller: "api/v1/app/admin/performance#show" }
+  ],
   provides:    {
     agent_provider: MyPlugin::AgentProvider,
     chat_provider:  MyPlugin::ChatProvider,
@@ -55,6 +90,26 @@ Syrus::PluginRegistry.register(
 corresponding interface module and raises `Syrus::PluginRegistry::RegistrationError`
 if not. It also upserts a `PluginRecord` row so the operator can enable/disable
 the plugin without touching the Gemfile (see below).
+
+## Frontend and i18n
+
+Plugin frontend code lives under `plugins/<name>/app/frontend`. The host Vite
+build includes these files and discovers admin route components from
+`plugins/*/app/frontend/routes/*.tsx`. A component file must default-export the
+React component and is addressed as `<plugin>/<ComponentName>`.
+
+Plugin frontend code should import host frontend APIs through `@app/*`, e.g.
+`@app/hooks/useT`, instead of long relative paths.
+
+Plugin locale files live under
+`plugins/<name>/app/frontend/i18n/locales/<locale>/<namespace>.json` and are
+merged into i18next whenever the plugin is installed. This does not depend on
+the plugin being enabled.
+
+Plugin Rails controllers can live under `plugins/<name>/app/controllers` and
+inherit the host controller base classes. The host owns auth namespaces; plugin
+route metadata declares the installed API/SPA routes, while runtime
+enable/disable checks happen in the controller or extension point lookup.
 
 ## Install / uninstall flow
 
@@ -78,8 +133,8 @@ is preserved across restarts.
   immediately for new requests because the engine has already registered its
   providers in the current process.
 - **Installing or removing** a plugin still requires changing the Gemfile,
-  running Bundler, and restarting Rails so the engine initializer runs or
-  disappears.
+  running Bundler, rebuilding frontend assets when applicable, and restarting
+  Rails so the engine initializer runs or disappears.
 - **Non-disableable** plugins are forced enabled. Use this for core extension
   points the app cannot run without.
 

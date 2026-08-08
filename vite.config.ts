@@ -8,6 +8,12 @@ const rootDir = decodeURIComponent(new URL(".", import.meta.url).pathname)
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      "@app": `${rootDir}app/frontend`,
+      "@plugins": `${rootDir}plugins`
+    }
+  },
   build: {
     outDir: "app/assets/builds",
     emptyOutDir: false,
@@ -26,7 +32,7 @@ export default defineConfig({
     environment: "jsdom",
     testTimeout: 15000,
     setupFiles: ["app/frontend/test/setup.ts"],
-    include: ["app/frontend/**/*.test.{ts,tsx}", "desktop/src/**/*.test.{ts,tsx}"],
+    include: ["app/frontend/**/*.test.{ts,tsx}", "plugins/*/app/frontend/**/*.test.{ts,tsx}", "desktop/src/**/*.test.{ts,tsx}"],
     // Desktop component tests would otherwise resolve react from
     // desktop/node_modules while @testing-library/react uses the root copy —
     // two React instances crash every hook. Pin all test imports to one React.
@@ -36,6 +42,8 @@ export default defineConfig({
     alias: {
       react: `${rootDir}node_modules/react`,
       "react-dom": `${rootDir}node_modules/react-dom`,
+      "@app": `${rootDir}app/frontend`,
+      "@plugins": `${rootDir}plugins`,
       "@tanstack/react-query": `${rootDir}node_modules/@tanstack/react-query`,
       "@tanstack/query-core": `${rootDir}node_modules/@tanstack/query-core`
     },

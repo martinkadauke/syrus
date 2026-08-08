@@ -1,14 +1,14 @@
 import { useQuery } from "@tanstack/react-query"
 import { useState, type ReactNode } from "react"
 import { fetchAdminPerformance, type AdminPerformancePayload, type PerformanceEvent, type SlowPhaseSummary, type SlowRequestSummary, type SqlFingerprintSummary } from "../api/adminPerformance"
-import { useT } from "../hooks/useT"
-import { usePageTitle } from "../hooks/usePageTitle"
-import { errorMessage } from "../lib/errorMessage"
+import { useT } from "@app/hooks/useT"
+import { usePageTitle } from "@app/hooks/usePageTitle"
+import { errorMessage } from "@app/lib/errorMessage"
 
 type RevisionScope = "current" | "all"
 
 export function AdminPerformance() {
-  const { t } = useT("admin")
+  const { t } = useT("syrus_dev")
   const [revisionScope, setRevisionScope] = useState<RevisionScope>("current")
   usePageTitle(t("page_title_performance"))
   const performance = useQuery({
@@ -46,8 +46,10 @@ export function AdminPerformance() {
   )
 }
 
+export default AdminPerformance
+
 function PerformanceView({ payload }: { payload: AdminPerformancePayload }) {
-  const { t } = useT("admin")
+  const { t } = useT("syrus_dev")
   const eventCount = payload.events.length
 
   return (
@@ -69,7 +71,7 @@ function PerformanceView({ payload }: { payload: AdminPerformancePayload }) {
 }
 
 function SlowRequestsTable({ rows }: { rows: SlowRequestSummary[] }) {
-  const { t } = useT("admin")
+  const { t } = useT("syrus_dev")
   return (
     <TableSection empty={t("performance.no_slow_requests")} rowCount={rows.length} title={t("performance.slow_requests")}>
       <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
@@ -106,7 +108,7 @@ function SlowRequestsTable({ rows }: { rows: SlowRequestSummary[] }) {
 }
 
 function SlowPhasesTable({ rows }: { rows: SlowPhaseSummary[] }) {
-  const { t } = useT("admin")
+  const { t } = useT("syrus_dev")
   return (
     <TableSection empty={t("performance.no_slow_phases")} rowCount={rows.length} title={t("performance.slow_phases")}>
       <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
@@ -145,7 +147,7 @@ function SlowPhasesTable({ rows }: { rows: SlowPhaseSummary[] }) {
 }
 
 function SqlFingerprintsTable({ rows }: { rows: SqlFingerprintSummary[] }) {
-  const { t } = useT("admin")
+  const { t } = useT("syrus_dev")
   return (
     <TableSection empty={t("performance.no_sql")} rowCount={rows.length} title={t("performance.sql_fingerprints")}>
       <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
@@ -178,7 +180,7 @@ function SqlFingerprintsTable({ rows }: { rows: SqlFingerprintSummary[] }) {
 }
 
 function EventsTable({ rows }: { rows: PerformanceEvent[] }) {
-  const { t } = useT("admin")
+  const { t } = useT("syrus_dev")
   return (
     <TableSection empty={t("performance.no_events")} rowCount={rows.length} title={t("performance.recent_events")}>
       <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">

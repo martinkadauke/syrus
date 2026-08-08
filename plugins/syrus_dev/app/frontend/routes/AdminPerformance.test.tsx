@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import type { ReactNode } from "react"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
-import { jsonResponse } from "../testSupport"
+import { jsonResponse } from "@app/testSupport"
 import { AdminPerformance } from "./AdminPerformance"
 
 describe("AdminPerformance", () => {

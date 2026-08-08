@@ -21,8 +21,10 @@ module Admin
       {
         id: page.fetch(:id).to_s,
         label: page.fetch(:label).to_s,
+        label_key: page[:label_key].presence&.to_s,
         path: page.fetch(:path).to_s,
         paths: Array(page[:paths].presence || page[:path]).map(&:to_s),
+        component: page[:component].presence&.to_s,
         order: page[:order].to_i
       }
     end
