@@ -79,6 +79,7 @@
   "needs_attention": "Attentione opus",
   "needs_attention_title": "Omnia opera clausa – hanc epicam perfectam signa vel opus novum crea.",
   "showing_pagination": "Monstrans {{first}}–{{last}} ex {{total}}",
+  "showing_pagination_estimated": "Monstrans {{first}}–{{last}}",
   "previous": "Prius",
   "next": "Sequens",
   "started_at": "Coeptum {{date}}",

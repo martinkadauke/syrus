@@ -154,6 +154,7 @@ module App
         per_page: PER_PAGE,
         total: result.fetch(:total),
         total_pages: total_pages(result.fetch(:total)),
+        total_estimated: result.fetch(:total_estimated, false),
         active_smart_folder_id: active_smart_folder&.id,
         filter: current_filter.to_h,
         preferences: PerformanceLogging.phase("dashboard_rows.preferences", subject: subject) { preferences_json },
@@ -372,7 +373,10 @@ module App
       PerformanceLogging.phase("dashboard_jobs_result", view: view, ownership_scope: ownership_scope) do
         PerformanceLogging.phase("dashboard_jobs.landing_queue_snapshot", view: view) { ensure_landing_queue_snapshot! if landing_queue_visible? }
         scope = filtered_jobs_scope
-        total = PerformanceLogging.phase("dashboard_jobs.total") { scope.count }
+        rows_only_estimate = rows_only_job_result?
+        total = PerformanceLogging.phase("dashboard_jobs.total", exact: !rows_only_estimate) do
+          rows_only_estimate ? nil : scope.count
+        end
         scope = scope.with_latest_workflow_snapshot.preload(
           :repository,
           :user,
@@ -384,13 +388,18 @@ module App
           { chat_proposals: [ :chat_session, :messages ] },
           { epic: { chat_proposals: [ :chat_session, :messages ] } }
         )
-        jobs = PerformanceLogging.phase("dashboard_jobs.query", page: page, view: view) { sorted_jobs(scope).to_a }
+        jobs = PerformanceLogging.phase("dashboard_jobs.query", page: page, view: view, rows_only_estimate: rows_only_estimate) do
+          sorted_jobs(scope, limit_extra: rows_only_estimate).to_a
+        end
+        if rows_only_estimate
+          total = estimated_total_from_page!(jobs)
+        end
         @current_jobs = jobs
         PerformanceLogging.phase("dashboard_jobs.preload_runtime_state", count: jobs.size, view: view) { preload_job_runtime_state(jobs) }
         preload_epic_job_counts(jobs)
         items = PerformanceLogging.phase("dashboard_jobs.serialize", count: jobs.size, view: view) { jobs.map { |job| job_json(job) } }
 
-        { total: total, items: items }
+        { total: total, total_estimated: rows_only_estimate, items: items }
       end
     end
 
@@ -533,10 +542,10 @@ module App
       end
     end
 
-    def sorted_jobs(scope)
+    def sorted_jobs(scope, limit_extra: false)
       return landing_queue_sorted_jobs(scope) if landing_queue_position_sort?
 
-      paginate(apply_sort(scope, :job))
+      paginate(apply_sort(scope, :job), limit_extra: limit_extra)
     end
 
     def landing_queue_position_sort?
@@ -565,8 +574,20 @@ module App
       end
     end
 
-    def paginate(scope)
-      scope.offset((page - 1) * PER_PAGE).limit(PER_PAGE)
+    def paginate(scope, limit_extra: false)
+      scope.offset((page - 1) * PER_PAGE).limit(PER_PAGE + (limit_extra ? 1 : 0))
+    end
+
+    def rows_only_job_result?
+      section == "rows" && subject == "job" && view == "list" && !landing_queue_position_sort?
+    end
+
+    def estimated_total_from_page!(records)
+      has_next_page = records.length > PER_PAGE
+      records.pop if has_next_page
+
+      offset = (page - 1) * PER_PAGE
+      offset + records.length + (has_next_page ? 1 : 0)
     end
 
     def preload_job_runtime_state(jobs)

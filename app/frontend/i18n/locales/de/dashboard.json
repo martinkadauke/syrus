@@ -79,6 +79,7 @@
   "needs_attention": "Aufmerksamkeit erforderlich",
   "needs_attention_title": "Alle Aufgaben geschlossen – Epic als erledigt markieren oder Folgeaufgabe erstellen.",
   "showing_pagination": "Zeige {{first}}–{{last}} von {{total}}",
+  "showing_pagination_estimated": "Zeige {{first}}–{{last}}",
   "previous": "Zurück",
   "next": "Weiter",
   "started_at": "Gestartet {{date}}",

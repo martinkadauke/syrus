@@ -79,6 +79,7 @@
   "needs_attention": "Needs attention",
   "needs_attention_title": "All jobs closed - mark this epic done or file a follow-up.",
   "showing_pagination": "Showing {{first}}-{{last}} of {{total}}",
+  "showing_pagination_estimated": "Showing {{first}}-{{last}}",
   "previous": "Previous",
   "next": "Next",
   "started_at": "Started {{date}}",

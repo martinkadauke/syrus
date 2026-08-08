@@ -307,6 +307,7 @@ export type DashboardPayload = {
   per_page: number
   total: number
   total_pages: number
+  total_estimated?: boolean
   counts: {
     jobs: number
     epics: number
@@ -374,15 +375,16 @@ export type DashboardPayload = {
   }
 }
 
-export type DashboardChromePayload = Omit<DashboardPayload, "total" | "total_pages" | "items" | "lanes" | "kanban_limit"> & {
+export type DashboardChromePayload = Omit<DashboardPayload, "total" | "total_pages" | "total_estimated" | "items" | "lanes" | "kanban_limit"> & {
   total?: number
   total_pages?: number
+  total_estimated?: boolean
   items?: DashboardItem[]
   lanes?: DashboardLane[]
   kanban_limit?: number | null
 }
 
-export type DashboardRowsPayload = Pick<DashboardPayload, "subject" | "view" | "page" | "per_page" | "total" | "total_pages" | "landing_queue" | "items" | "lanes" | "kanban_limit"> & Partial<Pick<DashboardPayload, "active_smart_folder_id" | "filter" | "preferences">> & {
+export type DashboardRowsPayload = Pick<DashboardPayload, "subject" | "view" | "page" | "per_page" | "total" | "total_pages" | "total_estimated" | "landing_queue" | "items" | "lanes" | "kanban_limit"> & Partial<Pick<DashboardPayload, "active_smart_folder_id" | "filter" | "preferences">> & {
   controls?: Partial<DashboardPayload["controls"]>
 }
 

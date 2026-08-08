@@ -698,7 +698,7 @@ function Pagination({ payload, pathname, search }: { payload: DashboardPayload; 
 
   return (
     <div className="mx-4 flex items-center justify-between text-sm text-gray-600 dark:text-gray-300 sm:mx-0">
-      <span>{t("showing_pagination", { first: firstItem, last: lastItem, total: payload.total })}</span>
+      <span>{payload.total_estimated ? t("showing_pagination_estimated", { first: firstItem, last: lastItem }) : t("showing_pagination", { first: firstItem, last: lastItem, total: payload.total })}</span>
       <div className="flex gap-2">
         {payload.page > 1 ? (
           <Link className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800" to={pageLink(pathname, search, payload.page - 1)}>{t("previous")}</Link>
