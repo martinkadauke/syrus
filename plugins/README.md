@@ -28,6 +28,7 @@ gem "my_plugin", path: "plugins/my_plugin"
 | Key               | Interface module                      | Must implement |
 |-------------------|---------------------------------------|----------------|
 | `:agent_provider` | `Syrus::Plugin::AgentProvider`        | `.provider_key`, `.display_name`, `.available?`, `#invoke` |
+| `:chat_provider`  | `Syrus::Plugin::ChatProvider`         | `.provider_key`, `.display_name`, `.available?`, `#invoke`; inherits `ChatProviders::Base` construction/session-capture contract |
 | `:mcp_tool_set`   | `Syrus::Plugin::McpToolSet`           | `.tool_definitions`, `.available_for?`, `#handle`; optionally `.available_for_context?` and `.tool_definitions(context:)` for role-aware workflow tools |
 | `:input_source`   | `Syrus::Plugin::InputSource`          | `#poll!`, `#validate_credentials!`, `#config_schema`, `#dedup_key` |
 | `:admin_page`     | `Syrus::Plugin::AdminPage`            | `.admin_pages` |
@@ -43,6 +44,7 @@ Syrus::PluginRegistry.register(
   homepage:    "https://github.com/example/my_plugin",
   provides:    {
     agent_provider: MyPlugin::AgentProvider,
+    chat_provider:  MyPlugin::ChatProvider,
     mcp_tool_set:   MyPlugin::McpToolSet,
     admin_page:     MyPlugin::AdminPages,
   }

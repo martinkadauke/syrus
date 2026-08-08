@@ -19,6 +19,16 @@ RSpec.describe ChatProviders::Claude do
     AgentInvocation::Result.new(**attrs)
   end
 
+  describe "plugin boundary" do
+    it "implements the chat provider extension contract" do
+      expect(described_class).to include(Syrus::Plugin::ChatProvider)
+      expect(described_class.provider_key).to eq("claude")
+      expect(described_class.provider).to eq("claude")
+      expect(described_class.display_name).to eq("Claude")
+      expect(described_class.available?).to eq(true)
+    end
+  end
+
   describe "#invoke" do
     it "preserves the current Claude chat invocation contract" do
       received = nil

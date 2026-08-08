@@ -366,8 +366,8 @@ module Api
           chat_session = find_chat_session
           provider = normalized_chat_provider_param(params[:provider])
 
-          unless User::CHAT_PROVIDERS.include?(provider)
-            render_error("validation_failed", "Invalid provider. Must be one of: #{User::CHAT_PROVIDERS.join(", ")}.", status: :unprocessable_content)
+          unless User.chat_providers.include?(provider)
+            render_error("validation_failed", "Invalid provider. Must be one of: #{User.chat_providers.join(", ")}.", status: :unprocessable_content)
             return
           end
 

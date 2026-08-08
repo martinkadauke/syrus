@@ -22,7 +22,10 @@ RSpec.configure do |config|
         default_enabled: true,
         disableable:     true,
         category:        "agent_provider",
-        provides: { agent_provider: AgentProviders::Claude }
+        provides: {
+          agent_provider: AgentProviders::Claude,
+          chat_provider:  ChatProviders::Claude
+        }
       )
     end
 
@@ -33,7 +36,10 @@ RSpec.configure do |config|
         default_enabled: true,
         disableable:     true,
         category:        "agent_provider",
-        provides: { agent_provider: AgentProviders::Codex }
+        provides: {
+          agent_provider: AgentProviders::Codex,
+          chat_provider:  ChatProviders::Codex
+        }
       )
     end
 

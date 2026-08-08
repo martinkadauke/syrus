@@ -29,6 +29,16 @@ RSpec.describe ChatProviders::Codex do
     FileUtils.rm_rf(data_root) if data_root
   end
 
+  describe "plugin boundary" do
+    it "implements the chat provider extension contract" do
+      expect(described_class).to include(Syrus::Plugin::ChatProvider)
+      expect(described_class.provider_key).to eq("codex")
+      expect(described_class.provider).to eq("codex")
+      expect(described_class.display_name).to eq("Codex")
+      expect(described_class.available?).to eq(true)
+    end
+  end
+
   describe "#invoke" do
     it "invokes Codex with chat MCP servers, chat Codex home, and resume transcript" do
       chat.create_claude_session!(

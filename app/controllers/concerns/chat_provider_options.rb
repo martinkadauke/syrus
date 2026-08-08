@@ -7,16 +7,12 @@ module ChatProviderOptions
   end
 
   def chat_provider_label(provider)
-    case provider
-    when "claude" then "Claude"
-    when "codex" then "Codex"
-    else provider.to_s.titleize
-    end
+    ChatProviders.display_name(provider)
   end
 
   def chat_provider_options(_chat_session)
     configured = Current.user.configured_agent_providers
-    User::CHAT_PROVIDERS.map do |provider|
+    User.chat_providers.map do |provider|
       {
         value: provider,
         label: chat_provider_label(provider),

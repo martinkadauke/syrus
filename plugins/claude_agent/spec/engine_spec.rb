@@ -10,10 +10,10 @@ RSpec.describe SyrusClaudeAgent::Engine do
     expect(described_class.superclass).to eq(Rails::Engine)
   end
 
-  it "registers AgentProviders::Claude via after_initialize" do
+  it "registers Claude providers via after_initialize" do
     # bundled_plugins.rb ensures the registry is populated before this runs
-    providers = Syrus::PluginRegistry.providers_for(:agent_provider)
-    expect(providers).to include(AgentProviders::Claude)
+    expect(Syrus::PluginRegistry.providers_for(:agent_provider)).to include(AgentProviders::Claude)
+    expect(Syrus::PluginRegistry.providers_for(:chat_provider)).to include(ChatProviders::Claude)
   end
 
   it "registers a manifest named 'claude_agent'" do

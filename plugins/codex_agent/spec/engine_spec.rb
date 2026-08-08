@@ -10,10 +10,10 @@ RSpec.describe SyrusCodexAgent::Engine do
     expect(described_class.superclass).to eq(Rails::Engine)
   end
 
-  it "registers AgentProviders::Codex via after_initialize" do
+  it "registers Codex providers via after_initialize" do
     # bundled_plugins.rb ensures the registry is populated before this runs
-    providers = Syrus::PluginRegistry.providers_for(:agent_provider)
-    expect(providers).to include(AgentProviders::Codex)
+    expect(Syrus::PluginRegistry.providers_for(:agent_provider)).to include(AgentProviders::Codex)
+    expect(Syrus::PluginRegistry.providers_for(:chat_provider)).to include(ChatProviders::Codex)
   end
 
   it "registers a manifest named 'codex_agent'" do

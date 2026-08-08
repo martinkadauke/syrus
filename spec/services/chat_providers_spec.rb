@@ -6,6 +6,10 @@ RSpec.describe ChatProviders do
     expect(described_class.for("codex")).to eq(ChatProviders::Codex)
   end
 
+  it "lists chat provider keys from enabled plugins" do
+    expect(described_class.provider_keys).to eq(%w[claude codex])
+  end
+
   it "raises for unknown chat providers" do
     expect {
       described_class.for("oracle")

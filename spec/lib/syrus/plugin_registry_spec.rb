@@ -15,6 +15,10 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
     Class.new { include Syrus::Plugin::McpToolSet }
   end
 
+  let(:chat_provider_class) do
+    Class.new { include Syrus::Plugin::ChatProvider }
+  end
+
   let(:input_source_class) do
     Class.new { include Syrus::Plugin::InputSource }
   end
@@ -40,8 +44,8 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
   end
 
   describe "EXTENSION_POINTS" do
-    it "includes :coverage_analyzer" do
-      expect(described_class::EXTENSION_POINTS).to include(:coverage_analyzer)
+    it "includes :chat_provider and :coverage_analyzer" do
+      expect(described_class::EXTENSION_POINTS).to include(:chat_provider, :coverage_analyzer)
     end
 
     it "includes :preview_provider" do
@@ -60,6 +64,10 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
   describe "INTERFACE_FOR" do
     it "maps :coverage_analyzer to Syrus::Plugin::CoverageAnalyzer" do
       expect(described_class::INTERFACE_FOR[:coverage_analyzer].call).to eq(Syrus::Plugin::CoverageAnalyzer)
+    end
+
+    it "maps :chat_provider to Syrus::Plugin::ChatProvider" do
+      expect(described_class::INTERFACE_FOR[:chat_provider].call).to eq(Syrus::Plugin::ChatProvider)
     end
 
     it "maps :preview_provider to Syrus::Plugin::PreviewProvider" do
@@ -121,6 +129,7 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
           name: "full_plugin", version: "1.0.0",
           provides: {
             agent_provider:     agent_provider_class,
+            chat_provider:      chat_provider_class,
             mcp_tool_set:       mcp_tool_set_class,
             input_source:       input_source_class,
             test_result_parser: test_result_parser_class,
@@ -162,6 +171,17 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
           provides: { mcp_tool_set: plain_class }
         )
       }.to raise_error(described_class::RegistrationError, /must include Syrus::Plugin::McpToolSet/)
+    end
+
+    it "raises RegistrationError when chat_provider class lacks the interface module" do
+      plain_class = Class.new
+
+      expect {
+        described_class.register(
+          name: "bad_plugin", version: "1.0.0",
+          provides: { chat_provider: plain_class }
+        )
+      }.to raise_error(described_class::RegistrationError, /must include Syrus::Plugin::ChatProvider/)
     end
 
     it "raises RegistrationError when input_source class lacks the interface module" do
@@ -307,10 +327,11 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
     it "returns only classes registered for the requested extension point" do
       described_class.register(
         name: "multi_plugin", version: "1.0.0",
-        provides: { agent_provider: agent_provider_class, mcp_tool_set: mcp_tool_set_class }
+        provides: { agent_provider: agent_provider_class, chat_provider: chat_provider_class, mcp_tool_set: mcp_tool_set_class }
       )
 
       expect(described_class.providers_for(:agent_provider)).to eq([ agent_provider_class ])
+      expect(described_class.providers_for(:chat_provider)).to eq([ chat_provider_class ])
       expect(described_class.providers_for(:mcp_tool_set)).to eq([ mcp_tool_set_class ])
     end
 

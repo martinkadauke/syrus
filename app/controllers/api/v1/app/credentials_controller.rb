@@ -307,7 +307,7 @@ module Api
           {
             locales: User::LOCALES,
             agent_providers: User.agent_providers,
-            chat_providers: User::CHAT_PROVIDERS.select { |provider| user.chat_provider_configured?(provider) },
+            chat_providers: User.chat_providers.select { |provider| user.chat_provider_configured?(provider) },
             roles: User::ROLES,
             codex_auth_modes: User::CODEX_AUTH_MODES,
             agent_max_turns: {

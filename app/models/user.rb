@@ -26,7 +26,6 @@ class User < ApplicationRecord
   has_many :cron_templates, dependent: :destroy
   has_many :invitations, foreign_key: :invited_by_id, dependent: :nullify
 
-  CHAT_PROVIDERS = %w[ claude codex ].freeze
   DEFAULT_PROVIDER_AVAILABILITY_PAUSE_THRESHOLD_PERCENT = 10
   CODEX_AUTH_MODES = %w[ api_key chatgpt_login ].freeze
   THEMES = %w[ light dark ].freeze
@@ -161,7 +160,7 @@ class User < ApplicationRecord
             presence: true,
             numericality: { only_integer: true, in: AGENT_MAX_TURNS_RANGE }
   validates :agent_provider, presence: true, inclusion: { in: -> { User.agent_providers } }
-  validates :chat_provider, inclusion: { in: CHAT_PROVIDERS }, allow_nil: true
+  validates :chat_provider, inclusion: { in: -> { User.chat_providers } }, allow_nil: true
   validates :theme, presence: true, inclusion: { in: THEMES }
   validates :locale, presence: true, inclusion: { in: LOCALES }
   validates :first_name, :last_name, length: { maximum: 80 }
@@ -500,6 +499,10 @@ class User < ApplicationRecord
 
   def configured_agent_providers
     User.agent_providers.select { |provider| agent_provider_configured?(provider) }
+  end
+
+  def self.chat_providers
+    ChatProviders.provider_keys
   end
 
   def alternate_configured_agent_providers

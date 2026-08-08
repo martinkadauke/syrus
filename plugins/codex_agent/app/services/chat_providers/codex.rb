@@ -2,7 +2,13 @@ require "json"
 
 module ChatProviders
   class Codex < Base
-    def self.provider = "codex"
+    include Syrus::Plugin::ChatProvider
+
+    def self.provider_key = "codex"
+    def self.display_name = "Codex"
+    def self.available? = true
+
+    def self.provider = provider_key
 
     def credentials_missing?
       !chat.user.chat_provider_configured?(provider)

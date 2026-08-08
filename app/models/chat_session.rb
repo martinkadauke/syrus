@@ -90,7 +90,7 @@ class ChatSession < ApplicationRecord
   enum :system_kind, { supervisor: "supervisor" }, prefix: true, validate: { allow_nil: true }
 
   validates :chat_provider, presence: true, if: :persisted?
-  validates :chat_provider, inclusion: { in: User::CHAT_PROVIDERS }, allow_nil: true
+  validates :chat_provider, inclusion: { in: -> { User.chat_providers } }, allow_nil: true
   validates :chat_model, length: { maximum: 100 }, allow_nil: true
   validates :local_daemon_state, inclusion: { in: DAEMON_STATES }, allow_nil: true
   validates :chat_effort, inclusion: { in: EFFORT_LEVELS }, allow_nil: true
@@ -145,7 +145,7 @@ class ChatSession < ApplicationRecord
     resolved_provider = provider.to_s.strip.presence || initial_chat_provider
     return chat_provider if chat_provider.present?
 
-    unless User::CHAT_PROVIDERS.include?(resolved_provider)
+    unless User.chat_providers.include?(resolved_provider)
       errors.add(:chat_provider, "is not included in the list")
       raise ActiveRecord::RecordInvalid, self
     end

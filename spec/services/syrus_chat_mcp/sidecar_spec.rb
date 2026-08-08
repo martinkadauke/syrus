@@ -447,12 +447,18 @@ RSpec.describe Mcp::Sidecar do
       Syrus::PluginRegistry.register(
         name: "claude_agent",
         version: SyrusClaudeAgent::VERSION,
-        provides: { agent_provider: AgentProviders::Claude }
+        provides: {
+          agent_provider: AgentProviders::Claude,
+          chat_provider:  ChatProviders::Claude
+        }
       )
       Syrus::PluginRegistry.register(
         name: "codex_agent",
         version: SyrusCodexAgent::VERSION,
-        provides: { agent_provider: AgentProviders::Codex }
+        provides: {
+          agent_provider: AgentProviders::Codex,
+          chat_provider:  ChatProviders::Codex
+        }
       )
       ex.run
       Syrus::PluginRegistry.reset!

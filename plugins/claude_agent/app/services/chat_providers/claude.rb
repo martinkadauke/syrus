@@ -2,6 +2,8 @@ require "fileutils"
 
 module ChatProviders
   class Claude < Base
+    include Syrus::Plugin::ChatProvider
+
     SESSION_ID_PATTERN = /\A[A-Za-z0-9_-]+\z/
     PLANNING_DISALLOWED_TOOLS = %w[
       Write
@@ -19,7 +21,11 @@ module ChatProviders
       AskUserQuestion
     ].freeze
 
-    def self.provider = "claude"
+    def self.provider_key = "claude"
+    def self.display_name = "Claude"
+    def self.available? = true
+
+    def self.provider = provider_key
 
     def credentials_missing?
       chat.user.claude_oauth_token.blank?

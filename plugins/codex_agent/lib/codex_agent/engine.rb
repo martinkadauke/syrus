@@ -9,7 +9,10 @@ module SyrusCodexAgent
         default_enabled: true,
         disableable:     true,
         category:        "agent_provider",
-        provides: { agent_provider: AgentProviders::Codex }
+        provides: {
+          agent_provider: AgentProviders::Codex,
+          chat_provider:  ChatProviders::Codex
+        }
       )
     end
   end

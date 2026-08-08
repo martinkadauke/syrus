@@ -9,7 +9,10 @@ module SyrusClaudeAgent
         default_enabled: true,
         disableable:     true,
         category:        "agent_provider",
-        provides: { agent_provider: AgentProviders::Claude }
+        provides: {
+          agent_provider: AgentProviders::Claude,
+          chat_provider:  ChatProviders::Claude
+        }
       )
     end
   end
