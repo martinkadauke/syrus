@@ -2,17 +2,16 @@ module SyrusDev
   class WorkflowToolSet
     include Syrus::Plugin::McpToolSet
 
-    TOOL_CLASSES = [
-      ReadPerformanceDiagnosticsTool,
-      ReadSyrusLogsTool
-    ].freeze
-
     def self.available_for?(repository)
       McpToolPolicy.syrus_repository?(repository)
     end
 
-    def self.tool_definitions
-      TOOL_CLASSES.map do |klass|
+    def self.available_for_context?(context)
+      McpToolPolicy.syrus_repository?(context.repository) && tool_classes_for(context.role).any?
+    end
+
+    def self.tool_definitions(context: nil)
+      tool_classes_for(context&.role).map do |klass|
         {
           name: klass.tool_name,
           description: klass.description_value,
@@ -22,10 +21,24 @@ module SyrusDev
     end
 
     def handle(tool_name, params, context)
-      klass = TOOL_CLASSES.find { |k| k.tool_name == tool_name }
+      run_context = McpToolContext.from_server_context(context)
+      klass = self.class.tool_classes_for(run_context.role).find { |k| k.tool_name == tool_name }
       raise "SyrusDev::WorkflowToolSet: unknown tool #{tool_name.inspect}" unless klass
 
       klass.call(**params, server_context: context)
+    end
+
+    def self.tool_classes_for(role)
+      case role
+      when nil
+        [ ReadPerformanceDiagnosticsTool, ReadSyrusLogsTool ]
+      when AgentRole::WORKFLOW_IMPLEMENT
+        [ ReadPerformanceDiagnosticsTool, ReadSyrusLogsTool ]
+      when AgentRole::AGENT_INSIGHT
+        [ ReadSyrusLogsTool ]
+      else
+        []
+      end
     end
   end
 end

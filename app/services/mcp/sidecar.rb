@@ -107,15 +107,23 @@ module Mcp
       tool_sets
         .select do |tool_set|
           PerformanceLogging.plugin_call(extension_point: :mcp_tool_set, provider: tool_set, operation: :available_for) do
-            tool_set.available_for?(context.repository)
+            if tool_set.respond_to?(:available_for_context?)
+              tool_set.available_for_context?(context)
+            else
+              tool_set.available_for?(context.repository)
+            end
           end
         end
-        .flat_map { |tool_set| workflow_mcp_tools_for(tool_set) }
+        .flat_map { |tool_set| workflow_mcp_tools_for(tool_set, context: context) }
     end
 
-    def self.workflow_mcp_tools_for(tool_set_class)
+    def self.workflow_mcp_tools_for(tool_set_class, context:)
       definitions = PerformanceLogging.plugin_call(extension_point: :mcp_tool_set, provider: tool_set_class, operation: :tool_definitions) do
-        tool_set_class.tool_definitions
+        if tool_set_class.method(:tool_definitions).parameters.any? { |type, name| [ :key, :keyreq ].include?(type) && name == :context }
+          tool_set_class.tool_definitions(context: context)
+        else
+          tool_set_class.tool_definitions
+        end
       end
       policy_managed_names = defined?(SyrusMcp::CoreToolSet::POLICY_MANAGED_NAMES) ? SyrusMcp::CoreToolSet::POLICY_MANAGED_NAMES : []
 

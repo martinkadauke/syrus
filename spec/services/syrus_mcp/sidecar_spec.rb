@@ -293,6 +293,62 @@ RSpec.describe Mcp::Sidecar do
       expect(tool_names).to include("read_performance_diagnostics", "read_syrus_logs")
     end
 
+    it "advertises only Syrus log search for Syrus insight runs when enabled" do
+      Feature.find_or_create_by!(slug: "agent_insights") { |f| f.category = "Labs"; f.name = "Agent Insights" }
+             .update!(enabled: true)
+      Feature.clear_enabled_cache!("agent_insights")
+      syrus_repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
+      insight_job = Job.create!(user: user, repository: syrus_repository, kind: "agent_insight", priority: "low")
+      insight_workflow = Workflows::AgentInsight.instantiate(job: insight_job)
+      insight_step = insight_workflow.steps.find_by!(kind: "agent_insight_run")
+      insight_run = insight_step.runs.first || insight_step.runs.create!(job: insight_job, trigger_kind: insight_workflow.trigger_kind)
+
+      Syrus::PluginRegistry.register(
+        name: "syrus_core_tools",
+        version: "0.1.0",
+        provides: { mcp_tool_set: SyrusMcp::CoreToolSet }
+      )
+      Syrus::PluginRegistry.register(
+        name: "syrus_dev",
+        version: SyrusDev::VERSION,
+        default_enabled: false,
+        provides: { mcp_tool_set: SyrusDev::WorkflowToolSet }
+      )
+      PluginRecord.find_by!(name: "syrus_dev").update!(enabled: true)
+
+      response = jsonrpc(server_for(insight_run), "tools/list", id: 1)
+      tool_names = response[:result][:tools].map { |t| t[:name] }
+
+      expect(tool_names).to include("read_syrus_logs")
+      expect(tool_names).not_to include("read_performance_diagnostics")
+    end
+
+    it "does not advertise Syrus Dev diagnostics for non-implementation workflow roles" do
+      syrus_repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
+      job = Factories.job(repository: syrus_repository, user: user)
+      workflow = job.workflows.first
+      review_step = Step.create!(workflow: workflow, kind: "adversarial_review", position: 99)
+      review_run = review_step.runs.create!(job: job, trigger_kind: workflow.trigger_kind)
+
+      Syrus::PluginRegistry.register(
+        name: "syrus_core_tools",
+        version: "0.1.0",
+        provides: { mcp_tool_set: SyrusMcp::CoreToolSet }
+      )
+      Syrus::PluginRegistry.register(
+        name: "syrus_dev",
+        version: SyrusDev::VERSION,
+        default_enabled: false,
+        provides: { mcp_tool_set: SyrusDev::WorkflowToolSet }
+      )
+      PluginRecord.find_by!(name: "syrus_dev").update!(enabled: true)
+
+      response = jsonrpc(server_for(review_run), "tools/list", id: 1)
+      tool_names = response[:result][:tools].map { |t| t[:name] }
+
+      expect(tool_names).not_to include("read_performance_diagnostics", "read_syrus_logs")
+    end
+
     it "does not advertise Syrus Dev diagnostics for non-Syrus repositories" do
       PluginRecord.find_by!(name: "syrus_dev").update!(enabled: true)
 

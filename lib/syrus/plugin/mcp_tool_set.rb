@@ -8,6 +8,14 @@ module Syrus
     #   .tool_definitions       → [{name:, description:, input_schema:}, ...]
     #   .available_for?(repo)   → bool
     #   #handle(tool_name, params, context) → result hash
+    #
+    # Workflow MCP tool sets may optionally implement:
+    #
+    #   .available_for_context?(McpToolContext) → bool
+    #   .tool_definitions(context: McpToolContext) → [...]
+    #
+    # Use the context-aware forms when availability depends on the agent role,
+    # not just on the repository.
     module McpToolSet
     end
   end

@@ -237,10 +237,16 @@ module Syrus
       end
 
       def safe_tool_definitions(tool_set)
-        if tool_set.method(:tool_definitions).arity.zero?
+        method = tool_set.method(:tool_definitions)
+        keywords = method.parameters.select { |type, _name| type == :key || type == :keyreq }.map(&:last)
+        if keywords.include?(:context)
+          tool_set.tool_definitions(context: nil)
+        elsif keywords.include?(:tier)
+          tool_set.tool_definitions(tier: nil)
+        elsif method.arity.zero?
           tool_set.tool_definitions
         else
-          tool_set.tool_definitions(tier: nil)
+          tool_set.tool_definitions
         end
       end
     end
