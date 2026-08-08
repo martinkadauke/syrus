@@ -61,7 +61,7 @@ module App
           actions: PerformanceLogging.phase("job_detail.actions", job_id: @job.id) { actions_json },
           paths: paths_json
         }
-        stages = PerformanceLogging.phase("job_detail.deployment_stages", job_id: @job.id) { App::DeploymentStagesPayload.for_job(@job) }
+        stages = @job.landed_sha.present? ? PerformanceLogging.phase("job_detail.deployment_stages", job_id: @job.id) { deployment_stages_payload } : nil
         result[:deployment_stages] = stages if @job.landed_sha.present? && stages
         result
       end
@@ -243,10 +243,16 @@ module App
     end
 
     def deployment_stages_json
-      stages = App::DeploymentStagesPayload.for_job(@job)
+      return {} if @job.landed_sha.blank?
+
+      stages = deployment_stages_payload
       return {} unless stages
 
       { deployment_stages: stages }
+    end
+
+    def deployment_stages_payload
+      @deployment_stages_payload ||= App::DeploymentStagesPayload.for_job(@job)
     end
 
     def epic_json(epic)
@@ -617,8 +623,10 @@ module App
 
     def workflow_for_start_blocked
       @workflow_for_start_blocked ||= @job.workflows
-        .select { |wf| wf.state.in?(%w[queued running]) && wf.artifact("start_blocked_reason").present? }
-        .max_by(&:created_at)
+        .where(state: %w[queued running])
+        .where("artifacts LIKE ?", '%"start_blocked_reason"%')
+        .reorder(created_at: :desc, id: :desc)
+        .detect { |wf| wf.artifact("start_blocked_reason").present? }
     end
 
     def summary_state(job)

@@ -118,7 +118,7 @@ class ChatSession < ApplicationRecord
   end
 
   def title_pending?
-    title.blank? && messages.where(role: "user").exists?
+    title.blank? && ChatMessage.where(chat_session_id: id, role: "user").exists?
   end
 
   def supervisor_chat?

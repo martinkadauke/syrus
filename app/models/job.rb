@@ -596,7 +596,11 @@ class Job < ApplicationRecord
     return "repository_configuration" unless repository.effective_prepare_enabled
     return "issue_label" if prepare_skip_reason_override == "issue_label"
     return "issue_label" if skip_prepare?
-    return "issue_label" if Workflow.where(job_id: id).any? { |workflow| workflow.artifact("prepare_skipped_reason") == "issue_label" }
+    return "issue_label" if Workflow.where(job_id: id).where(
+      "artifacts LIKE ? OR artifacts LIKE ?",
+      '%"prepare_skipped_reason":"issue_label"%',
+      '%"prepare_skipped_reason": "issue_label"%'
+    ).exists?
 
     nil
   end

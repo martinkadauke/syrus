@@ -250,8 +250,10 @@ RSpec.describe App::JobDetailPayload do
 
     it "omits deployment stages when the job has not landed" do
       job = Factories.job_record(repository: repo, landed_sha: nil)
+      expect(RepoDeploymentStagesReader).not_to receive(:for_repository)
 
       expect(payload_for(job)).not_to have_key(:deployment_stages)
+      expect(payload_for(job).fetch(:job)).not_to have_key(:deployment_stages)
     end
 
     it "returns configured stages in order with reached timestamps" do

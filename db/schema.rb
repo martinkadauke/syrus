@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_08_153000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_08_160000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -102,9 +102,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_153000) do
     t.string "skipped_reason"
     t.datetime "updated_at", null: false
     t.integer "workflow_id", null: false
+    t.index ["job_id", "agent_provider", "failure_classification", "skipped_reason"], name: "idx_auto_retry_attempts_budget_skipped"
     t.index ["job_id", "agent_provider", "failure_classification"], name: "index_auto_retry_attempts_on_budget"
     t.index ["job_id"], name: "index_auto_retry_attempts_on_job_id"
     t.index ["run_id"], name: "index_auto_retry_attempts_on_run_id"
+    t.index ["workflow_id", "performed_at", "skipped_reason"], name: "idx_auto_retry_attempts_workflow_pending"
     t.index ["workflow_id", "retry_kind"], name: "index_auto_retry_attempts_on_workflow_retry_kind"
     t.index ["workflow_id"], name: "index_auto_retry_attempts_on_workflow_id"
   end
@@ -200,6 +202,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_153000) do
     t.index ["chat_session_id", "created_at", "id"], name: "idx_chat_messages_session_created_id"
     t.index ["chat_session_id", "created_at"], name: "index_chat_messages_on_chat_session_id_and_created_at"
     t.index ["chat_session_id", "id"], name: "index_chat_messages_on_session_id_and_id"
+    t.index ["chat_session_id", "role"], name: "idx_chat_messages_session_role"
     t.index ["chat_session_id"], name: "index_chat_messages_on_chat_session_id"
     t.index ["pending_action_id"], name: "index_chat_messages_on_pending_action_id"
     t.index ["proposal_id"], name: "index_chat_messages_on_proposal_id"
