@@ -1,6 +1,30 @@
 require "rails_helper"
 
 RSpec.describe "SPA shell", type: :request do
+  def frontend_app_routes
+    source = Rails.root.join("app/frontend/routes/App.tsx").read
+    route_table = source
+      .split("const appRouteDefinitions: AppRouteDefinition[] = [", 2)
+      .fetch(1)
+      .split("\n]\n\nexport function App", 2)
+      .fetch(0)
+
+    route_table.scan(/path:\s*"([^"]+)"/).flatten.uniq
+  end
+
+  def representative_frontend_path(route)
+    route.gsub(/:([A-Za-z0-9_]+)/) do
+      case Regexp.last_match(1).downcase
+      when "tab"
+        "active"
+      when "token"
+        "sample-token"
+      else
+        "123"
+      end
+    end
+  end
+
   it "uses the normal HTML authentication flow when signed out" do
     Factories.user
 
@@ -134,6 +158,32 @@ RSpec.describe "SPA shell", type: :request do
       expect(response.body).to include('id="syrus-spa-root"')
       expect(response.body).to include('id="syrus-bootstrap-data"')
     end
+  end
+
+  it "routes every React app route through the SPA shell" do
+    frontend_app_routes.each do |route|
+      path = representative_frontend_path(route)
+      recognized = Rails.application.routes.recognize_path(path, method: :get)
+
+      expect(recognized).to include(controller: "spa", action: "show"), "expected #{route} (sample #{path}) to route to spa#show"
+    end
+  end
+
+  it "serves the admin performance route through the SPA shell" do
+    user = Factories.user(admin: true)
+    sign_in_as(user)
+
+    get "/admin/performance"
+
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include('id="syrus-spa-root"')
+    expect(response.body).to include('id="syrus-bootstrap-data"')
+  end
+
+  it "does not route unmatched API paths through the SPA shell" do
+    expect {
+      Rails.application.routes.recognize_path("/api/nope", method: :get)
+    }.to raise_error(ActionController::RoutingError)
   end
 
   it "requires authentication for canonical dashboard routes" do
