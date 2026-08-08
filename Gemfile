@@ -3,13 +3,6 @@ source "https://rubygems.org"
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
 gem "rails", "~> 8.1.3", ">= 8.1.3.1"
 
-# Bundled agent provider plugins
-gem "syrus_claude_agent", path: "plugins/claude_agent"
-gem "syrus_codex_agent",  path: "plugins/codex_agent"
-
-# Bundled input source plugins
-gem "syrus_github_source", path: "plugins/github_source"
-gem "syrus_linear_source", path: "plugins/linear_source"
 # The modern asset pipeline for Rails [https://github.com/rails/propshaft]
 gem "propshaft"
 # Use sqlite3 for development/test
@@ -40,12 +33,6 @@ gem "faraday-retry"
 # Model Context Protocol SDK — used for the per-run sidecar that lets
 # the agent submit PR copy back to Syrus during its run.
 gem "mcp"
-
-# Bundled plugin: built-in MCP tool set for workflow sidecar agents.
-gem "syrus_core_tools", path: "plugins/syrus_core_tools"
-
-# Bundled plugin: Syrus development diagnostics and internal tooling.
-gem "syrus_dev", path: "plugins/syrus_dev"
 
 # Best-effort text extraction for repository documents exposed to chat agents.
 gem "docx"
@@ -83,6 +70,15 @@ gem "thruster", require: false
 
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 gem "image_processing", "~> 1.2"
+
+# Bundled plugins. These are installed with Syrus but enabled/disabled through
+# PluginRecord at runtime; adding/removing plugin gems still requires restart.
+gem "syrus_claude_agent",  path: "plugins/claude_agent"
+gem "syrus_codex_agent",   path: "plugins/codex_agent"
+gem "syrus_core_tools",    path: "plugins/syrus_core_tools"
+gem "syrus_dev",           path: "plugins/syrus_dev"
+gem "syrus_github_source", path: "plugins/github_source"
+gem "syrus_linear_source", path: "plugins/linear_source"
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
