@@ -15,9 +15,9 @@ RSpec.configure do |config|
 
     registered_names = Syrus::PluginRegistry.registered_names
 
-    unless registered_names.include?("syrus-claude-agent")
+    unless registered_names.include?("claude_agent")
       Syrus::PluginRegistry.register(
-        name:            "syrus-claude-agent",
+        name:            "claude_agent",
         version:         SyrusClaudeAgent::VERSION,
         default_enabled: true,
         disableable:     true,
@@ -26,9 +26,9 @@ RSpec.configure do |config|
       )
     end
 
-    unless registered_names.include?("syrus-codex-agent")
+    unless registered_names.include?("codex_agent")
       Syrus::PluginRegistry.register(
-        name:            "syrus-codex-agent",
+        name:            "codex_agent",
         version:         SyrusCodexAgent::VERSION,
         default_enabled: true,
         disableable:     true,
@@ -37,9 +37,9 @@ RSpec.configure do |config|
       )
     end
 
-    unless registered_names.include?("syrus_core_tools")
+    unless registered_names.include?("core_tools")
       Syrus::PluginRegistry.register(
-        name:            "syrus_core_tools",
+        name:            "core_tools",
         version:         SyrusCoreTools::VERSION,
         default_enabled: true,
         disableable:     false,
@@ -48,9 +48,9 @@ RSpec.configure do |config|
       )
     end
 
-    unless registered_names.include?("syrus-github-source")
+    unless registered_names.include?("github_source")
       Syrus::PluginRegistry.register(
-        name:            "syrus-github-source",
+        name:            "github_source",
         version:         SyrusGithubSource::VERSION,
         default_enabled: true,
         disableable:     true,
@@ -59,9 +59,9 @@ RSpec.configure do |config|
       )
     end
 
-    unless registered_names.include?("syrus-linear-source")
+    unless registered_names.include?("linear_source")
       Syrus::PluginRegistry.register(
-        name:            "syrus-linear-source",
+        name:            "linear_source",
         version:         SyrusLinearSource::VERSION,
         default_enabled: false,
         disableable:     true,
@@ -83,5 +83,7 @@ RSpec.configure do |config|
         }
       )
     end
+
+    Syrus::PluginRegistry.all_plugins
   end
 end

@@ -1,32 +1,32 @@
 PATH
   remote: plugins/claude_agent
   specs:
-    syrus_claude_agent (0.1.0)
+    claude_agent (0.1.0)
       rails (>= 8.1)
 
 PATH
   remote: plugins/codex_agent
   specs:
-    syrus_codex_agent (0.1.0)
+    codex_agent (0.1.0)
       rails (>= 8.1)
+
+PATH
+  remote: plugins/core_tools
+  specs:
+    core_tools (0.1.0)
+      rails (>= 8.0)
 
 PATH
   remote: plugins/github_source
   specs:
-    syrus_github_source (0.1.0)
+    github_source (0.1.0)
       rails (>= 8.1)
 
 PATH
   remote: plugins/linear_source
   specs:
-    syrus_linear_source (0.1.0)
+    linear_source (0.1.0)
       rails (>= 8.1)
-
-PATH
-  remote: plugins/syrus_core_tools
-  specs:
-    syrus_core_tools (0.1.0)
-      rails (>= 8.0)
 
 PATH
   remote: plugins/syrus_dev
@@ -541,14 +541,19 @@ DEPENDENCIES
   brakeman
   bundler-audit
   capybara
+  claude_agent!
+  codex_agent!
   commonmarker
+  core_tools!
   debug
   docx
   faraday-http-cache
   faraday-retry
+  github_source!
   image_processing (~> 1.2)
   jbuilder
   kamal
+  linear_source!
   mcp
   mysql2 (~> 0.5)
   octokit (~> 10.0)
@@ -567,12 +572,7 @@ DEPENDENCIES
   solid_cache
   solid_queue
   sqlite3 (>= 2.1)
-  syrus_claude_agent!
-  syrus_codex_agent!
-  syrus_core_tools!
   syrus_dev!
-  syrus_github_source!
-  syrus_linear_source!
   tailwindcss-rails
   thruster
   tzinfo-data
@@ -616,6 +616,8 @@ CHECKSUMS
   builder (3.3.0) sha256=497918d2f9dca528fdca4b88d84e4ef4387256d984b8154e9d5d3fe5a9c8835f
   bundler-audit (0.9.3) sha256=81c8766c71e47d0d28a0f98c7eed028539f21a6ea3cd8f685eb6f42333c9b4e9
   capybara (3.40.0) sha256=42dba720578ea1ca65fd7a41d163dd368502c191804558f6e0f71b391054aeef
+  claude_agent (0.1.0)
+  codex_agent (0.1.0)
   commonmarker (2.8.2-aarch64-linux) sha256=715a5df28e5c1ec7b520e6441466062e9717b82193d2a5bd11a9c94f2f1e15f0
   commonmarker (2.8.2-aarch64-linux-musl) sha256=c7d587bd7978416978e84d0de7488906b8f29b3f67ce8424942f0ca9aa6899db
   commonmarker (2.8.2-arm-linux) sha256=da9da5c08d5133ad429ece13f2e93d3a30e1b23621ffac9040e185d7ea29bde6
@@ -625,6 +627,7 @@ CHECKSUMS
   commonmarker (2.8.2-x86_64-linux-musl) sha256=66568dce1c6f265e85d57ea7f749a148446527c7dd599c6ded4cdc819997c43e
   concurrent-ruby (1.3.6) sha256=6b56837e1e7e5292f9864f34b69c5a2cbc75c0cf5338f1ce9903d10fa762d5ab
   connection_pool (3.0.2) sha256=33fff5ba71a12d2aa26cb72b1db8bba2a1a01823559fb01d29eb74c286e62e0a
+  core_tools (0.1.0)
   crack (1.0.1) sha256=ff4a10390cd31d66440b7524eb1841874db86201d5b70032028553130b6d4c7e
   crass (1.0.6) sha256=dc516022a56e7b3b156099abc81b6d2b08ea1ed12676ac7a5657617f012bd45d
   date (3.5.1) sha256=750d06384d7b9c15d562c76291407d89e368dda4d4fff957eb94962d325a0dc0
@@ -650,6 +653,7 @@ CHECKSUMS
   ffi (1.17.4-x86_64-linux-gnu) sha256=9d3db14c2eae074b382fa9c083fe95aec6e0a1451da249eab096c34002bc752d
   ffi (1.17.4-x86_64-linux-musl) sha256=3fdf9888483de005f8ef8d1cf2d3b20d86626af206cbf780f6a6a12439a9c49e
   fugit (1.12.1) sha256=5898f478ede9b415f0804e42b8f3fd53f814bd85eebffceebdbc34e1107aaf68
+  github_source (0.1.0)
   globalid (1.3.0) sha256=05c639ad6eb4594522a0b07983022f04aa7254626ab69445a0e493aa3786ff11
   hashdiff (1.2.1) sha256=9c079dbc513dfc8833ab59c0c2d8f230fa28499cc5efb4b8dd276cf931457cd1
   hashery (2.1.2) sha256=d239cc2310401903f6b79d458c2bbef5bf74c46f3f974ae9c1061fb74a404862
@@ -663,6 +667,7 @@ CHECKSUMS
   json-schema (6.2.0) sha256=e8bff46ed845a22c1ab2bd0d7eccf831c01fe23bb3920caa4c74db4306813666
   kamal (2.11.0) sha256=1408864425e0dec7e0a14d712a3b13f614e9f3a425b7661d3f9d287a51d7dd75
   language_server-protocol (3.17.0.5) sha256=fd1e39a51a28bf3eec959379985a72e296e9f9acfce46f6a79d31ca8760803cc
+  linear_source (0.1.0)
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
   logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
   loofah (2.25.1) sha256=d436c73dbd0c1147b16c4a41db097942d217303e1f7728704b37e4df9f6d2e04
@@ -753,12 +758,7 @@ CHECKSUMS
   sqlite3 (2.9.3-x86_64-linux-musl) sha256=b6d0437046d9180335dea1aa0592802e65c4f7b57409d63f14408211bf28536b
   sshkit (1.25.0) sha256=c8c6543cdb60f91f1d277306d585dd11b6a064cb44eab0972827e4311ff96744
   stringio (3.2.0) sha256=c37cb2e58b4ffbd33fe5cd948c05934af997b36e0b6ca6fdf43afa234cf222e1
-  syrus_claude_agent (0.1.0)
-  syrus_codex_agent (0.1.0)
-  syrus_core_tools (0.1.0)
   syrus_dev (0.1.0)
-  syrus_github_source (0.1.0)
-  syrus_linear_source (0.1.0)
   tailwindcss-rails (4.4.0) sha256=efa2961351a52acebe616e645a81a30bb4f27fde46cc06ce7688d1cd1131e916
   tailwindcss-ruby (4.2.4) sha256=f3025ba442aa1436168a6df07cf44f9f43f0124a69b5375db1d359ad39c12446
   tailwindcss-ruby (4.2.4-aarch64-linux-gnu) sha256=8f73d4faf9e36ef9a4f0691cbab7b63cd0ecaf955c7878ee6a96033a29f30e8c

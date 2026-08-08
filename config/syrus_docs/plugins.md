@@ -34,10 +34,10 @@ runtime pieces.
 
 Bundled plugins:
 
-- `syrus_core_tools` — non-disableable core workflow MCP tools.
-- `syrus-claude-agent` / `syrus-codex-agent` — default-enabled agent providers.
-- `syrus-github-source` — default-enabled GitHub issue/PR polling source.
-- `syrus-linear-source` — installed but disabled by default until configured.
+- `core_tools` — non-disableable core workflow MCP tools.
+- `claude_agent` / `codex_agent` — default-enabled agent providers.
+- `github_source` — default-enabled GitHub issue/PR polling source.
+- `linear_source` — installed but disabled by default until configured.
 - `syrus_dev` — installed but disabled by default. It owns Syrus-development-only
   diagnostics such as Admin → Performance and the `read_performance_diagnostics`
   / `read_syrus_logs` workflow MCP tools. Enable it only on instances where

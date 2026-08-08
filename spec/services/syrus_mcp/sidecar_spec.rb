@@ -233,6 +233,37 @@ RSpec.describe Mcp::Sidecar do
       expect(tool_names).to include("submit_summary", "read_live_state", "start_preview")
     end
 
+    it "advertises and dispatches external workflow plugin tools" do
+      stub_tool_set = Class.new do
+        include Syrus::Plugin::McpToolSet
+
+        def self.available_for?(_repo) = true
+
+        def self.tool_definitions
+          [ { name: "stub_ping", description: "A stub ping tool.", input_schema: {} } ]
+        end
+
+        def handle(_tool_name, _params, _context)
+          MCP::Tool::Response.new([ { type: "text", text: "pong" } ])
+        end
+      end
+      Syrus::PluginRegistry.register(
+        name: "stub_plugin",
+        version: "0.1.0",
+        provides: { mcp_tool_set: stub_tool_set }
+      )
+
+      response = jsonrpc(server_for(run), "tools/list", id: 1)
+      tool_names = response[:result][:tools].map { |t| t[:name] }
+      expect(tool_names).to include("stub_ping")
+
+      response = jsonrpc(server_for(run), "tools/call", params: {
+        name: "stub_ping",
+        arguments: {}
+      })
+      expect(response.dig(:result, :content, 0, :text)).to eq("pong")
+    end
+
     it "role-gates tools via McpToolPolicy — adversarial reviewer cannot call submit_summary" do
       review_run = begin
         job = Factories.job
@@ -297,23 +328,12 @@ RSpec.describe Mcp::Sidecar do
       Feature.find_or_create_by!(slug: "agent_insights") { |f| f.category = "Labs"; f.name = "Agent Insights" }
              .update!(enabled: true)
       Feature.clear_enabled_cache!("agent_insights")
-      syrus_repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
-      insight_job = Job.create!(user: user, repository: syrus_repository, kind: "agent_insight", priority: "low")
+      syrus_repository = Factories.repository(user: run.job.user, owner: "tkadauke", name: "syrus")
+      insight_job = Job.create!(user: run.job.user, repository: syrus_repository, kind: "agent_insight", priority: "low")
       insight_workflow = Workflows::AgentInsight.instantiate(job: insight_job)
       insight_step = insight_workflow.steps.find_by!(kind: "agent_insight_run")
       insight_run = insight_step.runs.first || insight_step.runs.create!(job: insight_job, trigger_kind: insight_workflow.trigger_kind)
 
-      Syrus::PluginRegistry.register(
-        name: "syrus_core_tools",
-        version: "0.1.0",
-        provides: { mcp_tool_set: SyrusMcp::CoreToolSet }
-      )
-      Syrus::PluginRegistry.register(
-        name: "syrus_dev",
-        version: SyrusDev::VERSION,
-        default_enabled: false,
-        provides: { mcp_tool_set: SyrusDev::WorkflowToolSet }
-      )
       PluginRecord.find_by!(name: "syrus_dev").update!(enabled: true)
 
       response = jsonrpc(server_for(insight_run), "tools/list", id: 1)
@@ -324,23 +344,12 @@ RSpec.describe Mcp::Sidecar do
     end
 
     it "does not advertise Syrus Dev diagnostics for non-implementation workflow roles" do
-      syrus_repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
-      job = Factories.job(repository: syrus_repository, user: user)
+      syrus_repository = Factories.repository(user: run.job.user, owner: "tkadauke", name: "syrus")
+      job = Factories.job(repository: syrus_repository, user: run.job.user)
       workflow = job.workflows.first
       review_step = Step.create!(workflow: workflow, kind: "adversarial_review", position: 99)
       review_run = review_step.runs.create!(job: job, trigger_kind: workflow.trigger_kind)
 
-      Syrus::PluginRegistry.register(
-        name: "syrus_core_tools",
-        version: "0.1.0",
-        provides: { mcp_tool_set: SyrusMcp::CoreToolSet }
-      )
-      Syrus::PluginRegistry.register(
-        name: "syrus_dev",
-        version: SyrusDev::VERSION,
-        default_enabled: false,
-        provides: { mcp_tool_set: SyrusDev::WorkflowToolSet }
-      )
       PluginRecord.find_by!(name: "syrus_dev").update!(enabled: true)
 
       response = jsonrpc(server_for(review_run), "tools/list", id: 1)

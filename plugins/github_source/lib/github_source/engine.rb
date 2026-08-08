@@ -2,7 +2,7 @@ module SyrusGithubSource
   class Engine < ::Rails::Engine
     config.after_initialize do
       Syrus::PluginRegistry.register(
-        name:            "syrus-github-source",
+        name:            "github_source",
         version:         SyrusGithubSource::VERSION,
         default_enabled: true,
         disableable:     true,

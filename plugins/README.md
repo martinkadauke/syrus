@@ -82,7 +82,7 @@ is preserved across restarts.
   points the app cannot run without.
 
 ```ruby
-PluginRecord.find_by!(name: "syrus-claude-agent").update!(enabled: false)
+PluginRecord.find_by!(name: "claude_agent").update!(enabled: false)
 ```
 
 Bundled `syrus_dev` is disabled by default and owns Syrus-development-only

@@ -2,7 +2,7 @@ module SyrusLinearSource
   class Engine < ::Rails::Engine
     config.after_initialize do
       Syrus::PluginRegistry.register(
-        name:            "syrus-linear-source",
+        name:            "linear_source",
         version:         SyrusLinearSource::VERSION,
         default_enabled: false,
         disableable:     true,

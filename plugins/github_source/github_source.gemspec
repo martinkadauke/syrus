@@ -1,7 +1,7 @@
-require_relative "lib/syrus_github_source/version"
+require_relative "lib/github_source/version"
 
 Gem::Specification.new do |spec|
-  spec.name    = "syrus_github_source"
+  spec.name    = "github_source"
   spec.version = SyrusGithubSource::VERSION
   spec.authors = [""]
   spec.summary = "Syrus plugin: GitHub input source"

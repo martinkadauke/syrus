@@ -9,7 +9,7 @@ RSpec.describe "API: /api/v1/app/input_sources", type: :request do
   end
 
   before do
-    PluginRecord.find_by!(name: "syrus-linear-source").update!(enabled: true)
+    PluginRecord.find_by!(name: "linear_source").update!(enabled: true)
   end
 
   it "401s when signed out" do

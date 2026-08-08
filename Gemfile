@@ -73,12 +73,12 @@ gem "image_processing", "~> 1.2"
 
 # Bundled plugins. These are installed with Syrus but enabled/disabled through
 # PluginRecord at runtime; adding/removing plugin gems still requires restart.
-gem "syrus_claude_agent",  path: "plugins/claude_agent"
-gem "syrus_codex_agent",   path: "plugins/codex_agent"
-gem "syrus_core_tools",    path: "plugins/syrus_core_tools"
-gem "syrus_dev",           path: "plugins/syrus_dev"
-gem "syrus_github_source", path: "plugins/github_source"
-gem "syrus_linear_source", path: "plugins/linear_source"
+gem "claude_agent",  path: "plugins/claude_agent"
+gem "codex_agent",   path: "plugins/codex_agent"
+gem "core_tools",    path: "plugins/core_tools"
+gem "github_source", path: "plugins/github_source"
+gem "linear_source", path: "plugins/linear_source"
+gem "syrus_dev",     path: "plugins/syrus_dev"
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem

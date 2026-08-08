@@ -1,7 +1,7 @@
-require_relative "lib/syrus_core_tools/version"
+require_relative "lib/core_tools/version"
 
 Gem::Specification.new do |spec|
-  spec.name    = "syrus_core_tools"
+  spec.name    = "core_tools"
   spec.version = SyrusCoreTools::VERSION
   spec.authors = ["Syrus"]
   spec.summary = "Bundled MCP tool set for the Syrus workflow sidecar."

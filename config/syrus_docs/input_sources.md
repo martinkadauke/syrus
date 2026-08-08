@@ -6,14 +6,14 @@ source and operator-editable settings stored in `config`.
 
 Bundled source plugins:
 
-- `syrus_github_source` registers `InputSources::Github`
-- `syrus_linear_source` registers `InputSources::Linear`
+- `github_source` registers `InputSources::Github`
+- `linear_source` registers `InputSources::Linear`
 
 Plugins register source providers at boot:
 
 ```ruby
 Syrus::PluginRegistry.register(
-  name: "syrus-github-source",
+  name: "github_source",
   version: SyrusGithubSource::VERSION,
   provides: { input_source: InputSources::Github }
 )

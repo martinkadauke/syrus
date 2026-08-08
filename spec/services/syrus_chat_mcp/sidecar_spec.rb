@@ -445,12 +445,12 @@ RSpec.describe Mcp::Sidecar do
     around do |ex|
       Syrus::PluginRegistry.reset!
       Syrus::PluginRegistry.register(
-        name: "syrus-claude-agent",
+        name: "claude_agent",
         version: SyrusClaudeAgent::VERSION,
         provides: { agent_provider: AgentProviders::Claude }
       )
       Syrus::PluginRegistry.register(
-        name: "syrus-codex-agent",
+        name: "codex_agent",
         version: SyrusCodexAgent::VERSION,
         provides: { agent_provider: AgentProviders::Codex }
       )

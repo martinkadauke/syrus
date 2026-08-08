@@ -11,7 +11,7 @@ describe("AdminPlugins", () => {
     vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({
       plugins: [
         {
-          name: "syrus-codex-agent",
+          name: "codex_agent",
           version: "1.2.3",
           enabled: true,
           description: "Codex agent provider",
@@ -32,7 +32,7 @@ describe("AdminPlugins", () => {
     renderRoute(<AdminPlugins />)
 
     const list = await screen.findByRole("region", { name: "Registered plugins" })
-    expect(within(list).getByRole("heading", { name: "syrus-codex-agent" })).toBeInTheDocument()
+    expect(within(list).getByRole("heading", { name: "codex_agent" })).toBeInTheDocument()
     expect(within(list).getByText("1.2.3")).toBeInTheDocument()
     expect(within(list).getByText("AgentProviders::Codex")).toBeInTheDocument()
     expect(within(list).getByText("Available")).toBeInTheDocument()
