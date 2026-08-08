@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_08_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_08_163000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -1518,6 +1518,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_160000) do
     t.index ["job_id"], name: "index_runs_on_job_id"
     t.index ["parent_session_id"], name: "index_runs_on_parent_session_id"
     t.index ["state", "agent_provider", "finished_at", "updated_at", "id"], name: "idx_runs_provider_failed_recent"
+    t.index ["state", "finished_at", "step_id"], name: "idx_runs_throughput_state_finished"
     t.index ["state", "job_id", "updated_at"], name: "idx_runs_state_job_updated"
     t.index ["state", "last_heartbeat_at"], name: "index_runs_on_state_and_last_heartbeat_at"
     t.index ["step_id", "created_at", "id"], name: "idx_runs_step_created"
@@ -1661,6 +1662,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_160000) do
     t.string "state", default: "queued", null: false
     t.datetime "updated_at", null: false
     t.integer "workflow_id", null: false
+    t.index ["kind", "state", "finished_at", "workflow_id"], name: "idx_steps_throughput_kind_state_finished"
     t.index ["next_step_id"], name: "index_steps_on_next_step_id"
     t.index ["workflow_id", "loop_id", "iteration"], name: "index_steps_on_workflow_id_and_loop_id_and_iteration"
     t.index ["workflow_id", "position"], name: "index_steps_on_workflow_id_and_position"
@@ -1925,6 +1927,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_160000) do
     t.index ["job_id"], name: "index_workflows_on_job_id"
     t.index ["state", "created_at", "id"], name: "idx_workflows_state_created_at"
     t.index ["state", "started_at", "id"], name: "idx_workflows_state_started_at"
+    t.index ["trigger_kind", "finished_at", "job_id"], name: "idx_workflows_throughput_trigger_finished"
+    t.index ["trigger_kind", "state", "started_at", "job_id"], name: "idx_workflows_throughput_trigger_state_started"
     t.index ["user_id"], name: "index_workflows_on_user_id"
     t.index ["worker_storage_key"], name: "index_workflows_on_worker_storage_key"
   end

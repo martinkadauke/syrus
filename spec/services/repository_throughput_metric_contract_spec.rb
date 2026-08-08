@@ -62,6 +62,18 @@ RSpec.describe RepositoryThroughputMetricContract do
     described_class.new(repository: repository, now: now).call
   end
 
+  def captured_sql
+    queries = []
+    callback = lambda do |_name, _started, _finished, _id, payload|
+      next if payload[:name] == "SCHEMA" || payload[:cached]
+
+      queries << payload[:sql].to_s
+    end
+
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { yield }
+    queries
+  end
+
   it "defines PR creation throughput from successful pr_open steps" do
     job = Factories.job_record(user: user, repository: repository, pr_number: 123, created_at: now - 30.minutes)
     workflow = workflow_for(job, trigger_kind: "initial")
@@ -590,5 +602,27 @@ RSpec.describe RepositoryThroughputMetricContract do
 
     expect(pr_creation).to include(count: 5, sample_count: 5, confidence: "medium")
     expect(pr_creation.fetch(:per_hour)).to eq(5.0)
+  end
+
+  it "does not load steps one workflow at a time when computing latency metrics" do
+    job = Factories.job_record(
+      user: user,
+      repository: repository,
+      pr_number: 123,
+      approved_at: now - 5.minutes,
+      approved_via: "operator"
+    )
+    30.times do |index|
+      workflow = workflow_for(job, trigger_kind: "initial", started_at: now - (50 - index).minutes)
+      step_for(workflow, kind: "pr_open", finished_at: now - (45 - index).minutes)
+      step_for(workflow, kind: "implement", finished_at: now - (44 - index).minutes, position: 1)
+    end
+
+    queries = captured_sql { call }
+    per_workflow_step_loads = queries.select do |sql|
+      sql.match?(/FROM "?steps"? WHERE "?steps"?\."?workflow_id"? = /i)
+    end
+
+    expect(per_workflow_step_loads).to be_empty
   end
 end

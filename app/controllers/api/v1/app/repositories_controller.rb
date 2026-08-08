@@ -26,7 +26,10 @@ module Api
         def throughput_metrics
           repository = find_repository
 
-          render json: RepositoryThroughputMetricContract.new(repository: repository).call
+          payload = PerformanceLogging.phase("repository_throughput_metrics", repository_id: repository.id) do
+            RepositoryThroughputMetricContract.new(repository: repository).call
+          end
+          render json: payload
         end
 
         def new

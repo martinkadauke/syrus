@@ -197,7 +197,7 @@ class RepositoryThroughputMetricContract
     repository.jobs
       .where(state: "closed", closure_reason: %w[ pr_merged external_pr_merged ])
       .where(finished_at: range)
-      .includes(:pr_review_comments, :workflows)
+      .includes(:pr_review_comments)
       .to_a
   end
 
@@ -314,6 +314,7 @@ class RepositoryThroughputMetricContract
       .where(jobs: { repository_id: repository.id })
       .where(steps: { kind: OUTPUT_STEP_KINDS })
       .where(state: "succeeded", finished_at: range)
+      .preload(:job)
       .to_a
 
     diffs = runs.filter_map { |run| run.step_agent_diff.presence || run.agent_diff.presence }
@@ -419,7 +420,7 @@ class RepositoryThroughputMetricContract
   end
 
   def approvals_in(range)
-    repository.jobs.where(approved_at: range).includes(:job_approvals, :pr_review_comments, :workflows).to_a
+    repository.jobs.where(approved_at: range).includes(:job_approvals, :pr_review_comments).to_a
   end
 
   def approved_immediately_without_feedback(approved_jobs)
@@ -522,18 +523,11 @@ class RepositoryThroughputMetricContract
   end
 
   def pr_opened_at(job)
-    job.workflows
-      .flat_map(&:steps)
-      .select { |step| step.kind == "pr_open" && step.succeeded? }
-      .filter_map(&:finished_at)
-      .min
+    pr_opened_at_by_job_id[job.id]
   end
 
   def landing_started_at(job)
-    job.workflows
-      .select { |workflow| LANDING_TRIGGER_KINDS.include?(workflow.trigger_kind) && workflow.succeeded? }
-      .filter_map(&:started_at)
-      .min
+    landing_started_at_by_job_id[job.id]
   end
 
   def pr_open_to_first_feedback_latencies(jobs)
@@ -608,6 +602,8 @@ class RepositoryThroughputMetricContract
   end
 
   def optimistic_capacity_payload
+    return @optimistic_capacity_payload if defined?(@optimistic_capacity_payload)
+
     attempts = landing_attempts_in((now - 7.days)..now).select(&:successful?)
     timed_attempts = attempts.select { |attempt| attempt.wall_time_seconds&.positive? }
     wall_times = timed_attempts.map(&:wall_time_seconds)
@@ -615,7 +611,7 @@ class RepositoryThroughputMetricContract
     units_per_hour = average_seconds ? (1.hour.to_f / average_seconds).round(4) : 0.0
     average_jobs_per_unit = timed_attempts.empty? ? nil : (timed_attempts.sum(&:job_count).to_f / timed_attempts.size).round(4)
 
-    {
+    @optimistic_capacity_payload = {
       sample_count: wall_times.size,
       confidence: confidence_for(wall_times.size),
       average_successful_unit_wall_time_seconds: average_seconds,
@@ -726,6 +722,24 @@ class RepositoryThroughputMetricContract
     ].compact.max || now
 
     (active_at - LAST_ACTIVE_WINDOW_DURATION)..active_at
+  end
+
+  def pr_opened_at_by_job_id
+    @pr_opened_at_by_job_id ||= Step.joins(workflow: :job)
+      .where(jobs: { repository_id: repository.id })
+      .where(kind: "pr_open", state: "succeeded")
+      .where.not(finished_at: nil)
+      .group("workflows.job_id")
+      .minimum(:finished_at)
+  end
+
+  def landing_started_at_by_job_id
+    @landing_started_at_by_job_id ||= Workflow.joins(:job)
+      .where(jobs: { repository_id: repository.id })
+      .where(trigger_kind: LANDING_TRIGGER_KINDS, state: "succeeded")
+      .where.not(started_at: nil)
+      .group(:job_id)
+      .minimum(:started_at)
   end
 
   def failed_or_cancelled?(record)
