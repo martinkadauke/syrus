@@ -11,6 +11,7 @@ import { fetchBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { createEmptyChat, fetchNewChat, type ChatsIndexPayload } from "../api/chats"
 import { patchJson, postJson } from "../api/client"
 import { dashboardApiSearch, dashboardChromeSearch, fetchDashboardChrome, mergeDashboardPayload, type DashboardChromePayload, type DashboardRowsPayload, type DashboardSubject } from "../api/dashboard"
+import { fetchAdminPluginPages } from "../api/adminPluginPages"
 import { fetchTerminalSessions } from "../api/terminal"
 import { BugReportButton, type BugReportButtonHandle } from "../components/BugReportButton"
 import { BugReportContext } from "../lib/bugReportContext"
@@ -426,6 +427,11 @@ function writeDismissedSystemAlerts(dismissed: Set<string>, alerts: BootstrapPay
 
 function AdminSubnav({ featureFlags, normalizedPath, prefix }: { featureFlags: Record<string, boolean>; normalizedPath: string; prefix: string }) {
   const { t } = useTranslation("admin")
+  const pluginPages = useQuery({
+    queryKey: ["admin", "plugin_pages"],
+    queryFn: fetchAdminPluginPages,
+    staleTime: 30_000
+  })
   const adminNavItems = [
     { label: t("admin:nav_overview"), to: "/admin", paths: ["/admin"] },
     { label: t("admin:nav_queue"), to: "/admin/queue", paths: ["/admin/queue"] },
@@ -443,6 +449,7 @@ function AdminSubnav({ featureFlags, normalizedPath, prefix }: { featureFlags: R
   ]
   const items = [
     ...adminNavItems.slice(0, -1),
+    ...(pluginPages.data?.pages || []).map((page) => ({ label: page.label, to: page.path, paths: page.paths })),
     ...(hasFeatureFlags(featureFlags) ? [{ label: t("admin:nav_features"), to: "/admin/features", paths: ["/admin/features"] }] : []),
     adminNavItems[adminNavItems.length - 1]
   ]

@@ -4,8 +4,11 @@ module SyrusClaudeAgent
     # Syrus::PluginRegistry (autoloaded from lib/) is resolvable.
     config.after_initialize do
       Syrus::PluginRegistry.register(
-        name:    "syrus-claude-agent",
-        version: SyrusClaudeAgent::VERSION,
+        name:            "syrus-claude-agent",
+        version:         SyrusClaudeAgent::VERSION,
+        default_enabled: true,
+        disableable:     true,
+        category:        "agent_provider",
         provides: { agent_provider: AgentProviders::Claude }
       )
     end

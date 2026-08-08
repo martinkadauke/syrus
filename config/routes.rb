@@ -294,6 +294,9 @@ Rails.application.routes.draw do
           get "overview", to: "overview#show"
           get "worker_health", to: "worker_health#show"
           get "plugins", to: "plugins#index"
+          post "plugins/:name/enable", to: "plugins#enable", constraints: { name: /[^\/]+/ }
+          post "plugins/:name/disable", to: "plugins#disable", constraints: { name: /[^\/]+/ }
+          get "plugin_pages", to: "plugin_pages#index"
           get "queue/:tab", to: "queue#show", as: :queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
           post "queue/reap_stale_runs", to: "queue#reap_stale_runs"
           get "stuck", to: "stuck#index"
@@ -387,6 +390,8 @@ Rails.application.routes.draw do
         get "stuck",    to: "overview#stuck"
         get "worker_health", to: "worker_health#show"
         get "plugins",  to: "plugins#index"
+        post "plugins/:name/enable", to: "plugins#enable", constraints: { name: /[^\/]+/ }
+        post "plugins/:name/disable", to: "plugins#disable", constraints: { name: /[^\/]+/ }
         get "performance", to: "performance#show"
 
         # Operator console kill switches.

@@ -17,40 +17,55 @@ RSpec.configure do |config|
 
     unless registered_names.include?("syrus-claude-agent")
       Syrus::PluginRegistry.register(
-        name:    "syrus-claude-agent",
-        version: SyrusClaudeAgent::VERSION,
+        name:            "syrus-claude-agent",
+        version:         SyrusClaudeAgent::VERSION,
+        default_enabled: true,
+        disableable:     true,
+        category:        "agent_provider",
         provides: { agent_provider: AgentProviders::Claude }
       )
     end
 
     unless registered_names.include?("syrus-codex-agent")
       Syrus::PluginRegistry.register(
-        name:    "syrus-codex-agent",
-        version: SyrusCodexAgent::VERSION,
+        name:            "syrus-codex-agent",
+        version:         SyrusCodexAgent::VERSION,
+        default_enabled: true,
+        disableable:     true,
+        category:        "agent_provider",
         provides: { agent_provider: AgentProviders::Codex }
       )
     end
 
     unless registered_names.include?("syrus_core_tools")
       Syrus::PluginRegistry.register(
-        name: "syrus_core_tools",
-        version: SyrusCoreTools::VERSION,
+        name:            "syrus_core_tools",
+        version:         SyrusCoreTools::VERSION,
+        default_enabled: true,
+        disableable:     false,
+        category:        "core",
         provides: { mcp_tool_set: SyrusMcp::CoreToolSet }
       )
     end
 
     unless registered_names.include?("syrus-github-source")
       Syrus::PluginRegistry.register(
-        name: "syrus-github-source",
-        version: SyrusGithubSource::VERSION,
+        name:            "syrus-github-source",
+        version:         SyrusGithubSource::VERSION,
+        default_enabled: true,
+        disableable:     true,
+        category:        "input_source",
         provides: { input_source: InputSources::Github }
       )
     end
 
     unless registered_names.include?("syrus-linear-source")
       Syrus::PluginRegistry.register(
-        name: "syrus-linear-source",
-        version: SyrusLinearSource::VERSION,
+        name:            "syrus-linear-source",
+        version:         SyrusLinearSource::VERSION,
+        default_enabled: false,
+        disableable:     true,
+        category:        "input_source",
         provides: { input_source: InputSources::Linear }
       )
     end

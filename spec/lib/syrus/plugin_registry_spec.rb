@@ -31,6 +31,14 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
     Class.new { include Syrus::Plugin::PreviewProvider }
   end
 
+  let(:admin_page_class) do
+    Class.new { include Syrus::Plugin::AdminPage }
+  end
+
+  let(:chat_mcp_tool_set_class) do
+    Class.new { include Syrus::Plugin::ChatMcpToolSet }
+  end
+
   describe "EXTENSION_POINTS" do
     it "includes :coverage_analyzer" do
       expect(described_class::EXTENSION_POINTS).to include(:coverage_analyzer)
@@ -38,6 +46,10 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
 
     it "includes :preview_provider" do
       expect(described_class::EXTENSION_POINTS).to include(:preview_provider)
+    end
+
+    it "includes :admin_page and :chat_mcp_tool_set" do
+      expect(described_class::EXTENSION_POINTS).to include(:admin_page, :chat_mcp_tool_set)
     end
 
     it "is frozen" do
@@ -52,6 +64,11 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
 
     it "maps :preview_provider to Syrus::Plugin::PreviewProvider" do
       expect(described_class::INTERFACE_FOR[:preview_provider].call).to eq(Syrus::Plugin::PreviewProvider)
+    end
+
+    it "maps UI and chat MCP extension points to their interfaces" do
+      expect(described_class::INTERFACE_FOR[:admin_page].call).to eq(Syrus::Plugin::AdminPage)
+      expect(described_class::INTERFACE_FOR[:chat_mcp_tool_set].call).to eq(Syrus::Plugin::ChatMcpToolSet)
     end
 
     it "gives coverage analyzer providers the class call contract used by the registry" do
@@ -108,7 +125,9 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
             input_source:       input_source_class,
             test_result_parser: test_result_parser_class,
             coverage_analyzer:  coverage_analyzer_class,
-            preview_provider:   preview_provider_class
+            preview_provider:   preview_provider_class,
+            admin_page:         admin_page_class,
+            chat_mcp_tool_set:  chat_mcp_tool_set_class
           }
         )
       }.not_to raise_error
@@ -248,20 +267,27 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
       end
     end
 
-    it "creates a PluginRecord with enabled: true when none exists" do
+    it "creates a PluginRecord using the plugin default when none exists" do
       expect {
-        described_class.register(name: "new_plugin", version: "1.0.0")
-      }.to change { PluginRecord.where(name: "new_plugin", enabled: true).count }.by(1)
+        described_class.register(name: "new_plugin", version: "1.0.0", default_enabled: false)
+      }.to change { PluginRecord.where(name: "new_plugin", enabled: false, default_enabled: false).count }.by(1)
     end
 
     it "does not flip enabled on an existing PluginRecord" do
-      PluginRecord.create!(name: "existing_plugin", enabled: false)
-      described_class.register(name: "existing_plugin", version: "1.0.0")
+      PluginRecord.create!(name: "existing_plugin", enabled: false, default_enabled: false)
+      described_class.register(name: "existing_plugin", version: "1.0.0", default_enabled: true)
       expect(PluginRecord.find_by!(name: "existing_plugin").enabled).to be(false)
     end
 
+    it "forces non-disableable plugin records enabled" do
+      described_class.register(name: "required_plugin", version: "1.0.0", default_enabled: false, disableable: false)
+
+      record = PluginRecord.find_by!(name: "required_plugin")
+      expect(record).to have_attributes(enabled: true, default_enabled: false, disableable: false)
+    end
+
     it "is resilient when the plugin_records table does not exist" do
-      allow(PluginRecord).to receive(:find_or_create_by!).and_raise(ActiveRecord::StatementInvalid)
+      allow(PluginRecord).to receive(:find_or_initialize_by).and_raise(ActiveRecord::StatementInvalid)
       expect {
         described_class.register(name: "resilient_plugin", version: "1.0.0")
       }.not_to raise_error
@@ -269,7 +295,7 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
     end
 
     it "is resilient when the database is unavailable during boot" do
-      allow(PluginRecord).to receive(:find_or_create_by!).and_raise(ActiveRecord::ConnectionNotEstablished)
+      allow(PluginRecord).to receive(:find_or_initialize_by).and_raise(ActiveRecord::ConnectionNotEstablished)
       expect {
         described_class.register(name: "boot_plugin", version: "1.0.0")
       }.not_to raise_error
@@ -315,6 +341,16 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
       expect(described_class.providers_for(:preview_provider)).to eq([ preview_provider_class ])
     end
 
+    it "returns admin page and chat MCP providers" do
+      described_class.register(
+        name: "ui_plugin", version: "1.0.0",
+        provides: { admin_page: admin_page_class, chat_mcp_tool_set: chat_mcp_tool_set_class }
+      )
+
+      expect(described_class.providers_for(:admin_page)).to eq([ admin_page_class ])
+      expect(described_class.providers_for(:chat_mcp_tool_set)).to eq([ chat_mcp_tool_set_class ])
+    end
+
     it "returns an empty array when no plugin provides the requested extension point" do
       described_class.register(name: "plugin", version: "1.0.0", provides: { mcp_tool_set: mcp_tool_set_class })
 
@@ -330,6 +366,18 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
       PluginRecord.find_by!(name: "disabled_plugin").update!(enabled: false)
 
       expect(described_class.providers_for(:agent_provider)).to eq([])
+    end
+
+    it "includes non-disableable providers even if a stale row says disabled" do
+      described_class.register(
+        name: "required_plugin",
+        version: "1.0.0",
+        disableable: false,
+        provides: { agent_provider: agent_provider_class }
+      )
+      PluginRecord.where(name: "required_plugin").update_all(enabled: false)
+
+      expect(described_class.providers_for(:agent_provider)).to eq([ agent_provider_class ])
     end
 
     it "includes providers from enabled plugins and excludes disabled ones" do
@@ -421,13 +469,16 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
   end
 
   describe "Manifest" do
-    it "is a Data object with name, version, provides, metadata, description, homepage, icon_url, and enabled" do
+    it "is a Data object with registration metadata and enabled state" do
       described_class.register(
         name:        "manifest_plugin",
         version:     "3.0.0",
         custom_key:  "value",
         description: "Desc",
-        homepage:    "https://example.com"
+        homepage:    "https://example.com",
+        default_enabled: false,
+        disableable: true,
+        category: "dev"
       )
       manifest = described_class.all_plugins.first
 
@@ -439,7 +490,10 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
       expect(manifest.description).to eq("Desc")
       expect(manifest.homepage).to eq("https://example.com")
       expect(manifest.icon_url).to be_nil
-      expect(manifest.enabled).to be(true)
+      expect(manifest.enabled).to be(false)
+      expect(manifest.default_enabled).to be(false)
+      expect(manifest.disableable).to be(true)
+      expect(manifest.category).to eq("dev")
     end
 
     it "exposes enabled? as a boolean predicate" do

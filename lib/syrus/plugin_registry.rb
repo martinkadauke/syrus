@@ -7,6 +7,8 @@ module Syrus
       test_result_parser
       coverage_analyzer
       preview_provider
+      admin_page
+      chat_mcp_tool_set
     ].freeze
 
     # Lambdas defer constant resolution until call time (autoload-friendly).
@@ -16,7 +18,9 @@ module Syrus
       input_source:       -> { Syrus::Plugin::InputSource },
       test_result_parser: -> { Syrus::Plugin::TestResultParser },
       coverage_analyzer:  -> { Syrus::Plugin::CoverageAnalyzer },
-      preview_provider:   -> { Syrus::Plugin::PreviewProvider }
+      preview_provider:   -> { Syrus::Plugin::PreviewProvider },
+      admin_page:         -> { Syrus::Plugin::AdminPage },
+      chat_mcp_tool_set:  -> { Syrus::Plugin::ChatMcpToolSet }
     }.freeze
 
     RegistrationError = Class.new(StandardError)
@@ -28,24 +32,49 @@ module Syrus
       # Called by each plugin's engine initializer before the app handles requests.
       # Auto-upserts a PluginRecord so the operator can enable/disable the plugin
       # without touching the Gemfile. Does not overwrite an existing enabled state.
-      def register(name:, version:, provides: {}, description: nil, homepage: nil, icon_url: nil, **metadata)
+      def register(
+        name:,
+        version:,
+        provides: {},
+        description: nil,
+        homepage: nil,
+        icon_url: nil,
+        default_enabled: true,
+        disableable: true,
+        category: nil,
+        **metadata
+      )
         validate_provides!(provides)
 
         @mutex.synchronize do
           validate_mcp_tool_name_uniqueness!(provides)
           @plugins << Syrus::Plugin::Manifest.new(
-            name:        name,
-            version:     version,
-            provides:    provides,
-            metadata:    metadata,
-            description: description,
-            homepage:    homepage,
-            icon_url:    icon_url
+            name:            name,
+            version:         version,
+            provides:        provides,
+            metadata:        metadata,
+            description:     description,
+            homepage:        homepage,
+            icon_url:        icon_url,
+            default_enabled: default_enabled,
+            disableable:     disableable,
+            category:        category
           )
         end
 
         begin
-          PluginRecord.find_or_create_by!(name: name)
+          upsert_plugin_record!(
+            name: name,
+            default_enabled: default_enabled,
+            disableable: disableable,
+            metadata: {
+              version: version,
+              description: description,
+              homepage: homepage,
+              icon_url: icon_url,
+              category: category
+            }.compact
+          )
         rescue ActiveRecord::ActiveRecordError
           # Table/database not available (e.g. asset precompile or
           # db:schema:load in progress). Ignore - the registry operates in
@@ -68,7 +97,7 @@ module Syrus
             end
             performance_phase("plugin_registry.providers_for.filter", extension_point: extension_point, plugin_count: plugins.size) do
               plugins
-                .select { |m| records.fetch(m.name, nil)&.enabled? || !records.key?(m.name) }
+                .select { |m| plugin_enabled?(m, records[m.name]) }
                 .flat_map { |m| Array(m.provides[extension_point]) }
             end
           rescue ActiveRecord::ActiveRecordError
@@ -93,7 +122,7 @@ module Syrus
             performance_phase("plugin_registry.all_plugins.annotate", plugin_count: plugins.size) do
               plugins.map do |m|
                 record = records[m.name]
-                record ? m.with(enabled: record.enabled) : m
+                record ? manifest_with_record(m, record) : m
               end
             end
           rescue ActiveRecord::ActiveRecordError
@@ -111,6 +140,31 @@ module Syrus
       end
 
       private
+
+      def upsert_plugin_record!(name:, default_enabled:, disableable:, metadata:)
+        record = PluginRecord.find_or_initialize_by(name: name)
+        record.enabled = default_enabled if record.new_record?
+        record.default_enabled = default_enabled if record.has_attribute?(:default_enabled)
+        record.disableable = disableable if record.has_attribute?(:disableable)
+        record.config = record.config.to_h.merge("manifest" => metadata)
+        record.enabled = true if !disableable && !record.enabled?
+        record.save!
+      end
+
+      def plugin_enabled?(manifest, record)
+        return manifest.default_enabled? unless record
+        return true unless manifest.disableable?
+
+        record.effective_enabled?
+      end
+
+      def manifest_with_record(manifest, record)
+        manifest.with(
+          enabled: record.effective_enabled?,
+          default_enabled: record.has_attribute?(:default_enabled) ? record.default_enabled : manifest.default_enabled,
+          disableable: record.has_attribute?(:disableable) ? record.disableable : manifest.disableable
+        )
+      end
 
       def performance_phase(name, metadata = {}, &block)
         if defined?(PerformanceLogging)
@@ -142,21 +196,30 @@ module Syrus
       # that include the interface module without implementing the full API
       # (common in unit tests) are skipped.
       def validate_mcp_tool_name_uniqueness!(provides)
-        new_tool_sets = Array(provides[:mcp_tool_set]).select { |ts| ts.respond_to?(:tool_definitions) }
+        new_tool_sets = (Array(provides[:mcp_tool_set]) + Array(provides[:chat_mcp_tool_set]))
+          .select { |ts| ts.respond_to?(:tool_definitions) }
         return if new_tool_sets.empty?
 
         existing_names = @plugins
-          .flat_map { |m| Array(m.provides[:mcp_tool_set]) }
+          .flat_map { |m| Array(m.provides[:mcp_tool_set]) + Array(m.provides[:chat_mcp_tool_set]) }
           .select { |ts| ts.respond_to?(:tool_definitions) }
-          .flat_map { |ts| ts.tool_definitions.map { |d| d[:name] } }
+          .flat_map { |ts| safe_tool_definitions(ts).map { |d| d[:name] } }
 
         new_tool_sets.each do |ts|
-          ts.tool_definitions.each do |defn|
+          safe_tool_definitions(ts).each do |defn|
             if existing_names.include?(defn[:name])
               raise RegistrationError,
                 "MCP tool name collision: #{defn[:name].inspect} is already registered by another tool set"
             end
           end
+        end
+      end
+
+      def safe_tool_definitions(tool_set)
+        if tool_set.method(:tool_definitions).arity.zero?
+          tool_set.tool_definitions
+        else
+          tool_set.tool_definitions(tier: nil)
         end
       end
     end

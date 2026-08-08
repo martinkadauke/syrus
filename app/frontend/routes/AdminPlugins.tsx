@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
-import { fetchAdminPlugins, type AdminPlugin, type AdminPluginExtensionPoint } from "../api/adminPlugins"
+import { disableAdminPlugin, enableAdminPlugin, fetchAdminPlugins, type AdminPlugin, type AdminPluginExtensionPoint } from "../api/adminPlugins"
 import { usePageTitle } from "../hooks/usePageTitle"
 import { useT } from "../hooks/useT"
 import { errorMessage } from "../lib/errorMessage"
@@ -47,6 +47,13 @@ function PluginsView({ plugins }: { plugins: AdminPlugin[] }) {
 
 function PluginCard({ plugin }: { plugin: AdminPlugin }) {
   const { t } = useT("admin")
+  const queryClient = useQueryClient()
+  const toggle = useMutation({
+    mutationFn: () => plugin.enabled ? disableAdminPlugin(plugin.name) : enableAdminPlugin(plugin.name),
+    onSuccess: (payload) => {
+      queryClient.setQueryData(["admin", "plugins"], payload)
+    }
+  })
 
   return (
     <article className="rounded border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
@@ -56,10 +63,26 @@ function PluginCard({ plugin }: { plugin: AdminPlugin }) {
             <h2 className="break-words text-base font-semibold text-gray-900 dark:text-gray-100">{plugin.name}</h2>
             <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">{plugin.version}</span>
             <StatusBadge status={plugin.enabled ? "enabled" : "disabled"} label={plugin.enabled ? t("plugins.enabled") : t("plugins.disabled")} />
+            {!plugin.disableable ? <StatusBadge status="required" label={t("plugins.required")} /> : null}
           </div>
           {plugin.description ? <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">{plugin.description}</p> : null}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            {plugin.category ? <span>{t("plugins.category")}: <span className="font-mono">{plugin.category}</span></span> : null}
+            <span>{t("plugins.default_state")}: {plugin.default_enabled ? t("plugins.enabled") : t("plugins.disabled")}</span>
+          </div>
+          {toggle.isError ? <p className="mt-2 text-sm text-red-700 dark:text-red-300">{errorMessage(toggle.error, t("plugins.error_toggle"))}</p> : null}
         </div>
-        <PluginMetadata plugin={plugin} />
+        <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
+          <button
+            className="inline-flex items-center justify-center rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:text-gray-500"
+            disabled={toggle.isPending || (plugin.enabled && !plugin.disableable)}
+            onClick={() => toggle.mutate()}
+            type="button"
+          >
+            {toggle.isPending ? t("plugins.saving") : plugin.enabled ? t("plugins.disable") : t("plugins.enable")}
+          </button>
+          <PluginMetadata plugin={plugin} />
+        </div>
       </div>
 
       {plugin.extension_points.length > 0 ? (
@@ -132,6 +155,7 @@ function StatusBadge({ status, label }: { status: string; label: string }) {
 
 function statusTone(status: string) {
   if (["available", "configured", "enabled", "registered"].includes(status)) return "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+  if (status === "required") return "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
   if (["disabled", "not_configured"].includes(status)) return "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
   if (status === "error") return "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300"
   return "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300"

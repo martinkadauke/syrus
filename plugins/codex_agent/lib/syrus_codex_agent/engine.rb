@@ -4,8 +4,11 @@ module SyrusCodexAgent
     # Syrus::PluginRegistry (autoloaded from lib/) is resolvable.
     config.after_initialize do
       Syrus::PluginRegistry.register(
-        name:    "syrus-codex-agent",
-        version: SyrusCodexAgent::VERSION,
+        name:            "syrus-codex-agent",
+        version:         SyrusCodexAgent::VERSION,
+        default_enabled: true,
+        disableable:     true,
+        category:        "agent_provider",
         provides: { agent_provider: AgentProviders::Codex }
       )
     end

@@ -29,4 +29,19 @@ RSpec.describe "API: /api/v1/admin/plugins", type: :request do
     expect(response).to have_http_status(:ok)
     expect(parse_body.fetch("plugins").sole).to include("name" => "api-plugin", "version" => "2.0.0")
   end
+
+  it "toggles installed plugins through the token admin API" do
+    admin_token
+    Syrus::PluginRegistry.reset!
+    Syrus::PluginRegistry.register(
+      name: "api-toggle-plugin",
+      version: "2.0.0",
+      provides: { agent_provider: AdminPluginsSpec::AvailableProvider }
+    )
+
+    post "/api/v1/admin/plugins/api-toggle-plugin/disable", headers: auth
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.fetch("plugins").sole).to include("name" => "api-toggle-plugin", "enabled" => false)
+  end
 end

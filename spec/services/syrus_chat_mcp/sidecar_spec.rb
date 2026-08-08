@@ -441,6 +441,81 @@ RSpec.describe Mcp::Sidecar do
     end
   end
 
+  describe "plugin chat MCP tool sets", :reset_plugin_registry do
+    around do |ex|
+      Syrus::PluginRegistry.reset!
+      Syrus::PluginRegistry.register(
+        name: "syrus-claude-agent",
+        version: SyrusClaudeAgent::VERSION,
+        provides: { agent_provider: AgentProviders::Claude }
+      )
+      Syrus::PluginRegistry.register(
+        name: "syrus-codex-agent",
+        version: SyrusCodexAgent::VERSION,
+        provides: { agent_provider: AgentProviders::Codex }
+      )
+      ex.run
+      Syrus::PluginRegistry.reset!
+    end
+
+    let(:stub_tool_set) do
+      Class.new do
+        include Syrus::Plugin::ChatMcpToolSet
+
+        def self.available_for?(_chat_session, tier:) = tier == :deferred
+
+        def self.tool_definitions(tier:)
+          [ { name: "chat_plugin_ping", description: "Ping through a chat plugin.", input_schema: {} } ]
+        end
+
+        def handle(_tool_name, _params, _context)
+          MCP::Tool::Response.new([ { type: "text", text: "chat pong" } ])
+        end
+      end
+    end
+
+    it "advertises and dispatches enabled chat MCP plugin tools for matching tiers" do
+      Syrus::PluginRegistry.register(
+        name: "chat-plugin",
+        version: "0.1.0",
+        provides: { chat_mcp_tool_set: stub_tool_set }
+      )
+      server = server_for(chat_session, tier: :deferred)
+      _ = jsonrpc(server, "initialize", id: 0)
+
+      list = jsonrpc(server, "tools/list", id: 1)
+      expect(list.dig(:result, :tools).map { |tool| tool[:name] }).to include("chat_plugin_ping")
+
+      response = call_tool(server, "chat_plugin_ping")
+      expect(response.dig(:result, :content, 0, :text)).to eq("chat pong")
+    end
+
+    it "does not advertise disabled chat MCP plugin tools" do
+      Syrus::PluginRegistry.register(
+        name: "chat-plugin",
+        version: "0.1.0",
+        provides: { chat_mcp_tool_set: stub_tool_set }
+      )
+      PluginRecord.find_by!(name: "chat-plugin").update!(enabled: false)
+
+      tool_names = described_class.tool_names(chat_session, tier: :deferred)
+
+      expect(tool_names).not_to include("chat_plugin_ping")
+    end
+
+    it "does not advertise chat MCP plugin tools when available_for? rejects the tier" do
+      Syrus::PluginRegistry.register(
+        name: "chat-plugin",
+        version: "0.1.0",
+        provides: { chat_mcp_tool_set: stub_tool_set }
+      )
+
+      tool_names = described_class.tool_names(chat_session, tier: :essential)
+
+      expect(tool_names).not_to include("chat_plugin_ping")
+    end
+  end
+
   describe ".chat" do
     it "builds a chat server context from a session id" do
       sidecar = described_class.chat(session_id: chat_session.id)

@@ -55,6 +55,8 @@ RSpec.describe "API: /api/v1/app/admin/plugins", type: :request do
       "name" => "visibility-plugin",
       "version" => "1.2.3",
       "enabled" => true,
+      "default_enabled" => true,
+      "disableable" => true,
       "description" => "Adds visible things.",
       "homepage" => "https://example.test/plugin",
       "author" => "Ada",
@@ -97,5 +99,44 @@ RSpec.describe "API: /api/v1/app/admin/plugins", type: :request do
 
     extension = parse_body.dig("plugins", 0, "extension_points", 0)
     expect(extension.fetch("availability")).to include("status" => "unavailable", "label" => "Unavailable")
+  end
+
+  it "enables and disables an installed disableable plugin live" do
+    sign_in_as(admin)
+    Syrus::PluginRegistry.reset!
+    Syrus::PluginRegistry.register(
+      name: "toggle-plugin",
+      version: "0.1.0",
+      provides: { agent_provider: AdminPluginsSpec::AvailableProvider }
+    )
+
+    post "/api/v1/app/admin/plugins/toggle-plugin/disable"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.fetch("plugins").sole).to include("name" => "toggle-plugin", "enabled" => false)
+    expect(Syrus::PluginRegistry.providers_for(:agent_provider)).to eq([])
+
+    post "/api/v1/app/admin/plugins/toggle-plugin/enable"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.fetch("plugins").sole).to include("name" => "toggle-plugin", "enabled" => true)
+    expect(Syrus::PluginRegistry.providers_for(:agent_provider)).to eq([ AdminPluginsSpec::AvailableProvider ])
+  end
+
+  it "rejects disabling a non-disableable plugin" do
+    sign_in_as(admin)
+    Syrus::PluginRegistry.reset!
+    Syrus::PluginRegistry.register(
+      name: "required-plugin",
+      version: "0.1.0",
+      disableable: false,
+      provides: { agent_provider: AdminPluginsSpec::AvailableProvider }
+    )
+
+    post "/api/v1/app/admin/plugins/required-plugin/disable"
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "code")).to eq("plugin_not_disableable")
+    expect(PluginRecord.find_by!(name: "required-plugin").enabled).to be(true)
   end
 end

@@ -1,4 +1,4 @@
-import { getJson } from "./client"
+import { getJson, postJson } from "./client"
 
 export type AdminPluginExtensionPoint = {
   extension_point: "agent_provider" | "mcp_tool_set" | "input_source" | string
@@ -15,6 +15,9 @@ export type AdminPlugin = {
   name: string
   version: string
   enabled: boolean
+  default_enabled: boolean
+  disableable: boolean
+  category: string | null
   description: string | null
   homepage: string | null
   author: string | null
@@ -28,4 +31,12 @@ export type AdminPluginsPayload = {
 
 export function fetchAdminPlugins() {
   return getJson<AdminPluginsPayload>("/api/v1/app/admin/plugins")
+}
+
+export function enableAdminPlugin(name: string) {
+  return postJson<AdminPluginsPayload>(`/api/v1/app/admin/plugins/${encodeURIComponent(name)}/enable`)
+}
+
+export function disableAdminPlugin(name: string) {
+  return postJson<AdminPluginsPayload>(`/api/v1/app/admin/plugins/${encodeURIComponent(name)}/disable`)
 }
