@@ -15,7 +15,10 @@ Plugins register source providers at boot:
 Syrus::PluginRegistry.register(
   name: "github_source",
   version: SyrusGithubSource::VERSION,
-  provides: { input_source: InputSources::Github }
+  provides: {
+    input_source:            InputSources::Github,
+    source_control_provider: SourceControl::GithubOperations
+  }
 )
 ```
 
@@ -28,3 +31,8 @@ The STI `type` column stores the class name, for example
 `InputSources::Github`. Moving a source implementation into a bundled plugin
 does not change existing rows as long as the class name remains the same and
 the plugin gem is loaded.
+
+Input sources are not the same as source-control providers. Input sources poll
+or ingest work. Source-control providers own git-host behavior such as branch,
+PR, and merge operations for repositories they support. GitHub currently
+provides both capabilities from the same bundled plugin.

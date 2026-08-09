@@ -43,6 +43,10 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
     Class.new { include Syrus::Plugin::ChatMcpToolSet }
   end
 
+  let(:source_control_provider_class) do
+    Class.new { include Syrus::Plugin::SourceControlProvider }
+  end
+
   describe "EXTENSION_POINTS" do
     it "includes :chat_provider and :coverage_analyzer" do
       expect(described_class::EXTENSION_POINTS).to include(:chat_provider, :coverage_analyzer)
@@ -54,6 +58,10 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
 
     it "includes :admin_page and :chat_mcp_tool_set" do
       expect(described_class::EXTENSION_POINTS).to include(:admin_page, :chat_mcp_tool_set)
+    end
+
+    it "includes :source_control_provider" do
+      expect(described_class::EXTENSION_POINTS).to include(:source_control_provider)
     end
 
     it "is frozen" do
@@ -77,6 +85,10 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
     it "maps UI and chat MCP extension points to their interfaces" do
       expect(described_class::INTERFACE_FOR[:admin_page].call).to eq(Syrus::Plugin::AdminPage)
       expect(described_class::INTERFACE_FOR[:chat_mcp_tool_set].call).to eq(Syrus::Plugin::ChatMcpToolSet)
+    end
+
+    it "maps :source_control_provider to Syrus::Plugin::SourceControlProvider" do
+      expect(described_class::INTERFACE_FOR[:source_control_provider].call).to eq(Syrus::Plugin::SourceControlProvider)
     end
 
     it "gives coverage analyzer providers the class call contract used by the registry" do
@@ -136,7 +148,8 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
             coverage_analyzer:  coverage_analyzer_class,
             preview_provider:   preview_provider_class,
             admin_page:         admin_page_class,
-            chat_mcp_tool_set:  chat_mcp_tool_set_class
+            chat_mcp_tool_set:  chat_mcp_tool_set_class,
+            source_control_provider: source_control_provider_class
           }
         )
       }.not_to raise_error

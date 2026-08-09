@@ -12,6 +12,7 @@ boot through `Syrus::PluginRegistry`. The registry currently supports:
 - `preview_provider`
 - `admin_page`
 - `chat_mcp_tool_set`
+- `source_control_provider`
 
 Operators can inspect the registered plugins from **Admin → Plugins**
 (`/admin/plugins`). The page shows each plugin's name, version, enabled state,
@@ -29,10 +30,13 @@ compiled JavaScript or locale strings.
 
 Availability is reported per extension point. Agent and chat providers run the
 provider class's `.available?` check. Input sources show how many repository
-`InputSource` records use that source class. MCP tool sets are listed as
-registered because their runtime availability depends on the repository context
-that invokes the sidecar. Test result parsers and coverage analyzers are listed
-as registered parser classes.
+`InputSource` records use that source class. Source-control providers identify
+which installed plugin owns branch, PR, and merge operations for a repository;
+they are separate from input sources because polling and PR operations are not
+the same capability. MCP tool sets are listed as registered because their
+runtime availability depends on the repository context that invokes the sidecar.
+Test result parsers and coverage analyzers are listed as registered parser
+classes.
 
 Plugin install and uninstall remain manual operations: edit the Gemfile, run
 Bundler, run migrations if the plugin ships any, rebuild frontend assets when
@@ -60,7 +64,8 @@ or installation-specific MCP tools should be contributed through plugin
 Bundled plugins:
 
 - `claude_agent` / `codex_agent` — default-enabled workflow and chat providers.
-- `github_source` — default-enabled GitHub issue/PR polling source.
+- `github_source` — default-enabled GitHub issue/PR polling source and
+  source-control provider.
 - `linear_source` — installed but disabled by default until configured.
 - `syrus_dev` — installed but disabled by default. It owns Syrus-development-only
   diagnostics such as Admin → Performance and the `read_performance_diagnostics`

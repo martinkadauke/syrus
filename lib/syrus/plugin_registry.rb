@@ -10,6 +10,7 @@ module Syrus
       preview_provider
       admin_page
       chat_mcp_tool_set
+      source_control_provider
     ].freeze
 
     # Lambdas defer constant resolution until call time (autoload-friendly).
@@ -22,7 +23,8 @@ module Syrus
       coverage_analyzer:  -> { Syrus::Plugin::CoverageAnalyzer },
       preview_provider:   -> { Syrus::Plugin::PreviewProvider },
       admin_page:         -> { Syrus::Plugin::AdminPage },
-      chat_mcp_tool_set:  -> { Syrus::Plugin::ChatMcpToolSet }
+      chat_mcp_tool_set:  -> { Syrus::Plugin::ChatMcpToolSet },
+      source_control_provider: -> { Syrus::Plugin::SourceControlProvider }
     }.freeze
 
     RegistrationError = Class.new(StandardError)

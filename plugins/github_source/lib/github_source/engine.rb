@@ -7,7 +7,10 @@ module SyrusGithubSource
         default_enabled: true,
         disableable:     true,
         category:        "input_source",
-        provides: { input_source: InputSources::Github }
+        provides: {
+          input_source:            InputSources::Github,
+          source_control_provider: SourceControl::GithubOperations
+        }
       )
     end
   end

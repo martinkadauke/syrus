@@ -41,6 +41,12 @@ gem "my_plugin", path: "plugins/my_plugin"
 | `:input_source`   | `Syrus::Plugin::InputSource`          | `#poll!`, `#validate_credentials!`, `#config_schema`, `#dedup_key` |
 | `:admin_page`     | `Syrus::Plugin::AdminPage`            | `.admin_pages` |
 | `:chat_mcp_tool_set` | `Syrus::Plugin::ChatMcpToolSet`    | `.tool_definitions(tier:)`, `.available_for?(session, tier:)`, `#handle` |
+| `:source_control_provider` | `Syrus::Plugin::SourceControlProvider` | `.provider_key`, `.display_name`, `.available_for?(repository)`, `.client_for(repository:, user:)` |
+
+`input_source` and `source_control_provider` are deliberately separate. A
+source plugin can poll for new work without owning PR operations, and a
+source-control provider can own branch/PR/merge operations without being a poll
+source. The bundled `github_source` currently provides both.
 
 Admin page providers return page metadata:
 
@@ -82,6 +88,7 @@ Syrus::PluginRegistry.register(
     chat_provider:  MyPlugin::ChatProvider,
     mcp_tool_set:   MyPlugin::McpToolSet,
     admin_page:     MyPlugin::AdminPages,
+    source_control_provider: MyPlugin::SourceControl,
   }
 )
 ```
