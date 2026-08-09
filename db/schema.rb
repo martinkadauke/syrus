@@ -10,7 +10,8 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_09_143100) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_09_193000) do
+
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -320,6 +321,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_143100) do
     t.string "source_kind", null: false
     t.datetime "updated_at", null: false
     t.index ["chat_message_id"], name: "index_chat_scoped_events_on_chat_message_id"
+    t.index ["chat_session_id", "created_at", "id"], name: "idx_chat_scoped_events_session_created_id"
     t.index ["chat_session_id", "dedupe_key"], name: "idx_chat_scoped_events_dedupe", unique: true
     t.index ["chat_session_id", "delivery_state", "created_at"], name: "idx_chat_scoped_events_delivery"
     t.index ["chat_session_id"], name: "index_chat_scoped_events_on_chat_session_id"
