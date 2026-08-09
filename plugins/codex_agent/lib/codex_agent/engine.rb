@@ -5,7 +5,9 @@ module SyrusCodexAgent
     config.after_initialize do
       Syrus::PluginRegistry.register(
         name:            "codex_agent",
+        display_name:    "Codex Agent",
         version:         SyrusCodexAgent::VERSION,
+        description:     "Runs workflow and chat turns through Codex.",
         default_enabled: true,
         disableable:     true,
         category:        "agent_provider",

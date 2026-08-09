@@ -514,6 +514,7 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
     it "is a Data object with registration metadata and enabled state" do
       described_class.register(
         name:        "manifest_plugin",
+        display_name: "Manifest Plugin",
         version:     "3.0.0",
         custom_key:  "value",
         description: "Desc",
@@ -526,6 +527,7 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
 
       expect(manifest).to be_a(Syrus::Plugin::Manifest)
       expect(manifest.name).to eq("manifest_plugin")
+      expect(manifest.display_name).to eq("Manifest Plugin")
       expect(manifest.version).to eq("3.0.0")
       expect(manifest.provides).to eq({})
       expect(manifest.metadata).to eq({ custom_key: "value" })

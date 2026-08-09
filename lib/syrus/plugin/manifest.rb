@@ -4,6 +4,7 @@ module Syrus
     # Returned by PluginRegistry.all_plugins; `enabled` reflects current DB state.
     Manifest = Data.define(
       :name,
+      :display_name,
       :version,
       :provides,
       :metadata,
@@ -15,7 +16,7 @@ module Syrus
       :disableable,
       :category
     ) do
-      def initialize(description: nil, homepage: nil, icon_url: nil, enabled: true, default_enabled: true, disableable: true, category: nil, **) = super
+      def initialize(display_name: nil, description: nil, homepage: nil, icon_url: nil, enabled: true, default_enabled: true, disableable: true, category: nil, **) = super
 
       def enabled? = enabled
       def default_enabled? = default_enabled

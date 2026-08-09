@@ -13,6 +13,7 @@ export type AdminPluginExtensionPoint = {
 
 export type AdminPlugin = {
   name: string
+  display_name: string
   version: string
   enabled: boolean
   default_enabled: boolean

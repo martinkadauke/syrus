@@ -3,6 +3,7 @@ module SyrusDev
     config.after_initialize do
       Syrus::PluginRegistry.register(
         name:            "syrus_dev",
+        display_name:    "Syrus Dev",
         version:         SyrusDev::VERSION,
         default_enabled: false,
         disableable:     true,

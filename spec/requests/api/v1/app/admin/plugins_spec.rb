@@ -36,6 +36,7 @@ RSpec.describe "API: /api/v1/app/admin/plugins", type: :request do
     AdminPluginsSpec::CustomInputSource.create!(user: admin, repository: repository)
     Syrus::PluginRegistry.register(
       name: "visibility-plugin",
+      display_name: "Visibility",
       version: "1.2.3",
       description: "Adds visible things.",
       homepage: "https://example.test/plugin",
@@ -66,6 +67,7 @@ RSpec.describe "API: /api/v1/app/admin/plugins", type: :request do
     plugin = parse_body.fetch("plugins").sole
     expect(plugin).to include(
       "name" => "visibility-plugin",
+      "display_name" => "Visibility",
       "version" => "1.2.3",
       "enabled" => true,
       "default_enabled" => true,

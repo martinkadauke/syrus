@@ -5,7 +5,9 @@ module SyrusClaudeAgent
     config.after_initialize do
       Syrus::PluginRegistry.register(
         name:            "claude_agent",
+        display_name:    "Claude Agent",
         version:         SyrusClaudeAgent::VERSION,
+        description:     "Runs workflow and chat turns through Claude.",
         default_enabled: true,
         disableable:     true,
         category:        "agent_provider",

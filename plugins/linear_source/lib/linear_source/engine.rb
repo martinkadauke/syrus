@@ -3,7 +3,9 @@ module SyrusLinearSource
     config.after_initialize do
       Syrus::PluginRegistry.register(
         name:            "linear_source",
+        display_name:    "Linear Source",
         version:         SyrusLinearSource::VERSION,
+        description:     "Ingests Linear issues as Syrus jobs and epics.",
         default_enabled: false,
         disableable:     true,
         category:        "input_source",

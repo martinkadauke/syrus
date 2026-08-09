@@ -17,6 +17,7 @@ module Admin
 
         {
           name: manifest.name,
+          display_name: manifest.display_name.presence || metadata[:display_name].presence || manifest.name.to_s.titleize,
           version: manifest.version,
           enabled: manifest.enabled?,
           default_enabled: manifest.default_enabled?,

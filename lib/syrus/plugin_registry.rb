@@ -40,6 +40,7 @@ module Syrus
         name:,
         version:,
         provides: {},
+        display_name: nil,
         description: nil,
         homepage: nil,
         icon_url: nil,
@@ -54,6 +55,7 @@ module Syrus
           validate_mcp_tool_name_uniqueness!(provides)
           @plugins << Syrus::Plugin::Manifest.new(
             name:            name,
+            display_name:    display_name,
             version:         version,
             provides:        provides,
             metadata:        metadata,
@@ -73,6 +75,7 @@ module Syrus
             disableable: disableable,
             metadata: {
               version: version,
+              display_name: display_name,
               description: description,
               homepage: homepage,
               icon_url: icon_url,
@@ -172,6 +175,7 @@ module Syrus
             disableable: manifest.disableable,
             metadata: manifest.metadata.to_h.merge(
               version: manifest.version,
+              display_name: manifest.display_name,
               description: manifest.description,
               homepage: manifest.homepage,
               icon_url: manifest.icon_url,
