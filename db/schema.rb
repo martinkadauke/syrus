@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_09_015717) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_09_043000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -202,6 +202,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_015717) do
     t.index ["chat_session_id", "created_at", "id"], name: "idx_chat_messages_session_created_id"
     t.index ["chat_session_id", "created_at"], name: "index_chat_messages_on_chat_session_id_and_created_at"
     t.index ["chat_session_id", "id"], name: "index_chat_messages_on_session_id_and_id"
+    t.index ["chat_session_id", "role", "created_at", "id"], name: "idx_chat_messages_session_role_created_id"
     t.index ["chat_session_id", "role"], name: "idx_chat_messages_session_role"
     t.index ["chat_session_id"], name: "index_chat_messages_on_chat_session_id"
     t.index ["pending_action_id"], name: "index_chat_messages_on_pending_action_id"
@@ -379,6 +380,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_015717) do
     t.index ["share_token"], name: "index_chat_sessions_on_share_token", unique: true
     t.index ["turn_in_flight", "last_message_at"], name: "idx_chat_sessions_stale_turns"
     t.index ["user_id", "cumulative_cost_usd"], name: "idx_chat_sessions_spending_user_cost"
+    t.index ["user_id", "hidden_at", "system_kind", "pinned", "last_message_at", "created_at", "id"], name: "idx_chat_sessions_index_order"
     t.index ["user_id", "hidden_at"], name: "index_chat_sessions_on_user_id_and_hidden_at"
     t.index ["user_id", "system_kind"], name: "index_chat_sessions_on_user_id_and_system_kind", unique: true
     t.index ["user_id"], name: "index_chat_sessions_on_user_id"
@@ -980,7 +982,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_015717) do
     t.index ["state", "landing_queue_position", "id"], name: "index_jobs_on_state_and_landing_queue_position_and_id"
     t.index ["target_repository_id"], name: "index_jobs_on_target_repository_id"
     t.index ["triaging_reason"], name: "index_jobs_on_triaging_reason"
+    t.index ["user_id", "closure_reason"], name: "idx_jobs_user_closure_reason"
     t.index ["user_id", "state", "closure_reason", "finished_at"], name: "idx_jobs_user_state_closure_finished"
+    t.index ["user_id", "updated_at", "id"], name: "idx_jobs_user_updated_recent"
     t.index ["user_id"], name: "index_jobs_on_user_id"
     t.index ["validity"], name: "index_jobs_on_validity"
   end
@@ -1256,6 +1260,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_015717) do
     t.index ["repaired_by_user_id"], name: "index_provider_availability_evidences_on_repaired_by_user_id"
     t.index ["run_id"], name: "index_provider_availability_evidences_on_run_id"
     t.index ["user_id", "provider", "account_id", "model", "observed_at"], name: "idx_provider_evidence_scope_observed"
+    t.index ["user_id", "provider", "source", "observed_at", "id"], name: "idx_provider_evidence_user_provider_source_recent"
+    t.index ["user_id", "provider", "status", "observed_at", "id"], name: "idx_provider_evidence_user_provider_status_recent"
     t.index ["user_id"], name: "index_provider_availability_evidences_on_user_id"
   end
 
@@ -1525,9 +1531,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_015717) do
     t.index ["state", "job_id", "updated_at"], name: "idx_runs_state_job_updated"
     t.index ["state", "last_heartbeat_at"], name: "index_runs_on_state_and_last_heartbeat_at"
     t.index ["step_id", "created_at", "id"], name: "idx_runs_step_created"
+    t.index ["step_id", "state", "id"], name: "idx_runs_step_state_id"
     t.index ["step_id"], name: "index_runs_on_step_id"
     t.index ["user_id", "agent_provider", "finished_at", "updated_at", "id"], name: "idx_runs_provider_latest_finished"
     t.index ["user_id", "created_at", "cost_usd"], name: "idx_runs_spending_user_window"
+    t.index ["user_id", "state", "agent_provider", "finished_at", "updated_at", "id"], name: "idx_runs_user_state_provider_recent"
     t.index ["user_id"], name: "index_runs_on_user_id"
   end
 

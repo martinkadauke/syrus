@@ -18,8 +18,10 @@ module App
       return cache[key] if cache.key?(key)
 
       cache[key] = PerformanceLogging.phase("provider_availability.for_user", provider: provider, cached: true) do
-        fetch_shared_cache(key) do
-          PerformanceLogging.phase("provider_availability.status", provider: provider, cached: true) { new(user: user, provider: provider, now: now).status }
+        fetch_process_cache(key, now: now) do
+          fetch_shared_cache(key) do
+            PerformanceLogging.phase("provider_availability.status", provider: provider, cached: true) { new(user: user, provider: provider, now: now).status }
+          end
         end
       end
     end

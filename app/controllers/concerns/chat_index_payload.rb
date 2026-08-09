@@ -279,8 +279,7 @@ module ChatIndexPayload
       severity = event.payload["severity"].to_s
       severity if severity_rank.key?(severity)
     end
-    legacy_severities = legacy_unread_messages.limit(200).filter_map do |message|
-      content = message.content
+    legacy_severities = legacy_unread_messages.limit(200).pluck(:content).filter_map do |content|
       next unless content.is_a?(Hash)
       next if content.dig("supervisor_event", "scoped_event_id").present?
 

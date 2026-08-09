@@ -74,7 +74,7 @@ module AppApi
     def setup_status_payload
       return nil unless user
 
-      AppApi::SetupStatus.new(user).as_json
+      @setup_status_payload ||= AppApi::SetupStatus.new(user).as_json
     end
 
     def provider_availability_payload
@@ -105,7 +105,7 @@ module AppApi
     def setup_payload
       return nil unless user
 
-      ::App::SetupStatus.call(user: user)
+      @setup_payload ||= ::App::SetupStatus.call(user: user)
     end
 
     def flash_payload

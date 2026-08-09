@@ -19,7 +19,7 @@ module App
         owner_user = PerformanceLogging.phase("dashboard_job.owner_user", job_id: job.id) { job_owner_user(job) }
         workflow_agent_provider = PerformanceLogging.phase("dashboard_job.workflow_agent_provider", job_id: job.id) { job.workflow_agent_provider }
         provider_availability = PerformanceLogging.phase("dashboard_job.provider_availability", job_id: job.id, provider: workflow_agent_provider) do
-          ::App::ProviderAvailability.for_user(user, workflow_agent_provider)
+          provider_availability_for(workflow_agent_provider)
         end
         retry_state = PerformanceLogging.phase("dashboard_job.retry_state", job_id: job.id) { retry_state_for(job) }
         repository = PerformanceLogging.phase("dashboard_job.repository", job_id: job.id) { repository_json(job.repository) }
