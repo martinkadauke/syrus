@@ -18,11 +18,11 @@ class CreateWorkEngineReconcilerActivityEvents < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :work_engine_reconciler_activity_events, :occurred_at
-    add_index :work_engine_reconciler_activity_events, [ :source, :occurred_at ], name: "index_reconciler_activity_on_source_and_occurred_at"
-    add_index :work_engine_reconciler_activity_events, [ :event_type, :occurred_at ], name: "index_reconciler_activity_on_type_and_occurred_at"
-    add_index :work_engine_reconciler_activity_events, [ :job_id, :occurred_at ], name: "index_reconciler_activity_on_job_and_occurred_at"
-    add_index :work_engine_reconciler_activity_events, [ :workflow_id, :occurred_at ], name: "index_reconciler_activity_on_workflow_and_occurred_at"
-    add_index :work_engine_reconciler_activity_events, [ :run_id, :occurred_at ], name: "index_reconciler_activity_on_run_and_occurred_at"
+    add_index :work_engine_reconciler_activity_events, :occurred_at unless index_exists?(:work_engine_reconciler_activity_events, :occurred_at)
+    add_index :work_engine_reconciler_activity_events, [ :source, :occurred_at ], name: "index_reconciler_activity_on_source_and_occurred_at" unless index_exists?(:work_engine_reconciler_activity_events, [ :source, :occurred_at ], name: "index_reconciler_activity_on_source_and_occurred_at")
+    add_index :work_engine_reconciler_activity_events, [ :event_type, :occurred_at ], name: "index_reconciler_activity_on_type_and_occurred_at" unless index_exists?(:work_engine_reconciler_activity_events, [ :event_type, :occurred_at ], name: "index_reconciler_activity_on_type_and_occurred_at")
+    add_index :work_engine_reconciler_activity_events, [ :job_id, :occurred_at ], name: "index_reconciler_activity_on_job_and_occurred_at" unless index_exists?(:work_engine_reconciler_activity_events, [ :job_id, :occurred_at ], name: "index_reconciler_activity_on_job_and_occurred_at")
+    add_index :work_engine_reconciler_activity_events, [ :workflow_id, :occurred_at ], name: "index_reconciler_activity_on_workflow_and_occurred_at" unless index_exists?(:work_engine_reconciler_activity_events, [ :workflow_id, :occurred_at ], name: "index_reconciler_activity_on_workflow_and_occurred_at")
+    add_index :work_engine_reconciler_activity_events, [ :run_id, :occurred_at ], name: "index_reconciler_activity_on_run_and_occurred_at" unless index_exists?(:work_engine_reconciler_activity_events, [ :run_id, :occurred_at ], name: "index_reconciler_activity_on_run_and_occurred_at")
   end
 end
