@@ -16,6 +16,7 @@ module Admin
         metadata = manifest.metadata.with_indifferent_access
 
         {
+          disable_blockers: disable_blockers_payload(manifest),
           name: manifest.name,
           display_name: manifest.display_name.presence || metadata[:display_name].presence || manifest.name.to_s.titleize,
           version: manifest.version,
@@ -30,6 +31,16 @@ module Admin
           frontend: metadata[:frontend].presence || {},
           routes: Array(metadata[:routes]).map { |route| route.to_h },
           extension_points: PerformanceLogging.phase("admin_plugins.plugin.extension_points", plugin: manifest.name) { extension_points_payload(manifest) }
+        }
+      end
+    end
+
+    def disable_blockers_payload(manifest)
+      Admin::PluginDisableGuard.blockers_for(manifest).map do |blocker|
+        {
+          kind: blocker.kind,
+          label: blocker.label,
+          count: blocker.count
         }
       end
     end

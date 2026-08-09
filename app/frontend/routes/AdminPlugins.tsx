@@ -54,6 +54,7 @@ function PluginCard({ plugin }: { plugin: AdminPlugin }) {
       queryClient.setQueryData(["admin", "plugins"], payload)
     }
   })
+  const disableBlocked = plugin.enabled && plugin.disable_blockers.length > 0
 
   return (
     <article className="rounded border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
@@ -71,12 +72,17 @@ function PluginCard({ plugin }: { plugin: AdminPlugin }) {
             {plugin.category ? <span>{t("plugins.category")}: <span className="font-mono">{plugin.category}</span></span> : null}
             <span>{t("plugins.default_state")}: {plugin.default_enabled ? t("plugins.enabled") : t("plugins.disabled")}</span>
           </div>
+          {disableBlocked ? (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-700 dark:text-amber-300">
+              {plugin.disable_blockers.map((blocker) => <li key={`${blocker.kind}-${blocker.label}`}>{blocker.label}: {blocker.count}</li>)}
+            </ul>
+          ) : null}
           {toggle.isError ? <p className="mt-2 text-sm text-red-700 dark:text-red-300">{errorMessage(toggle.error, t("plugins.error_toggle"))}</p> : null}
         </div>
         <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
           <button
             className="inline-flex items-center justify-center rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:text-gray-500"
-            disabled={toggle.isPending || (plugin.enabled && !plugin.disableable)}
+            disabled={toggle.isPending || (plugin.enabled && (!plugin.disableable || disableBlocked))}
             onClick={() => toggle.mutate()}
             type="button"
           >

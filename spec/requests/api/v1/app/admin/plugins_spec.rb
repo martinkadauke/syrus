@@ -68,6 +68,13 @@ RSpec.describe "API: /api/v1/app/admin/plugins", type: :request do
     expect(plugin).to include(
       "name" => "visibility-plugin",
       "display_name" => "Visibility",
+      "disable_blockers" => [
+        {
+          "kind" => "configured_input_sources",
+          "label" => "Configured input sources use AdminPluginsSpec::CustomInputSource",
+          "count" => 1
+        }
+      ],
       "version" => "1.2.3",
       "enabled" => true,
       "default_enabled" => true,
@@ -166,5 +173,27 @@ RSpec.describe "API: /api/v1/app/admin/plugins", type: :request do
     expect(response).to have_http_status(:unprocessable_content)
     expect(parse_body.dig("error", "code")).to eq("plugin_not_disableable")
     expect(PluginRecord.find_by!(name: "required-plugin").enabled).to be(true)
+  end
+
+  it "rejects disabling a plugin while configured resources use it" do
+    sign_in_as(admin)
+    Syrus::PluginRegistry.reset!
+    Syrus::PluginRegistry.register(
+      name: "used-plugin",
+      version: "0.1.0",
+      provides: { agent_provider: AdminPluginsSpec::AvailableProvider }
+    )
+    admin.update!(agent_provider: "available")
+
+    get "/api/v1/app/admin/plugins"
+    expect(parse_body.dig("plugins", 0, "disable_blockers")).to include(
+      include("kind" => "configured_users", "count" => 1)
+    )
+
+    post "/api/v1/app/admin/plugins/used-plugin/disable"
+
+    expect(response).to have_http_status(:conflict)
+    expect(parse_body.dig("error", "code")).to eq("plugin_in_use")
+    expect(PluginRecord.find_by!(name: "used-plugin").enabled).to be(true)
   end
 end

@@ -44,4 +44,20 @@ RSpec.describe "API: /api/v1/admin/plugins", type: :request do
     expect(response).to have_http_status(:ok)
     expect(parse_body.fetch("plugins").sole).to include("name" => "api-toggle-plugin", "enabled" => false)
   end
+
+  it "rejects disabling a plugin through the token admin API while it is in use" do
+    admin_token
+    Syrus::PluginRegistry.reset!
+    Syrus::PluginRegistry.register(
+      name: "api-used-plugin",
+      version: "2.0.0",
+      provides: { agent_provider: AdminPluginsSpec::AvailableProvider }
+    )
+    admin.update!(agent_provider: "available")
+
+    post "/api/v1/admin/plugins/api-used-plugin/disable", headers: auth
+
+    expect(response).to have_http_status(:conflict)
+    expect(parse_body.dig("error", "code")).to eq("plugin_in_use")
+  end
 end
