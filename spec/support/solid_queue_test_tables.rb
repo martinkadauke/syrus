@@ -88,6 +88,11 @@ module SolidQueueTestTables
         t.bigint :job_id, null: false
       end
     end
+    unless connection.index_exists?(:solid_queue_failed_executions, [ :created_at, :job_id ], name: "index_solid_queue_failed_executions_on_created_at_job_id")
+      connection.add_index :solid_queue_failed_executions,
+        [ :created_at, :job_id ],
+        name: "index_solid_queue_failed_executions_on_created_at_job_id"
+    end
 
     unless connection.table_exists?(:solid_queue_recurring_tasks)
       connection.create_table :solid_queue_recurring_tasks do |t|

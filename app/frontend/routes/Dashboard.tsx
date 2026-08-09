@@ -24,10 +24,11 @@ import { dashboardApiSearch, dashboardChromeSearch, fetchDashboardChromeWithMeta
 import type { JsonResponseMeta } from "../api/client"
 import { TopoDepGraph } from "../components/TopoDepGraph"
 import { errorMessage } from "../lib/errorMessage"
-import { apiRequestTrace, browserTraceId, performanceLoggingEnabled, recordBrowserTrace } from "../lib/performanceTrace"
+import { apiRequestTrace, browserTraceId, recordBrowserTrace } from "../lib/performanceTrace"
 
 export function DashboardRoute() {
   const { t } = useT("dashboard")
+  const queryClient = useQueryClient()
   usePageTitle(t("title"))
   const location = useLocation()
   const search = dashboardApiSearch(location.pathname, location.search)
@@ -67,7 +68,9 @@ export function DashboardRoute() {
   }, [dashboardChrome.data, dashboardRows.data, dashboardRows.isPlaceholderData])
   useEffect(() => {
     if (!payload || payload.rows_current_for_search === false) return
-    if (!performanceLoggingEnabled()) return
+    const bootstrap = queryClient.getQueryData<BootstrapPayload>(["bootstrap"]) ?? readInitialBootstrap()
+    const loggingEnabled = bootstrap?.feature_flags?.performance_logging === true
+    if (!loggingEnabled) return
     const trace = activeTrace.current
     if (!trace || trace.key !== traceKey || reportedTraceKey.current === traceKey) return
 
@@ -78,9 +81,10 @@ export function DashboardRoute() {
       startedAt: trace.startedAt,
       payload,
       chromeMeta: chromeMeta.current,
-      rowsMeta: rowsMeta.current
+      rowsMeta: rowsMeta.current,
+      loggingEnabled
     })
-  }, [dashboardChrome.data, dashboardRows.data, payload, traceKey])
+  }, [dashboardChrome.data, dashboardRows.data, payload, queryClient, traceKey])
 
   if (!payload && (dashboardChrome.isPending || dashboardRows.isPending)) return <main aria-label={t("title")} className="p-6 text-sm text-gray-600 dark:text-gray-300">{t("loading")}</main>
   if (dashboardChrome.isError) return <DashboardError error={dashboardChrome.error} />
@@ -90,7 +94,7 @@ export function DashboardRoute() {
   return <DashboardView pathname={location.pathname} search={location.search} payload={payload} />
 }
 
-function recordDashboardBrowserTrace({ chromeMeta, payload, rowsMeta, startedAt, traceId, tracePath }: { chromeMeta: JsonResponseMeta | null; payload: DashboardPayload; rowsMeta: JsonResponseMeta | null; startedAt: number; traceId: string; tracePath: string }) {
+function recordDashboardBrowserTrace({ chromeMeta, loggingEnabled, payload, rowsMeta, startedAt, traceId, tracePath }: { chromeMeta: JsonResponseMeta | null; loggingEnabled: boolean; payload: DashboardPayload; rowsMeta: JsonResponseMeta | null; startedAt: number; traceId: string; tracePath: string }) {
   recordBrowserTrace({
     trace_id: traceId,
     name: "dashboard.route",
@@ -110,7 +114,7 @@ function recordDashboardBrowserTrace({ chromeMeta, payload, rowsMeta, startedAt,
       apiRequestTrace("dashboard.chrome", sanitizedDashboardRequestMeta(chromeMeta)),
       apiRequestTrace("dashboard.rows", sanitizedDashboardRequestMeta(rowsMeta))
     ].filter((request): request is NonNullable<typeof request> => request != null)
-  })
+  }, { enabled: loggingEnabled })
 }
 
 function dashboardTracePath(pathname: string, rawSearch: string): string {

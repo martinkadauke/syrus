@@ -40,8 +40,9 @@ export function apiRequestTrace(name: string, meta: JsonResponseMeta | null | un
   }
 }
 
-export function recordBrowserTrace(payload: BrowserTracePayload): void {
-  if (!performanceLoggingEnabled()) return
+export function recordBrowserTrace(payload: BrowserTracePayload, options: { enabled?: boolean } = {}): void {
+  if (options.enabled === false) return
+  if (options.enabled !== true && !performanceLoggingEnabled()) return
 
   const csrfToken = readInitialBootstrap()?.csrf_token || document.querySelector<HTMLMetaElement>("meta[name='csrf-token']")?.content
   const body = JSON.stringify({ performance_event: payload })
