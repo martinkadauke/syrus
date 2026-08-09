@@ -10,6 +10,10 @@ class PollAllInputSourcesJob < ApplicationJob
       .where(polling_enabled: true)
       .joins(:repository)
       .merge(Repository.active)
-      .find_each { |source| PollInputSourceJob.perform_later(source.id) }
+      .find_each do |source|
+        next unless source.provider_enabled?
+
+        PollInputSourceJob.perform_later(source.id)
+      end
   end
 end

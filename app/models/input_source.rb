@@ -33,6 +33,10 @@ class InputSource < ApplicationRecord
     polling_enabled? && repository.present?
   end
 
+  def provider_enabled?
+    Syrus::PluginRegistry.providers_for(:input_source).any? { |provider| is_a?(provider) }
+  end
+
   private
 
   def seed_config

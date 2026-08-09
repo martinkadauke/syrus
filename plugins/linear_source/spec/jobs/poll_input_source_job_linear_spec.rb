@@ -24,6 +24,10 @@ RSpec.describe "PollInputSourceJob with Linear source" do
     }
   end
 
+  before do
+    PluginRecord.find_by!(name: "linear_source").update!(enabled: true)
+  end
+
   it "creates a Job end-to-end via PollInputSourceJob" do
     allow_any_instance_of(LinearClient).to receive(:issues).and_return([ linear_issue ])
 
@@ -45,6 +49,13 @@ RSpec.describe "PollInputSourceJob with Linear source" do
 
   it "skips when polling is disabled unless forced" do
     source.update!(polling_enabled: false)
+    allow_any_instance_of(LinearClient).to receive(:issues).and_return([ linear_issue ])
+
+    expect { PollInputSourceJob.perform_now(source.id) }.not_to change(Job, :count)
+  end
+
+  it "skips when the source provider plugin is disabled unless forced" do
+    PluginRecord.find_by!(name: "linear_source").update!(enabled: false)
     allow_any_instance_of(LinearClient).to receive(:issues).and_return([ linear_issue ])
 
     expect { PollInputSourceJob.perform_now(source.id) }.not_to change(Job, :count)

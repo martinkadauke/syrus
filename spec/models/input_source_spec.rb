@@ -34,6 +34,15 @@ RSpec.describe InputSource do
     end
   end
 
+  describe "#provider_enabled?" do
+    it "returns false when the owning plugin is disabled" do
+      source = repository.github_input_source
+      PluginRecord.find_by!(name: "github_source").update!(enabled: false)
+
+      expect(source.provider_enabled?).to be(false)
+    end
+  end
+
   describe "config default" do
     it "seeds an empty hash when config is not provided" do
       source = InputSources::Github.new(repository: repository, user: user)

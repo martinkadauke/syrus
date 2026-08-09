@@ -7,6 +7,7 @@ class PollInputSourceJob < ApplicationJob
     source = InputSource.find_by(id: source_id)
     return unless source
     return unless force || source.polling_enabled?
+    return unless force || source.provider_enabled?
 
     source.poll!
   end
