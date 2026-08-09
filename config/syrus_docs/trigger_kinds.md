@@ -168,6 +168,8 @@ If any required preflight grader fails, the chain continues normally to the impl
 
 This trigger kind is infrastructure-facing and not surfaced in the operator Job state machine. It does not produce a PR or appear in the normal Job workflow list.
 
+Main-branch CI health is intentionally narrower than "any failed GitHub check on the SHA." For GitHub Actions, Syrus only treats checks from the regular `CI` workflow as the CI signal. Release, test-build, website deploy, and other packaging/operations workflows can fail on the same commit without marking main broken or spawning a main-branch repair job.
+
 `main_grader` is exempt from user Job start gates and the global agent-run concurrency deferral that would make the health signal stale. It starts and runs even while another Job in the repository has urgent priority, and its RunJobs use an internal Solid Queue priority ahead of user-facing `urgent` Jobs so queued urgent work cannot delay the main-health check. It is also exempt from the broken-main gate because the workflow is the check that measures main-branch grader health.
 
 **Workspace lifecycle:** Infrastructure workflows (those in `Workflow::INFRASTRUCTURE_TRIGGER_KINDS`) clean their workspace immediately on both success and failure — they do not participate in the normal failed-workflow workspace retention. This is enforced at two layers:

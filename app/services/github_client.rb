@@ -500,6 +500,7 @@ class GithubClient
   # broken.
   FAILED_CONCLUSIONS = %w[failure timed_out action_required stale].freeze
   INCONCLUSIVE_CONCLUSIONS = %w[cancelled].freeze
+  MAIN_BRANCH_CI_WORKFLOW_NAMES = [ "CI" ].freeze
   ACTIONS_INFRA_SETUP_STEP_NAMES = [
     "Set up job",
     "Prepare workflow directory",
@@ -562,26 +563,19 @@ class GithubClient
     runs = Array(track_rate_limits { @client.check_runs_for_ref(repo_slug, sha) }.check_runs)
     return { any?: false, pending?: false, any_failed?: false, any_cancelled?: false, all_passed?: false, failed_checks: [] } if runs.empty?
 
-    pending = runs.any? { |cr| cr.status != "completed" }
-    failed_runs = runs.select { |cr| cr.status == "completed" && FAILED_CONCLUSIONS.include?(cr.conclusion) }
-    cancelled_runs = runs.select { |cr| cr.status == "completed" && INCONCLUSIVE_CONCLUSIONS.include?(cr.conclusion) }
-    any_failed = failed_runs.any?
-    any_cancelled = cancelled_runs.any?
-    all_passed = !pending && runs.all? { |cr| PASSING_CONCLUSIONS.include?(cr.conclusion) }
-    failed_checks = failed_runs.map do |cr|
-      {
-        name: cr.name.to_s,
-        conclusion: cr.conclusion.to_s,
-        summary: cr.output&.summary.to_s.presence,
-        log: cr.output&.text.to_s.presence,
-        url: cr.html_url.to_s.presence,
-        html_url: cr.html_url.to_s.presence
-      }.compact
-    end
-
-    { any?: true, pending?: pending, any_failed?: any_failed, any_cancelled?: any_cancelled, all_passed?: all_passed, failed_checks: failed_checks }
+    summarize_check_runs(runs)
   rescue Octokit::TooManyRequests => e
     Rails.logger.warn("[GithubClient] rate-limited on #{repo_slug}@#{sha} check_runs_summary: #{e.message}")
+    raise
+  end
+
+  def main_branch_check_runs_summary_for(repo_slug, sha)
+    runs = Array(track_rate_limits { @client.check_runs_for_ref(repo_slug, sha) }.check_runs)
+    return { any?: false, pending?: false, any_failed?: false, any_cancelled?: false, all_passed?: false, failed_checks: [] } if runs.empty?
+
+    summarize_check_runs(filter_main_branch_check_runs(repo_slug, sha, runs))
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] rate-limited on #{repo_slug}@#{sha} main_branch_check_runs_summary: #{e.message}")
     raise
   end
 
@@ -831,6 +825,59 @@ class GithubClient
 
   private
 
+  def summarize_check_runs(runs)
+    return { any?: false, pending?: false, any_failed?: false, any_cancelled?: false, all_passed?: false, failed_checks: [] } if runs.empty?
+
+    pending = runs.any? { |cr| cr.status != "completed" }
+    failed_runs = runs.select { |cr| cr.status == "completed" && FAILED_CONCLUSIONS.include?(cr.conclusion) }
+    cancelled_runs = runs.select { |cr| cr.status == "completed" && INCONCLUSIVE_CONCLUSIONS.include?(cr.conclusion) }
+    any_failed = failed_runs.any?
+    any_cancelled = cancelled_runs.any?
+    all_passed = !pending && runs.all? { |cr| PASSING_CONCLUSIONS.include?(cr.conclusion) }
+    failed_checks = failed_runs.map do |cr|
+      {
+        name: cr.name.to_s,
+        conclusion: cr.conclusion.to_s,
+        summary: cr.output&.summary.to_s.presence,
+        log: cr.output&.text.to_s.presence,
+        url: cr.html_url.to_s.presence,
+        html_url: cr.html_url.to_s.presence
+      }.compact
+    end
+
+    { any?: true, pending?: pending, any_failed?: any_failed, any_cancelled?: any_cancelled, all_passed?: all_passed, failed_checks: failed_checks }
+  end
+
+  def filter_main_branch_check_runs(repo_slug, sha, runs)
+    return runs unless runs.any? { |run| github_actions_check_run?(run) }
+
+    workflow_names_by_run_id = actions_workflow_names_by_run_id_for_sha(repo_slug, sha)
+    return runs unless workflow_names_by_run_id
+
+    runs.select do |run|
+      next true unless github_actions_check_run?(run)
+
+      run_id = actions_run_id_from_url(run.html_url)
+      next true unless run_id
+
+      MAIN_BRANCH_CI_WORKFLOW_NAMES.include?(workflow_names_by_run_id[run_id].to_s)
+    end
+  end
+
+  def github_actions_check_run?(run)
+    run.app&.slug.to_s == "github-actions"
+  end
+
+  def actions_workflow_names_by_run_id_for_sha(repo_slug, sha)
+    response = track_rate_limits do
+      @client.repository_workflow_runs(repo_slug, head_sha: sha, per_page: 100)
+    end
+    Array(response.workflow_runs).to_h { |run| [ run.id.to_i, run.name.to_s ] }
+  rescue Octokit::NotFound, Octokit::Forbidden, Octokit::Unauthorized => e
+    Rails.logger.warn("[GithubClient] could not inspect Actions workflow runs for #{repo_slug}@#{sha}: #{e.message}")
+    nil
+  end
+
   def actions_failure_metadata_for(repo_slug, check_run)
     job_id = actions_job_id_from_url(check_run.html_url)
     return {} unless job_id
@@ -856,6 +903,10 @@ class GithubClient
 
   def actions_job_id_from_url(url)
     url.to_s[%r{/actions/runs/\d+/job/(\d+)}, 1]&.to_i
+  end
+
+  def actions_run_id_from_url(url)
+    url.to_s[%r{/actions/runs/(\d+)}, 1]&.to_i
   end
 
   def actions_infrastructure_failure?(check_run:, job:, failed_step_names:)

@@ -11,7 +11,7 @@ RSpec.describe PollMainBranchHealthJob do
   end
 
   def stub_check_runs(summary)
-    allow_any_instance_of(GithubClient).to receive(:check_runs_summary_for).and_return(summary)
+    allow_any_instance_of(GithubClient).to receive(:main_branch_check_runs_summary_for).and_return(summary)
   end
 
   it "sets ci_health to healthy when all checks pass" do
@@ -107,7 +107,7 @@ RSpec.describe PollMainBranchHealthJob do
     repository.update!(last_health_checked_sha: sha, last_graded_sha: sha, last_ci_evaluated_sha: sha, ci_health: "healthy", grader_health: "healthy")
     stub_sha(sha)
 
-    expect_any_instance_of(GithubClient).not_to receive(:check_runs_summary_for)
+    expect_any_instance_of(GithubClient).not_to receive(:main_branch_check_runs_summary_for)
     described_class.perform_now(repository.id)
   end
 
@@ -118,7 +118,7 @@ RSpec.describe PollMainBranchHealthJob do
     repository.update!(last_health_checked_sha: sha, last_graded_sha: sha, last_ci_evaluated_sha: sha, ci_health: "broken", grader_health: "healthy")
     stub_sha(sha)
 
-    expect_any_instance_of(GithubClient).not_to receive(:check_runs_summary_for)
+    expect_any_instance_of(GithubClient).not_to receive(:main_branch_check_runs_summary_for)
     described_class.perform_now(repository.id)
   end
 
@@ -157,7 +157,7 @@ RSpec.describe PollMainBranchHealthJob do
     stub_sha(sha)
 
     # The job must PROCEED to re-poll (not early-return); assert the call happens.
-    expect_any_instance_of(GithubClient).to receive(:check_runs_summary_for)
+    expect_any_instance_of(GithubClient).to receive(:main_branch_check_runs_summary_for)
       .and_return({ any?: true, pending?: true, any_failed?: false, all_passed?: false })
     described_class.perform_now(repository.id)
 
@@ -199,7 +199,7 @@ RSpec.describe PollMainBranchHealthJob do
 
   it "returns early when the branch has no HEAD SHA" do
     allow_any_instance_of(GithubClient).to receive(:branch_head_sha).and_return(nil)
-    expect_any_instance_of(GithubClient).not_to receive(:check_runs_summary_for)
+    expect_any_instance_of(GithubClient).not_to receive(:main_branch_check_runs_summary_for)
 
     described_class.perform_now(repository.id)
   end
@@ -216,7 +216,7 @@ RSpec.describe PollMainBranchHealthJob do
     repository.update!(ci_health: "broken", last_health_checked_sha: sha, last_graded_sha: sha, last_ci_evaluated_sha: sha)
     stub_sha(sha)
 
-    expect_any_instance_of(GithubClient).not_to receive(:check_runs_summary_for)
+    expect_any_instance_of(GithubClient).not_to receive(:main_branch_check_runs_summary_for)
     expect(MainHealthChangedService).not_to receive(:on_health_change!)
     described_class.perform_now(repository.id)
   end
@@ -225,7 +225,7 @@ RSpec.describe PollMainBranchHealthJob do
     repository.update!(ci_health: "broken", last_health_checked_sha: sha, last_graded_sha: sha, last_ci_evaluated_sha: sha)
     stub_sha(sha)
 
-    expect_any_instance_of(GithubClient).not_to receive(:check_runs_summary_for)
+    expect_any_instance_of(GithubClient).not_to receive(:main_branch_check_runs_summary_for)
     expect(MainHealthChangedService).to receive(:ensure_repair_job!).with(kind_of(Repository))
     described_class.perform_now(repository.id)
   end

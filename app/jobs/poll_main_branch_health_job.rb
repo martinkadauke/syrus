@@ -59,7 +59,7 @@ class PollMainBranchHealthJob < ApplicationJob
 
     already_recorded_no_ci = repository.ci_health_not_configured? && repository.last_health_checked_sha == sha
 
-    summary = client.check_runs_summary_for(repository.slug, sha)
+    summary = client.main_branch_check_runs_summary_for(repository.slug, sha)
 
     unless summary[:any?]
       repository.update_columns(

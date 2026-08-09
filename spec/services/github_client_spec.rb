@@ -1,4 +1,5 @@
 require "rails_helper"
+require "ostruct"
 
 RSpec.describe GithubClient do
   let(:user) { Factories.user(github_token: "ghp_test_token") }
@@ -179,6 +180,63 @@ RSpec.describe GithubClient do
       expect(first.fresh_token).to eq("fresh-one")
       expect(second.fresh_token).to eq("fresh-two")
       expect(installation.reload.cached_token).to eq("fresh-two")
+    end
+  end
+
+  describe "#main_branch_check_runs_summary_for" do
+    def github_actions_check(name:, status:, conclusion:, run_id:)
+      OpenStruct.new(
+        name: name,
+        status: status,
+        conclusion: conclusion,
+        html_url: "https://github.com/acme/widgets/actions/runs/#{run_id}/job/#{run_id}99",
+        output: OpenStruct.new(summary: nil, text: nil),
+        app: OpenStruct.new(slug: "github-actions")
+      )
+    end
+
+    def fake_octokit(check_runs:, workflow_runs:)
+      double(
+        "octokit",
+        last_response: nil,
+        check_runs_for_ref: OpenStruct.new(check_runs: check_runs),
+        repository_workflow_runs: OpenStruct.new(workflow_runs: workflow_runs)
+      )
+    end
+
+    it "ignores failed Release workflow checks when the regular CI workflow passed" do
+      client = described_class.new(user)
+      check_runs = [
+        github_actions_check(name: "build / build-backend (amd64, ubuntu-latest, linux/amd64)", status: "completed", conclusion: "failure", run_id: 111),
+        github_actions_check(name: "build / build-backend (arm64, ubuntu-24.04-arm, linux/arm64)", status: "completed", conclusion: "failure", run_id: 111),
+        github_actions_check(name: "rspec", status: "completed", conclusion: "success", run_id: 222),
+        github_actions_check(name: "react", status: "completed", conclusion: "success", run_id: 222)
+      ]
+      workflow_runs = [
+        OpenStruct.new(id: 111, name: "Release"),
+        OpenStruct.new(id: 222, name: "CI")
+      ]
+      client.instance_variable_set(:@client, fake_octokit(check_runs: check_runs, workflow_runs: workflow_runs))
+
+      summary = client.main_branch_check_runs_summary_for("acme/widgets", "abc123")
+
+      expect(summary).to include(any?: true, pending?: false, any_failed?: false, all_passed?: true)
+      expect(summary[:failed_checks]).to eq([])
+    end
+
+    it "still treats regular CI workflow failures as main-branch CI failures" do
+      client = described_class.new(user)
+      check_runs = [
+        github_actions_check(name: "rspec", status: "completed", conclusion: "failure", run_id: 222),
+        github_actions_check(name: "react", status: "completed", conclusion: "success", run_id: 222)
+      ]
+      workflow_runs = [ OpenStruct.new(id: 222, name: "CI") ]
+      client.instance_variable_set(:@client, fake_octokit(check_runs: check_runs, workflow_runs: workflow_runs))
+
+      summary = client.main_branch_check_runs_summary_for("acme/widgets", "abc123")
+
+      expect(summary).to include(any?: true, pending?: false, any_failed?: true, all_passed?: false)
+      expect(summary[:failed_checks]).to include(include(name: "rspec", conclusion: "failure"))
     end
   end
 
