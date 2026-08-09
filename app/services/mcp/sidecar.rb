@@ -16,10 +16,19 @@ module Mcp
     def self.chat(session_id:, current_message_id: nil, tier: :essential, server_name: nil)
       tier = tier.to_sym
       default_name = tier == :deferred ? CHAT_DEFERRED_SERVER : CHAT_ESSENTIAL_SERVER
+      evaluator = tier == :evaluator
       new(
         server_name: server_name.presence || default_name,
         tools: -> { chat_tools_for(ChatSession.find(session_id), tier: tier) },
-        server_context: -> { chat_context(ChatSession.find(session_id), current_message_id: current_message_id) }
+        server_context: -> {
+          chat_context(
+            ChatSession.find(session_id),
+            current_message_id: current_message_id,
+            evaluator: evaluator,
+            scoped_event_id: ENV["SYRUS_CHAT_SCOPED_EVENT_ID"],
+            evaluator_session_id: ENV["SYRUS_CHAT_EVALUATOR_SESSION_ID"]
+          )
+        }
       )
     end
 
@@ -146,14 +155,20 @@ module Mcp
       tool
     end
 
-    def self.chat_context(chat_session, current_message_id:)
+    def self.chat_context(chat_session, current_message_id:, evaluator: false, scoped_event_id: nil, evaluator_session_id: nil)
       current_message = if current_message_id.present?
         chat_session.messages.find_by(id: current_message_id)
       else
         Tools::CurrentMessage.new(chat_session)
       end
 
-      { chat_session: chat_session, current_message: current_message }.compact
+      {
+        chat_session: chat_session,
+        current_message: current_message,
+        evaluator: evaluator ? true : nil,
+        scoped_event_id: scoped_event_id.presence,
+        evaluator_session_id: evaluator_session_id.presence
+      }.compact
     end
 
     def initialize(server_name:, tools:, server_context:)

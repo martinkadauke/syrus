@@ -29,18 +29,23 @@ Scoped chat events can be evaluated before a live chat turn is woken.
 temporary evaluator session id, rehydrated from a cloned persisted transcript.
 The clone uses the full chat when it fits; otherwise it keeps the latest 10,000
 messages and trims oversized content/tool outputs to a byte budget. Evaluators
-see only read-only MCP tools and persist a structured decision (`no_op`,
-`respond`, or `act`) on the `ChatScopedEvent`; temporary provider transcript
-artifacts are removed and the live chat provider session is left untouched.
+see read-only MCP tools plus the narrow `submit_scoped_event_decision` tool,
+which stores the structured decision (`no_op`, `respond`, or `act`) on the
+`ChatScopedEvent`. If a provider fails to call the tool, Syrus falls back to
+strict JSON parsing, retries once with a parse-repair prompt, and only converts
+remaining parse failures to `no_op` for low-severity informational events.
+Critical or warning events still fail the evaluator so operators can inspect
+them. Temporary provider transcript artifacts are removed and the live chat
+provider session is left untouched.
 `no_op` decisions do not create visible chat messages. `respond` and `act`
 decisions create an immediate `ChatWakeup` containing the scoped event,
 evaluator decision, and handoff prompt; the live chat turn is instructed to
 refresh current Syrus state before relying on event data.
 The admin overview includes operator/debug observability for this pipeline:
 24-hour `no_op`/`respond`/`act` counts, evaluator state counts, recent scoped
-events, and recent evaluator failure reasons. Failed evaluator events remain
-retryable; already delivered actionable events are skipped on retry so visible
-chat wakeups are not duplicated.
+events, and recent evaluator failure reasons. A recurring maintenance job
+automatically retries recent failed pending evaluator events; already delivered
+actionable events are skipped on retry so visible chat wakeups are not duplicated.
 
 When the `admin_supervisor_chat` feature is enabled, the same scoped event flow
 also applies to ordinary chat threads for work that originated in that chat.

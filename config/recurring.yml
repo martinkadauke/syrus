@@ -46,6 +46,10 @@ default: &default
     class: PollScheduledChatMessagesJob
     queue: control_plane
     schedule: every minute
+  retry_failed_chat_scoped_event_evaluators:
+    class: ChatScopedEventRetryFailedJob
+    queue: low_priority_maintenance
+    schedule: every 5 minutes
   sync_enabled_forks:
     class: SyncEnabledForksJob
     queue: low_priority_maintenance

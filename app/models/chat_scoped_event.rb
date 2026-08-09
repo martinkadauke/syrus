@@ -44,7 +44,8 @@ class ChatScopedEvent < ApplicationRecord
     update!(
       evaluator_state: "running",
       evaluator_session_id: session_id,
-      evaluator_error: nil
+      evaluator_error: nil,
+      evaluator_result: nil
     )
   end
 
@@ -62,6 +63,18 @@ class ChatScopedEvent < ApplicationRecord
       evaluator_state: "failed",
       evaluator_error: error.to_s,
       evaluated_at: Time.current
+    )
+  end
+
+  def retry_evaluator!
+    return false unless pending? && evaluator_failed?
+
+    update!(
+      evaluator_state: "pending",
+      evaluator_session_id: nil,
+      evaluator_error: nil,
+      evaluator_result: nil,
+      evaluated_at: nil
     )
   end
 

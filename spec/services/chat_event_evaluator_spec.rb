@@ -92,4 +92,78 @@ RSpec.describe ChatEventEvaluator do
     expect(chat_session.provider_session.session_id).to eq("live-session")
     expect(ProviderSession.where(resumable: chat_session).count).to eq(1)
   end
+
+  it "accepts a structured MCP tool decision even when final text is malformed" do
+    runner = lambda do |**kwargs|
+      kwargs.fetch(:event).update!(
+        evaluator_result: {
+          "decision" => "act",
+          "reason" => "tool submitted the decision",
+          "urgency" => 0.8,
+          "confidence" => 0.9,
+          "handoff_prompt" => "Inspect the failed job.",
+          "submitted_via" => "mcp_tool"
+        }
+      )
+      Result.new(final_text: "{not json")
+    end
+
+    result = described_class.new(event: event, chat_session: chat_session, runner: runner).call
+
+    expect(result).to include(
+      "decision" => "act",
+      "reason" => "tool submitted the decision",
+      "submitted_via" => "mcp_tool"
+    )
+    expect(result.dig("context_clone", "source_message_count")).to eq(0)
+    expect(event.reload).to be_evaluator_completed
+  end
+
+  it "retries malformed JSON once with a repair prompt before failing" do
+    calls = []
+    runner = lambda do |**kwargs|
+      calls << kwargs.fetch(:prompt)
+      if calls.one?
+        Result.new(final_text: '{ "decision" "respond" }')
+      else
+        Result.new(final_text: JSON.generate(decision: "respond", reason: "fixed json", urgency: 0.4, confidence: 0.7))
+      end
+    end
+
+    result = described_class.new(event: event, chat_session: chat_session, runner: runner).call
+
+    expect(calls.size).to eq(2)
+    expect(calls.second).to include("previous scoped event evaluator response was not usable")
+    expect(result).to include("decision" => "respond", "reason" => "fixed json")
+  end
+
+  it "treats malformed low-severity informational events as no-op after the repair retry fails" do
+    event.update!(
+      source_kind: "pull_request_merged",
+      payload: { "kind" => "pr_merged", "severity" => "info", "summary" => "PR merged" }
+    )
+    runner = lambda do |**_kwargs|
+      Result.new(final_text: '{ "decision" "respond" }')
+    end
+
+    result = described_class.new(event: event, chat_session: chat_session, runner: runner).call
+
+    expect(result).to include("decision" => "no_op", "submitted_via" => "low_severity_parse_fallback")
+    expect(event.reload).to be_evaluator_completed
+  end
+
+  it "does not no-op critical evaluator parse failures" do
+    event.update!(payload: { "summary" => "Job failed", "severity" => "critical" })
+    runner = lambda do |**_kwargs|
+      Result.new(final_text: '{ "decision" "respond" }')
+    end
+
+    expect {
+      described_class.new(event: event, chat_session: chat_session, runner: runner).call
+    }.to raise_error(JSON::ParserError)
+
+    event.reload
+    expect(event).to be_evaluator_failed
+    expect(event.evaluator_result.dig("failure", "raw_output", "text")).to include('"decision"')
+  end
 end

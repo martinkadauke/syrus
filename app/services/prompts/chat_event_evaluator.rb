@@ -13,12 +13,14 @@ module Prompts
         You are evaluating whether a scoped Syrus chat event should wake this chat.
 
         You are running in a disposable evaluator session. Do not address the operator.
-        Do not mutate state. Use only read-only tools if more context is necessary.
+        Use only read-only tools if more context is necessary, except for the final
+        submit_scoped_event_decision tool call.
 
         Decide whether the event needs no visible chat activity, a visible response, or
         an action handoff to the live chat agent.
 
-        Return one JSON object and nothing else:
+        Required output:
+        - Call submit_scoped_event_decision exactly once with this schema:
         {
           "decision": "no_op" | "respond" | "act",
           "reason": "short reason",
@@ -26,6 +28,9 @@ module Prompts
           "confidence": 0.0,
           "handoff_prompt": "optional concise prompt for the live chat agent"
         }
+        - After the tool call, return a brief confirmation only.
+        - If the tool is unavailable, return one JSON object with that same schema
+          and nothing else.
 
         Rules:
         - Use "no_op" when the event is informational, duplicate, already handled, or not relevant to the chat.

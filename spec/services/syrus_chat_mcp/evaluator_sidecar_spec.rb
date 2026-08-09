@@ -7,7 +7,7 @@ RSpec.describe "Mcp::Sidecar evaluator tier" do
   it "exposes only read-only chat tools to disposable evaluators" do
     names = Mcp::Sidecar.chat_tool_names(chat_session, tier: :evaluator)
 
-    expect(names).to include("read_job", "read_chat_messages", "search_jobs")
+    expect(names).to include("read_job", "read_chat_messages", "search_jobs", "submit_scoped_event_decision")
     expect(names).not_to include(
       "propose_job",
       "approve_job",

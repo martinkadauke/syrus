@@ -174,7 +174,8 @@ class McpToolPolicy
       Mcp::Tools::ReadInsightTool,
       Mcp::Tools::ReadMemoryTool,
       Mcp::Tools::SearchMemoriesTool,
-      Mcp::Tools::ListMemoriesTool
+      Mcp::Tools::ListMemoriesTool,
+      Mcp::Tools::SubmitScopedEventDecisionTool
     ]
     tools = apply_admin_filter(tools)
     tools = apply_agent_insights_filter(tools)

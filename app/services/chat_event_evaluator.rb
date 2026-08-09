@@ -10,6 +10,7 @@ class ChatEventEvaluator
   MAX_TRANSCRIPT_BYTES = 1.megabyte
   DEFAULT_TIMEOUT = 5.minutes
   DEFAULT_MAX_TURNS = 4
+  MAX_RAW_OUTPUT_BYTES = 8.kilobytes
 
   MessageSnapshot = Data.define(:id, :role, :content, :created_at, :tool_name, :tool_use_id) do
     def canonical_content_format?
@@ -49,6 +50,7 @@ class ChatEventEvaluator
     result = @runner.call(
       provider: provider,
       chat_session: @chat_session,
+      event: @event,
       prompt: prompt_for(clone),
       session_id: session_id,
       transcript_jsonl: transcript,
@@ -56,11 +58,20 @@ class ChatEventEvaluator
       max_turns: DEFAULT_MAX_TURNS
     )
 
-    payload = normalize_result(result, clone)
+    payload = normalize_result_with_repair(
+      provider: provider,
+      clone: clone,
+      transcript: transcript,
+      session_id: session_id,
+      first_result: result
+    )
     @event.record_evaluator_result!(payload)
     payload
   rescue StandardError => e
-    @event.record_evaluator_failure!("#{e.class}: #{e.message}") if @event&.persisted?
+    if @event&.persisted?
+      @event.record_evaluator_failure!("#{e.class}: #{e.message}")
+      persist_failure_payload(e)
+    end
     raise
   end
 
@@ -189,18 +200,85 @@ class ChatEventEvaluator
     ).to_s
   end
 
+  def repair_prompt_for(clone, raw_output, error)
+    <<~PROMPT
+      Your previous scoped event evaluator response was not usable:
+      #{error.class}: #{error.message}
+
+      Previous output:
+      #{Mcp::Tools.truncate_text(raw_output, 4.kilobytes).fetch(:text)}
+
+      Call submit_scoped_event_decision exactly once with a valid decision.
+      If that tool is unavailable, return exactly one strict JSON object matching the original schema and no other text.
+
+      #{prompt_for(clone)}
+    PROMPT
+  end
+
+  def normalize_result_with_repair(provider:, clone:, transcript:, session_id:, first_result:)
+    begin
+      normalize_result(first_result, clone)
+    rescue JSON::ParserError => first_error
+      raw_output = raw_text(first_result)
+      repair_result = @runner.call(
+        provider: provider,
+        chat_session: @chat_session,
+        event: @event,
+        prompt: repair_prompt_for(clone, raw_output, first_error),
+        session_id: session_id,
+        transcript_jsonl: transcript,
+        timeout: DEFAULT_TIMEOUT,
+        max_turns: DEFAULT_MAX_TURNS
+      )
+      begin
+        normalize_result(repair_result, clone)
+      rescue JSON::ParserError => second_error
+        raise unless low_severity_informational_event?
+
+        low_severity_parse_fallback(second_error, clone)
+      end
+    end
+  end
+
   def normalize_result(result, clone)
-    raw = result.respond_to?(:final_text) ? result.final_text.to_s : result.to_s
+    submitted = submitted_tool_result
+    return add_context_clone(submitted, clone) if submitted
+
+    raw = raw_text(result)
+    @last_evaluator_raw_output = raw
     parsed = JSON.parse(extract_json(raw))
+    normalize_parsed_result(parsed, clone, source: "json_text")
+  end
+
+  def raw_text(result)
+    result.respond_to?(:final_text) ? result.final_text.to_s : result.to_s
+  end
+
+  def submitted_tool_result
+    payload = @event.reload.evaluator_result
+    return unless payload.is_a?(Hash)
+    return unless payload["submitted_via"] == "mcp_tool"
+    return unless DECISIONS.include?(payload["decision"].to_s)
+
+    payload
+  end
+
+  def normalize_parsed_result(parsed, clone, source:)
     decision = parsed["decision"].to_s
     decision = "no_op" unless DECISIONS.include?(decision)
 
-    {
+    add_context_clone({
       "decision" => decision,
       "reason" => parsed["reason"].to_s,
       "urgency" => clamp_float(parsed["urgency"]),
       "confidence" => clamp_float(parsed["confidence"]),
       "handoff_prompt" => parsed["handoff_prompt"].to_s.presence,
+      "submitted_via" => source
+    }.compact, clone)
+  end
+
+  def add_context_clone(payload, clone)
+    payload.merge(
       "context_clone" => {
         "capped" => clone.capped,
         "message_cap_applied" => clone.message_cap_applied,
@@ -209,7 +287,7 @@ class ChatEventEvaluator
         "cloned_message_count" => clone.cloned_message_count,
         "bytes" => clone.bytes
       }
-    }.compact
+    ).compact
   end
 
   def extract_json(raw)
@@ -227,12 +305,45 @@ class ChatEventEvaluator
     [ [ numeric, 0.0 ].max, 1.0 ].min
   end
 
+  def low_severity_parse_fallback(error, clone)
+    add_context_clone({
+      "decision" => "no_op",
+      "reason" => "Evaluator returned malformed JSON for a low-severity informational event: #{error.message}",
+      "urgency" => 0.0,
+      "confidence" => 0.0,
+      "submitted_via" => "low_severity_parse_fallback"
+    }, clone)
+  end
+
+  def low_severity_informational_event?
+    severity = @event.payload["severity"].to_s.downcase
+    return false if %w[critical error warning high].include?(severity)
+
+    kind = [ @event.source_kind, @event.payload["kind"], @event.payload["event"] ].compact.join(" ").downcase
+    return false if kind.match?(/fail|error|degraded|stuck|blocked|attention|limit|quota/)
+
+    severity.blank? || %w[info informational low].include?(severity)
+  end
+
+  def persist_failure_payload(error)
+    raw = @last_evaluator_raw_output.to_s
+    @event.update!(
+      evaluator_result: {
+        "failure" => {
+          "error" => "#{error.class}: #{error.message}",
+          "raw_output" => Mcp::Tools.truncate_text(raw, MAX_RAW_OUTPUT_BYTES),
+          "captured_at" => Time.current.iso8601
+        }
+      }
+    )
+  end
+
   class ProviderRunner
     SIDECAR_ENV_FORWARD = AgentProviders::Base::SIDECAR_ENV_FORWARD
 
-    def call(provider:, chat_session:, prompt:, session_id:, transcript_jsonl:, timeout:, max_turns:)
+    def call(provider:, chat_session:, event:, prompt:, session_id:, transcript_jsonl:, timeout:, max_turns:)
       Dir.mktmpdir("syrus-chat-event-evaluator") do |workspace_path|
-        with_evaluator_mcp_config(chat_session) do |mcp_config|
+        with_evaluator_mcp_config(chat_session, event: event, session_id: session_id) do |mcp_config|
           case provider
           when "claude"
             run_claude(chat_session, workspace_path, prompt, session_id, transcript_jsonl, mcp_config, timeout, max_turns)
@@ -288,7 +399,7 @@ class ChatEventEvaluator
       CodexUsageProbe.refresh_for(user: chat_session.user) if chat_session.user.codex_auth_mode == "chatgpt_login"
     end
 
-    def with_evaluator_mcp_config(chat_session)
+    def with_evaluator_mcp_config(chat_session, event:, session_id:)
       Tempfile.create([ "syrus-chat-evaluator-mcp-#{chat_session.id}-", ".json" ]) do |file|
         file.write({
           mcpServers: {
@@ -296,7 +407,7 @@ class ChatEventEvaluator
               type: "stdio",
               command: Rails.root.join("bin/syrus-chat-sidecar").to_s,
               args: [ "--tier", "evaluator" ],
-              env: sidecar_env(chat_session),
+              env: sidecar_env(chat_session, event: event, session_id: session_id),
               alwaysLoad: true
             }
           }
@@ -306,7 +417,7 @@ class ChatEventEvaluator
       end
     end
 
-    def sidecar_env(chat_session)
+    def sidecar_env(chat_session, event:, session_id:)
       env = ENV.slice(*SIDECAR_ENV_FORWARD).compact
       if env["BUNDLE_PATH"].present?
         env["GEM_HOME"] ||= env["BUNDLE_PATH"]
@@ -314,6 +425,8 @@ class ChatEventEvaluator
       end
       env.merge(
         "SYRUS_CHAT_SESSION_ID" => chat_session.id.to_s,
+        "SYRUS_CHAT_SCOPED_EVENT_ID" => event.id.to_s,
+        "SYRUS_CHAT_EVALUATOR_SESSION_ID" => session_id.to_s,
         "SYRUS_CHAT_MCP_TOOL_TIER" => "evaluator",
         "SYRUS_CHAT_MCP_SERVER_NAME" => "syrus-chat-evaluator-sidecar"
       )
