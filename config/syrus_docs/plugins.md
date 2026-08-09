@@ -13,6 +13,7 @@ boot through `Syrus::PluginRegistry`. The registry currently supports:
 - `admin_page`
 - `chat_mcp_tool_set`
 - `source_control_provider`
+- `prompt_injector`
 - `artifact_renderer`
 
 Operators can inspect the registered plugins from **Admin → Plugins**
@@ -38,6 +39,38 @@ the same capability. MCP tool sets are listed as registered because their
 runtime availability depends on the repository context that invokes the sidecar.
 Test result parsers and coverage analyzers are listed as registered parser
 classes.
+
+## `prompt_injector`
+
+Injects additional text into the implementing agent's system prompt. Use this to instruct the agent to call `submit_artifact` when it touches specific files, or to add any other repository-specific guidance that should appear in every implement run.
+
+Providers are registered via the **direct** form (an instance or lambda, not a class in a `provides:` manifest), since injectors are typically lightweight closures:
+
+```ruby
+Syrus::PluginRegistry.register(
+  :prompt_injector,
+  ->(repository:, job:) {
+    next unless repository.slug.start_with?("myorg/")
+    "If you modify db/schema.rb, call submit_artifact with type 'rails_schema_erd'."
+  }
+)
+```
+
+Or using the module interface for a class-based provider:
+
+```ruby
+class MyInjector
+  include Syrus::Plugin::PromptInjector
+
+  def call(repository:, job:)
+    "Custom instructions for #{repository.slug}."
+  end
+end
+
+Syrus::PluginRegistry.register(:prompt_injector, MyInjector.new)
+```
+
+The provider's `call` method receives `repository:` (the `Repository` record) and `job:` (the `Job` record). Return a `String` to inject, or `nil` to inject nothing. Returning `nil` is safe and skips the provider silently. Multiple registered injectors all run; their outputs are concatenated in registration order after the issue content.
 
 ## `artifact_renderer`
 
