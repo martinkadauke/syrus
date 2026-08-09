@@ -332,13 +332,13 @@ class ChatEventEvaluator
     end
 
     def write_claude_transcript(workspace_path, session_id, transcript_jsonl)
-      path = ClaudeSession.canonical_path_for(home: ENV.fetch("HOME"), cwd: workspace_path, session_id: session_id)
+      path = ProviderSession.canonical_path_for(home: ENV.fetch("HOME"), cwd: workspace_path, session_id: session_id)
       FileUtils.mkdir_p(File.dirname(path))
       File.write(path, transcript_jsonl)
     end
 
     def remove_claude_transcript(workspace_path, session_id)
-      path = ClaudeSession.canonical_path_for(home: ENV.fetch("HOME"), cwd: workspace_path, session_id: session_id)
+      path = ProviderSession.canonical_path_for(home: ENV.fetch("HOME"), cwd: workspace_path, session_id: session_id)
       FileUtils.rm_f(path)
     end
   end

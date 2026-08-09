@@ -77,7 +77,7 @@ module App
 
       def workflows_scope
         @job.workflows
-            .includes(steps: { runs: [ :claude_session, :run_diagnostic, :run_failure_classification, :run_health_snapshots, :spawned_processes, :command_spans ] })
+            .includes(steps: { runs: [ :provider_session, :run_diagnostic, :run_failure_classification, :run_health_snapshots, :spawned_processes, :command_spans ] })
             .reorder(created_at: :desc, id: :desc)
       end
 
@@ -150,7 +150,7 @@ module App
       end
 
       def run_json(run, workflow:)
-        session = run.claude_session
+        session = run.provider_session
         command_spans = PerformanceLogging.phase("job_detail.run.command_spans", job_id: @job.id, run_id: run.id) do
           run.command_spans.ordered.map { |span| command_span_json(span) }
         end

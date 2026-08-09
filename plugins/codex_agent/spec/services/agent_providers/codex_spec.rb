@@ -61,7 +61,7 @@ RSpec.describe AgentProviders::Codex do
                                state: "failed",
                                started_at: 1.minute.ago,
                                finished_at: Time.current)
-      ClaudeSession.create!(resumable: source_run,
+      ProviderSession.create!(resumable: source_run,
                             provider: "codex",
                             session_id: "codex-thread",
                             transcript_jsonl: "{\"type\":\"session_meta\"}\n")
@@ -199,8 +199,8 @@ RSpec.describe AgentProviders::Codex do
 
       expect(run.reload.agent_turns).to eq(1)
       expect(run.agent_outcome).to eq("success")
-      expect(run.claude_session.provider).to eq("codex")
-      expect(run.claude_session.session_id).to eq("codex-thread")
+      expect(run.provider_session.provider).to eq("codex")
+      expect(run.provider_session.session_id).to eq("codex-thread")
       expect(messages.join("\n")).to include("captured codex codex-thread")
     end
   end

@@ -340,10 +340,10 @@ RSpec.describe Run do
   end
 
   describe "transcript retention on success" do
-    it "keeps ClaudeSession transcript_jsonl when the Run transitions to succeeded" do
+    it "keeps ProviderSession transcript_jsonl when the Run transitions to succeeded" do
       run = job.initial_run
       run.start!; run.save!
-      session = ClaudeSession.create!(resumable: run, session_id: "abc", transcript_jsonl: "big payload")
+      session = ProviderSession.create!(resumable: run, session_id: "abc", transcript_jsonl: "big payload")
       run.succeed!; run.save!
       expect(session.reload.transcript_jsonl).to eq("big payload")
     end
@@ -351,12 +351,12 @@ RSpec.describe Run do
     it "does not clear transcript when the Run fails" do
       run = job.initial_run
       run.start!; run.save!
-      session = ClaudeSession.create!(resumable: run, session_id: "abc", transcript_jsonl: "big payload")
+      session = ProviderSession.create!(resumable: run, session_id: "abc", transcript_jsonl: "big payload")
       run.fail!; run.save!
       expect(session.reload.transcript_jsonl).to eq("big payload")
     end
 
-    it "is a no-op when the Run has no ClaudeSession" do
+    it "is a no-op when the Run has no ProviderSession" do
       run = job.initial_run
       run.start!; run.save!
       run.succeed!; run.save!

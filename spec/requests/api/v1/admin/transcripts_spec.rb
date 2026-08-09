@@ -12,7 +12,7 @@ RSpec.describe "API: /api/v1/admin/runs/:run_id/transcript", type: :request do
   def jsonl(*lines) = lines.map(&:to_json).join("\n") + "\n"
 
   before do
-    ClaudeSession.create!(
+    ProviderSession.create!(
       resumable: run, provider: "codex", session_id: "abc-123",
       transcript_jsonl: jsonl(
         { "type" => "system", "subtype" => "init", "model" => "claude-sonnet-4-6",
@@ -55,7 +55,7 @@ RSpec.describe "API: /api/v1/admin/runs/:run_id/transcript", type: :request do
     end
 
     it "returns JobLog fallback events when no session was captured" do
-      run.claude_session.destroy
+      run.provider_session.destroy
       JobLog.append!(run: run, chunk: "assistant text captured from the run log", kind: "assistant_text")
 
       get "/api/v1/admin/runs/#{run.id}/transcript", headers: auth
@@ -77,7 +77,7 @@ RSpec.describe "API: /api/v1/admin/runs/:run_id/transcript", type: :request do
     end
 
     it "includes JobLog fallback events when a session transcript is incomplete" do
-      run.claude_session.update!(
+      run.provider_session.update!(
         transcript_jsonl: jsonl({ "type" => "assistant", "message" => { "content" => [
           { "type" => "text", "text" => "Parsed from Codex JSONL." }
         ] } })

@@ -1,4 +1,4 @@
-class ClaudeSessionPruneJob < ApplicationJob
+class ProviderSessionPruneJob < ApplicationJob
   include SkipIfPending
 
   queue_as :cleanup
@@ -10,7 +10,7 @@ class ClaudeSessionPruneJob < ApplicationJob
   # downstream short agentic steps may need to rehydrate provider resume state
   # after worker movement or deploys.
   def perform
-    n_deleted = ClaudeSession.prunable.delete_all
-    Rails.logger.info("[ClaudeSessionPrune] deleted #{n_deleted} sessions") if n_deleted > 0
+    n_deleted = ProviderSession.prunable.delete_all
+    Rails.logger.info("[ProviderSessionPrune] deleted #{n_deleted} sessions") if n_deleted > 0
   end
 end

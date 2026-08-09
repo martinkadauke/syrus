@@ -51,7 +51,7 @@ module ChatProviders
     # EVERY chat breaks after a worker restart, not just walkthroughs.
     def invoke(workspace_path:, prompt:, log_sink:, mcp_config:, resume_session_id:,
                stop_requested:, process_started:)
-      ensure_claude_session_on_disk!(workspace_path: workspace_path, session_id: resume_session_id)
+      ensure_provider_session_on_disk!(workspace_path: workspace_path, session_id: resume_session_id)
 
       result = run_invocation(
         workspace_path: workspace_path, prompt: prompt, mcp_config: mcp_config,
@@ -91,7 +91,7 @@ module ChatProviders
       session_id = normalized_session_id(result.session_id)
       return missing_session_capture(result) unless session_id
 
-      path = ClaudeSession.canonical_path_for(
+      path = ProviderSession.canonical_path_for(
         home: ENV.fetch("HOME"),
         cwd: ChatWorkspace.path_for(chat),
         session_id: session_id
@@ -169,10 +169,10 @@ module ChatProviders
       end
     end
 
-    def ensure_claude_session_on_disk!(workspace_path:, session_id:)
+    def ensure_provider_session_on_disk!(workspace_path:, session_id:)
       return if session_id.blank?
 
-      path = ClaudeSession.canonical_path_for(
+      path = ProviderSession.canonical_path_for(
         home: ENV.fetch("HOME"),
         cwd: workspace_path,
         session_id: session_id

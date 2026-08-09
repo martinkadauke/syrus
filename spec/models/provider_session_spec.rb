@@ -1,12 +1,12 @@
 require "rails_helper"
 
-class ClaudeSessionSpecOwner < ApplicationRecord
+class ProviderSessionSpecOwner < ApplicationRecord
   self.table_name = "jobs"
 
-  has_one :claude_session, as: :resumable
+  has_one :provider_session, as: :resumable
 end
 
-RSpec.describe ClaudeSession do
+RSpec.describe ProviderSession do
   let(:run) { Factories.job.initial_run }
 
   describe "validations + association" do
@@ -32,19 +32,19 @@ RSpec.describe ClaudeSession do
       expect { run.destroy }.to change { described_class.where(id: s.id).count }.by(-1)
     end
 
-    it "keeps Run#claude_session working through the polymorphic association" do
-      session = run.create_claude_session!(session_id: "uuid", transcript_jsonl: "x")
+    it "keeps Run#provider_session working through the polymorphic association" do
+      session = run.create_provider_session!(session_id: "uuid", transcript_jsonl: "x")
 
-      expect(run.reload.claude_session).to eq(session)
+      expect(run.reload.provider_session).to eq(session)
       expect(session.resumable).to eq(run)
       expect(session.run_id).to eq(run.id)
     end
 
-    it "allows another model to own a ClaudeSession through the same polymorphic interface" do
-      owner = ClaudeSessionSpecOwner.find(Factories.job.id)
-      session = owner.create_claude_session!(session_id: "uuid", transcript_jsonl: "x")
+    it "allows another model to own a ProviderSession through the same polymorphic interface" do
+      owner = ProviderSessionSpecOwner.find(Factories.job.id)
+      session = owner.create_provider_session!(session_id: "uuid", transcript_jsonl: "x")
 
-      expect(owner.reload.claude_session).to eq(session)
+      expect(owner.reload.provider_session).to eq(session)
       expect(session.resumable).to eq(owner)
       expect(session.run_id).to be_nil
     end

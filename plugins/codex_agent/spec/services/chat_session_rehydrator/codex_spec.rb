@@ -42,8 +42,8 @@ RSpec.describe ChatSessionRehydrator::Codex do
     expect(lines.last).to include("type" => "turn.completed")
   end
 
-  it "reads session_id from claude_session when not given explicitly" do
-    session.create_claude_session!(provider: "codex", session_id: "auto-thread")
+  it "reads session_id from provider_session when not given explicitly" do
+    session.create_provider_session!(provider: "codex", session_id: "auto-thread")
     jsonl = described_class.new(session).call
     lines = parsed_lines(jsonl)
 

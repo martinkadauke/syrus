@@ -116,7 +116,7 @@ RSpec.describe Steps::TestPlan do
   end
 
   it "resumes from the succeeded implement session" do
-    ClaudeSession.create!(resumable: implement_run, session_id: "implement-thread", transcript_jsonl: "{}\n")
+    ProviderSession.create!(resumable: implement_run, session_id: "implement-thread", transcript_jsonl: "{}\n")
 
     handler.singleton_class.send(:public, :parent_session_id)
 
@@ -124,7 +124,7 @@ RSpec.describe Steps::TestPlan do
   end
 
   it "honors the no-resume retry marker instead of falling back to the implement session" do
-    ClaudeSession.create!(resumable: implement_run, session_id: "implement-thread", transcript_jsonl: "{}\n")
+    ProviderSession.create!(resumable: implement_run, session_id: "implement-thread", transcript_jsonl: "{}\n")
     run.update!(parent_session_id: Steps::Base::DISABLE_AGENT_RESUME)
 
     handler.singleton_class.send(:public, :parent_session_id)

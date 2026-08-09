@@ -1,4 +1,4 @@
-class ClaudeSession < ApplicationRecord
+class ProviderSession < ApplicationRecord
   belongs_to :resumable, polymorphic: true
 
   before_validation :mirror_run_id_for_run_resumables
@@ -16,14 +16,14 @@ class ClaudeSession < ApplicationRecord
 
   # Keep captured agent sessions for diagnostics and provider resume
   # rehydration for two weeks after the parent Run reaches a terminal
-  # state. After that, ClaudeSessionPruneJob deletes them. Active Runs
+  # state. After that, ProviderSessionPruneJob deletes them. Active Runs
   # (queued/running) are never pruned.
   RETAIN_AFTER_TERMINAL = 14.days
 
   scope :prunable, -> {
     for_runs
       .where(runs: { state: %w[ succeeded failed cancelled ] })
-      .where("claude_sessions.updated_at < ?", RETAIN_AFTER_TERMINAL.ago)
+      .where("provider_sessions.updated_at < ?", RETAIN_AFTER_TERMINAL.ago)
   }
 
   # Sessions whose Run already succeeded and still carry a transcript. Kept as
@@ -34,7 +34,7 @@ class ClaudeSession < ApplicationRecord
   }
 
   scope :for_runs, -> {
-    joins("INNER JOIN runs ON runs.id = claude_sessions.resumable_id")
+    joins("INNER JOIN runs ON runs.id = provider_sessions.resumable_id")
       .where(resumable_type: "Run")
   }
 

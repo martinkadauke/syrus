@@ -104,8 +104,8 @@ module Admin
                   .where(runs: { state: "succeeded" })
                   .where("runs.finished_at >= ?", 24.hours.ago)
       total = recent.count
-      captured = recent.left_outer_joins(:claude_session)
-                       .where.not(claude_sessions: { id: nil })
+      captured = recent.left_outer_joins(:provider_session)
+                       .where.not(provider_sessions: { id: nil })
                        .count
       {
         total: total,

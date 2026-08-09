@@ -192,7 +192,7 @@ class Step < ApplicationRecord
     while cursor
       return nil unless cursor.state == "succeeded"
 
-      session_id = cursor.latest_run&.claude_session&.session_id
+      session_id = cursor.latest_run&.provider_session&.session_id
       return session_id if session_id.present?
 
       cursor = cursor.previous_step

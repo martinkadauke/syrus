@@ -700,7 +700,7 @@ RSpec.describe StepDispatcher do
       grade = loop_wf.steps.find_by!(kind: "grade", iteration: 1)
       summarize = loop_wf.steps.find_by!(kind: "summarize")
       run = implement.runs.create!(job: job, trigger_kind: "manual")
-      ClaudeSession.create!(run: run, session_id: "S-iter-1", transcript_jsonl: "{}\n")
+      ProviderSession.create!(run: run, session_id: "S-iter-1", transcript_jsonl: "{}\n")
 
       expect {
         described_class.fail_from(grade)
@@ -962,7 +962,7 @@ RSpec.describe StepDispatcher do
       implement = review_workflow.steps.find_by!(kind: "implement", iteration: 1)
       review = review_workflow.steps.find_by!(kind: "adversarial_review", iteration: 1)
       final_implement = review_workflow.steps.where(kind: "implement").where.not(loop_id: review.loop_id).sole
-      ClaudeSession.create!(
+      ProviderSession.create!(
         run: implement.runs.create!(job: job, trigger_kind: "initial"),
         session_id: "implement-1",
         transcript_jsonl: "{}\n"
@@ -983,7 +983,7 @@ RSpec.describe StepDispatcher do
       implement = review_workflow.steps.find_by!(kind: "implement", iteration: 1)
       review = review_workflow.steps.find_by!(kind: "adversarial_review", iteration: 1)
       final_implement = review_workflow.steps.where(kind: "implement").where.not(loop_id: review.loop_id).sole
-      ClaudeSession.create!(
+      ProviderSession.create!(
         run: implement.runs.create!(job: job, trigger_kind: "initial"),
         session_id: "implement-1",
         transcript_jsonl: "{}\n"
@@ -1007,8 +1007,8 @@ RSpec.describe StepDispatcher do
       review = review_workflow.steps.find_by!(kind: "adversarial_review", iteration: 1)
       implement_run = implement.runs.create!(job: job, trigger_kind: "initial")
       review_run = review.runs.create!(job: job, trigger_kind: "initial")
-      ClaudeSession.create!(run: implement_run, session_id: "implementer-session", transcript_jsonl: "{}\n")
-      ClaudeSession.create!(run: review_run, session_id: "reviewer-session", transcript_jsonl: "{}\n")
+      ProviderSession.create!(run: implement_run, session_id: "implementer-session", transcript_jsonl: "{}\n")
+      ProviderSession.create!(run: review_run, session_id: "reviewer-session", transcript_jsonl: "{}\n")
 
       dispatcher = described_class.new(review_workflow, advancing_from: review)
 

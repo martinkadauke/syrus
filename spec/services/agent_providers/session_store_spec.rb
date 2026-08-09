@@ -19,7 +19,7 @@ RSpec.describe AgentProviders::SessionStore do
 
       described_class.new(run: run, log: ->(message) { messages << message }).capture!(capture)
 
-      session = run.reload.claude_session
+      session = run.reload.provider_session
       expect(session.provider).to eq("codex")
       expect(session.session_id).to eq("codex-thread")
       expect(session.transcript_jsonl).to include("session_meta")
@@ -36,7 +36,7 @@ RSpec.describe AgentProviders::SessionStore do
 
       described_class.new(run: run, log: ->(_message) { }).capture!(capture)
 
-      transcript = run.reload.claude_session.transcript_jsonl
+      transcript = run.reload.provider_session.transcript_jsonl
       expect(transcript).to include("● Bash(ls)")
       expect(transcript.encoding).to eq(Encoding::UTF_8)
     end
@@ -52,7 +52,7 @@ RSpec.describe AgentProviders::SessionStore do
 
       expect {
         described_class.new(run: run, log: ->(message) { messages << message }).capture!(capture)
-      }.not_to change(ClaudeSession, :count)
+      }.not_to change(ProviderSession, :count)
 
       expect(messages).to include("no JSONL")
       expect(messages.join("\n")).to include("no transcript captured for claude session S-missing")
@@ -65,13 +65,13 @@ RSpec.describe AgentProviders::SessionStore do
       newer_run = Run.create!(job: job, step: step, trigger_kind: "initial")
       other_job = Factories.job(user: user, repository: job.repository, issue_number: 43)
 
-      ClaudeSession.create!(resumable: older_run, provider: "codex",
+      ProviderSession.create!(resumable: older_run, provider: "codex",
                             session_id: "thread", transcript_jsonl: "older\n",
                             created_at: 2.minutes.ago)
-      ClaudeSession.create!(resumable: newer_run, provider: "codex",
+      ProviderSession.create!(resumable: newer_run, provider: "codex",
                             session_id: "thread", transcript_jsonl: "newer\n",
                             created_at: 1.minute.ago)
-      ClaudeSession.create!(resumable: other_job.initial_run, provider: "codex",
+      ProviderSession.create!(resumable: other_job.initial_run, provider: "codex",
                             session_id: "thread", transcript_jsonl: "other\n")
 
       expect(described_class.transcript_for(provider: "codex", session_id: "thread", job: job))
@@ -79,7 +79,7 @@ RSpec.describe AgentProviders::SessionStore do
     end
 
     it "ignores legacy zero-byte transcript rows" do
-      ClaudeSession.create!(resumable: run, provider: "codex",
+      ProviderSession.create!(resumable: run, provider: "codex",
                             session_id: "thread", transcript_jsonl: "")
 
       expect(described_class.transcript_for(provider: "codex", session_id: "thread", job: job))

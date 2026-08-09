@@ -342,7 +342,7 @@ RSpec.describe RunJob, "step-dispatch path" do
       handler_class = Class.new(Steps::Base) do
         define_method(:call) do
           if step.kind == "implement"
-            ClaudeSession.create!(run: run, session_id: "S-#{run.iteration}", transcript_jsonl: "{}\n")
+            ProviderSession.create!(run: run, session_id: "S-#{run.iteration}", transcript_jsonl: "{}\n")
           elsif step.kind == "grade"
             grade_attempts += 1
             raise Steps::Base::StepFailed, "grade failed" if grade_attempts == 1
@@ -435,7 +435,7 @@ RSpec.describe RunJob, "step-dispatch path" do
         raise Steps::Base::StepFailed, "implement crashed" if fail_role == role
 
         observed_parents << [ role, step.iteration, parent_session_id ]
-        ClaudeSession.create!(
+        ProviderSession.create!(
           run: run,
           session_id: role == "implement_review" ? "implement-#{step.iteration}" : "implement-final",
           transcript_jsonl: "{}\n"
@@ -448,7 +448,7 @@ RSpec.describe RunJob, "step-dispatch path" do
         raise Steps::Base::StepFailed, "reviewer crashed" if fail_role == "adversarial_review"
 
         observed_parents << [ "adversarial_review", step.iteration, parent_session_id ]
-        ClaudeSession.create!(
+        ProviderSession.create!(
           run: run,
           session_id: "review-#{step.iteration}",
           transcript_jsonl: "{}\n"

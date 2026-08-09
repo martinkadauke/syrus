@@ -288,7 +288,7 @@ RSpec.describe ChatProviders::Claude do
         ENV["HOME"] = home
         workspace_path = Pathname.new(Dir.mktmpdir("syrus-chat-workspace"))
         allow(ChatWorkspace).to receive(:path_for).with(chat).and_return(workspace_path)
-        path = ClaudeSession.canonical_path_for(
+        path = ProviderSession.canonical_path_for(
           home: home,
           cwd: workspace_path,
           session_id: "chat-session-1"

@@ -78,19 +78,19 @@
       "file": "app/services/agent_providers/claude.rb",
       "line": 26,
       "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
-      "code": "File.read(ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace.path, :session_id => normalized_session_id(result.session_id)))",
+      "code": "File.read(ProviderSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace.path, :session_id => normalized_session_id(result.session_id)))",
       "render_path": null,
       "location": {
         "type": "method",
         "class": "AgentProviders::Claude",
         "method": "session_capture"
       },
-      "user_input": "ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace.path, :session_id => normalized_session_id(result.session_id))",
+      "user_input": "ProviderSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace.path, :session_id => normalized_session_id(result.session_id))",
       "confidence": "Medium",
       "cwe_id": [
         22
       ],
-      "note": "Claude session IDs are normalized against the session-id pattern and resolved through ClaudeSession.canonical_path_for before filesystem access."
+      "note": "Provider session IDs are normalized against the session-id pattern and resolved through ProviderSession.canonical_path_for before filesystem access."
     },
     {
       "warning_type": "SQL Injection",
@@ -124,19 +124,19 @@
       "file": "plugins/claude_agent/app/services/chat_providers/claude.rb",
       "line": 60,
       "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
-      "code": "File.read(ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => ChatWorkspace.path_for(chat), :session_id => normalized_session_id(result.session_id)))",
+      "code": "File.read(ProviderSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => ChatWorkspace.path_for(chat), :session_id => normalized_session_id(result.session_id)))",
       "render_path": null,
       "location": {
         "type": "method",
         "class": "ChatProviders::Claude",
         "method": "session_capture"
       },
-      "user_input": "ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => ChatWorkspace.path_for(chat), :session_id => normalized_session_id(result.session_id))",
+      "user_input": "ProviderSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => ChatWorkspace.path_for(chat), :session_id => normalized_session_id(result.session_id))",
       "confidence": "Medium",
       "cwe_id": [
         22
       ],
-      "note": "Claude session IDs are normalized against the session-id pattern and resolved through ClaudeSession.canonical_path_for before filesystem access."
+      "note": "Provider session IDs are normalized against the session-id pattern and resolved through ProviderSession.canonical_path_for before filesystem access."
     },
     {
       "warning_type": "File Access",
@@ -147,19 +147,19 @@
       "file": "plugins/claude_agent/app/services/chat_providers/claude.rb",
       "line": 93,
       "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
-      "code": "FileUtils.mkdir_p(File.dirname(ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace_path, :session_id => session_id)))",
+      "code": "FileUtils.mkdir_p(File.dirname(ProviderSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace_path, :session_id => session_id)))",
       "render_path": null,
       "location": {
         "type": "method",
         "class": "ChatProviders::Claude",
-        "method": "ensure_claude_session_on_disk!"
+        "method": "ensure_provider_session_on_disk!"
       },
-      "user_input": "ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace_path, :session_id => session_id)",
+      "user_input": "ProviderSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace_path, :session_id => session_id)",
       "confidence": "Weak",
       "cwe_id": [
         22
       ],
-      "note": "Claude session IDs are normalized against the session-id pattern and resolved through ClaudeSession.canonical_path_for before filesystem access."
+      "note": "Provider session IDs are normalized against the session-id pattern and resolved through ProviderSession.canonical_path_for before filesystem access."
     },
     {
       "warning_type": "SQL Injection",

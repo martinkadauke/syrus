@@ -38,13 +38,13 @@ RSpec.describe Steps::AdversarialReview do
     end
 
     it "returns the prior reviewer session on iteration 2 and never the implementer's session" do
-      ClaudeSession.create!(resumable: implement_run, session_id: "implementer-session", transcript_jsonl: "{}\n")
+      ProviderSession.create!(resumable: implement_run, session_id: "implementer-session", transcript_jsonl: "{}\n")
 
       prior_step = review_step
       prior_step.update!(state: "succeeded")
       prior_run = run
       prior_run.update!(state: "succeeded")
-      ClaudeSession.create!(resumable: prior_run, session_id: "reviewer-session", transcript_jsonl: "{}\n")
+      ProviderSession.create!(resumable: prior_run, session_id: "reviewer-session", transcript_jsonl: "{}\n")
 
       iteration_two_step = Step.create!(
         workflow: workflow,

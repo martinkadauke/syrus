@@ -95,7 +95,7 @@ module Steps
       while cursor
         return nil unless cursor.succeeded?
 
-        session_id = cursor.latest_run&.claude_session&.session_id if cursor.kind == "implement"
+        session_id = cursor.latest_run&.provider_session&.session_id if cursor.kind == "implement"
         return session_id if session_id.present?
 
         cursor = cursor.previous_step

@@ -99,7 +99,7 @@ class SmartRetryEnqueuer
   end
 
   def session
-    @session ||= failed_run&.claude_session
+    @session ||= failed_run&.provider_session
   end
 
   def automatic?

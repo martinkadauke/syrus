@@ -90,7 +90,7 @@ module Admin
 
     def preload_records(issues)
       @record_maps = {
-        Run => Run.where(id: affected_ids(issues, :run_ids)).includes(:job, :claude_session, step: :workflow).index_by(&:id),
+        Run => Run.where(id: affected_ids(issues, :run_ids)).includes(:job, :provider_session, step: :workflow).index_by(&:id),
         Workflow => Workflow.where(id: affected_ids(issues, :workflow_ids)).includes(:job, :steps).index_by(&:id),
         Job => Job.where(id: affected_ids(issues, :job_ids)).index_by(&:id)
       }

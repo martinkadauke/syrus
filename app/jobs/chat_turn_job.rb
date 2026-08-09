@@ -174,7 +174,7 @@ class ChatTurnJob < ApplicationJob
   end
 
   def resume_session_id_for(_provider)
-    @chat.claude_session&.session_id
+    @chat.provider_session&.session_id
   end
 
   def refresh_attached_repository_checkouts!(workspace_path)
@@ -663,17 +663,17 @@ class ChatTurnJob < ApplicationJob
       transcript_jsonl: capture.transcript_jsonl
     }
 
-    session = if @chat.claude_session
-      @chat.claude_session.tap { |existing| existing.update!(attrs) }
+    session = if @chat.provider_session
+      @chat.provider_session.tap { |existing| existing.update!(attrs) }
     else
-      @chat.create_claude_session!(attrs)
+      @chat.create_provider_session!(attrs)
     end
 
     persist_optional_session_metadata(session, capture)
   end
 
   def persist_optional_session_metadata(session, capture)
-    return unless claude_session_has_attribute?(:normalized_messages)
+    return unless provider_session_has_attribute?(:normalized_messages)
 
     session.update!(normalized_messages: capture.normalized_messages)
   rescue StandardError => e
@@ -683,8 +683,8 @@ class ChatTurnJob < ApplicationJob
     )
   end
 
-  def claude_session_has_attribute?(attribute)
-    ClaudeSession.attribute_names.include?(attribute.to_s)
+  def provider_session_has_attribute?(attribute)
+    ProviderSession.attribute_names.include?(attribute.to_s)
   end
 
   def touch_chat!

@@ -168,7 +168,7 @@ RSpec.describe Steps::Summarize, :ci_only do
         state: "succeeded",
         agent_diff: "diff --git a/feature.rb b/feature.rb\n+def greet = 'hi'\n"
       )
-      ClaudeSession.create!(resumable: implement_run, session_id: "S-implement", transcript_jsonl: "{}\n")
+      ProviderSession.create!(resumable: implement_run, session_id: "S-implement", transcript_jsonl: "{}\n")
 
       calls = []
       allow(handler).to receive(:run_agent) do |prompt:, **kwargs|
@@ -209,7 +209,7 @@ RSpec.describe Steps::Summarize, :ci_only do
         state: "succeeded",
         agent_diff: "diff --git a/feature.rb b/feature.rb\n+def greet = 'hi'\n"
       )
-      ClaudeSession.create!(resumable: implement_run, session_id: "019f-missing", provider: "codex")
+      ProviderSession.create!(resumable: implement_run, session_id: "019f-missing", provider: "codex")
 
       calls = []
       allow(handler).to receive(:run_agent) do |prompt:, **kwargs|

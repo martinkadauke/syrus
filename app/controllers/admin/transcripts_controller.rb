@@ -4,7 +4,7 @@ module Admin
   class TranscriptsController < BaseController
     def download
       @run = Run.find(params[:run_id])
-      session = @run.claude_session
+      session = @run.provider_session
 
       unless session
         redirect_back fallback_location: job_path(@run.job),

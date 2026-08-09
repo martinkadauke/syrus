@@ -95,7 +95,7 @@ RSpec.describe "App API job run commands", type: :request do
     failed_run.save!
     failed_run.step.update_columns(state: "failed", started_at: 10.minutes.ago, finished_at: 5.minutes.ago)
     failed_run.step.workflow.update_columns(state: "failed", started_at: 10.minutes.ago, finished_at: 5.minutes.ago)
-    ClaudeSession.create!(
+    ProviderSession.create!(
       resumable: failed_run,
       provider: "codex",
       session_id: "uuid-deadbeef",

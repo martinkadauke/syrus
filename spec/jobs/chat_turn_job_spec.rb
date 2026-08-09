@@ -358,7 +358,7 @@ RSpec.describe ChatTurnJob do
     expect(chat.cumulative_cost).to eq(BigDecimal("0.004321"))
     expect(chat.last_message_at).to be_present
 
-    session = chat.claude_session
+    session = chat.provider_session
     expect(session).to have_attributes(
       resumable: chat,
       provider: "claude",
@@ -423,7 +423,7 @@ RSpec.describe ChatTurnJob do
         ]
       }
     )
-    chat.create_claude_session!(provider: "claude", session_id: "previous-session", transcript_jsonl: "{}\n")
+    chat.create_provider_session!(provider: "claude", session_id: "previous-session", transcript_jsonl: "{}\n")
     next_message = chat.messages.create!(role: "user", content: { "text" => "What should we ask next?" })
 
     received = {}
@@ -930,7 +930,7 @@ RSpec.describe ChatTurnJob do
   end
 
   it "resumes the existing Claude session with a fresh snapshot and without the full system prompt" do
-    chat.create_claude_session!(
+    chat.create_provider_session!(
       provider: "claude",
       session_id: "chat-session-1",
       transcript_jsonl: "old"
@@ -948,7 +948,7 @@ RSpec.describe ChatTurnJob do
     expect(received[:prompt]).to include("Chat: ##{chat.id} scoped to acme/widgets")
     expect(received[:prompt]).to include("What is the plan?")
     expect(received[:prompt]).not_to include("You are Syrus Chat")
-    expect(chat.reload.claude_session).to have_attributes(
+    expect(chat.reload.provider_session).to have_attributes(
       session_id: "chat-session-2",
       transcript_jsonl: "new"
     )
@@ -964,7 +964,7 @@ RSpec.describe ChatTurnJob do
         source: "proposal_notification"
       }
     )
-    chat.create_claude_session!(provider: "claude", session_id: "chat-session-1", transcript_jsonl: "old")
+    chat.create_provider_session!(provider: "claude", session_id: "chat-session-1", transcript_jsonl: "old")
 
     received = {}
     ChatTurnJob.agent_runner = ->(**kwargs) {
@@ -996,7 +996,7 @@ RSpec.describe ChatTurnJob do
       tool_name: "Read",
       content: { result: [ { type: "text", text: huge_tool_result } ], is_error: false }
     )
-    chat.create_claude_session!(provider: "claude", session_id: "chat-session-1", transcript_jsonl: "old")
+    chat.create_provider_session!(provider: "claude", session_id: "chat-session-1", transcript_jsonl: "old")
 
     received = {}
     ChatTurnJob.agent_runner = ->(**kwargs) {
@@ -1136,7 +1136,7 @@ RSpec.describe ChatTurnJob do
         "input" => { "command" => "bin/rails test", "status" => "started" }
       }
     )
-    expect(codex_chat.reload.claude_session).to have_attributes(
+    expect(codex_chat.reload.provider_session).to have_attributes(
       provider: "codex",
       session_id: "codex-thread-1",
       transcript_jsonl: "{\"type\":\"session_meta\"}\n"
@@ -1170,7 +1170,7 @@ RSpec.describe ChatTurnJob do
       api_key: "sk-test",
       codex_home: ChatWorkspace.agent_home_for(mixed_chat, "codex").to_s
     )
-    expect(mixed_chat.reload.claude_session.provider).to eq("codex")
+    expect(mixed_chat.reload.provider_session.provider).to eq("codex")
   end
 
   it "pins the user default chat provider when the chat provider is blank" do
@@ -1200,7 +1200,7 @@ RSpec.describe ChatTurnJob do
       codex_home: ChatWorkspace.agent_home_for(codex_chat, "codex").to_s
     )
     expect(codex_chat.reload.chat_provider).to eq("codex")
-    expect(codex_chat.reload.claude_session.provider).to eq("codex")
+    expect(codex_chat.reload.provider_session.provider).to eq("codex")
   end
 
   it "continues a blank-provider Claude chat with Claude after the user default changes to Codex" do
@@ -1232,7 +1232,7 @@ RSpec.describe ChatTurnJob do
     expect(received).to include(oauth_token: "oat-test")
     expect(received).not_to include(:api_key)
     expect(stable_chat.reload.chat_provider).to eq("claude")
-    expect(stable_chat.claude_session.provider).to eq("claude")
+    expect(stable_chat.provider_session.provider).to eq("claude")
   end
 
   it "continues a blank-provider Codex chat with Codex after the user default changes to Claude" do
@@ -1267,7 +1267,7 @@ RSpec.describe ChatTurnJob do
     )
     expect(received).not_to include(:oauth_token)
     expect(stable_chat.reload.chat_provider).to eq("codex")
-    expect(stable_chat.claude_session.provider).to eq("codex")
+    expect(stable_chat.provider_session.provider).to eq("codex")
   end
 
   it "includes compact persisted chat history when resuming a Codex session" do
@@ -1276,7 +1276,7 @@ RSpec.describe ChatTurnJob do
     codex_chat = ChatSession.create!(repository: codex_repository, user: codex_user)
     codex_chat.messages.create!(role: "user", content: { text: "Earlier Codex request: inspect the queue filters." })
     codex_chat.messages.create!(role: "assistant", content: { text: "The queue filters are in Admin::Queue::Filter." })
-    codex_chat.create_claude_session!(
+    codex_chat.create_provider_session!(
       provider: "codex",
       session_id: "codex-thread-1",
       transcript_jsonl: "{\"type\":\"session_meta\"}\n"
@@ -1307,7 +1307,7 @@ RSpec.describe ChatTurnJob do
     codex_user = Factories.user(codex_api_key: "sk-test", github_token: "ghp-test", chat_provider: "codex")
     codex_repository = Factories.repository(user: codex_user, owner: "acme", name: "mixed-provider", default_branch: "main")
     codex_chat = ChatSession.create!(repository: codex_repository, user: codex_user)
-    codex_chat.create_claude_session!(
+    codex_chat.create_provider_session!(
       provider: "claude",
       session_id: "claude-session-1",
       transcript_jsonl: "old"
@@ -1335,7 +1335,7 @@ RSpec.describe ChatTurnJob do
     expect(rehydrated.last).to include("type" => "turn.completed")
     # Elaboration-guidance path instead of full system prompt (we have a session to resume)
     expect(received[:prompt]).not_to include("You are Syrus Chat")
-    expect(codex_chat.reload.claude_session).to have_attributes(
+    expect(codex_chat.reload.provider_session).to have_attributes(
       provider: "codex",
       session_id: "codex-thread-1",
       transcript_jsonl: "new"
@@ -1346,7 +1346,7 @@ RSpec.describe ChatTurnJob do
     codex_user = Factories.user(codex_api_key: "sk-test", github_token: "ghp-test", chat_provider: "codex")
     codex_repository = Factories.repository(user: codex_user, owner: "acme", name: "codex-resume", default_branch: "main")
     codex_chat = ChatSession.create!(repository: codex_repository, user: codex_user)
-    codex_chat.create_claude_session!(
+    codex_chat.create_provider_session!(
       provider: "codex",
       session_id: "codex-thread-1",
       transcript_jsonl: "{\"type\":\"thread.started\"}\n"
@@ -1375,7 +1375,7 @@ RSpec.describe ChatTurnJob do
       ENV["HOME"] = home
 
       codex_chat = ChatSession.create!(repository: repository, user: user)
-      codex_chat.create_claude_session!(provider: "codex", session_id: "codex-thread-1", transcript_jsonl: "codex-data")
+      codex_chat.create_provider_session!(provider: "codex", session_id: "codex-thread-1", transcript_jsonl: "codex-data")
       codex_chat.messages.create!(role: "assistant", content: [{ "type" => "text", "text" => "Codex was here." }])
       claude_message = codex_chat.messages.create!(role: "user", content: { text: "Now use Claude" })
       allow(ChatWorkspace).to receive(:path_for).with(codex_chat).and_return(workspace_path)
@@ -1383,7 +1383,7 @@ RSpec.describe ChatTurnJob do
 
       written_before_run = nil
       ChatTurnJob.agent_runner = ->(**kwargs) {
-        path = ClaudeSession.canonical_path_for(home: home, cwd: workspace_path, session_id: "codex-thread-1")
+        path = ProviderSession.canonical_path_for(home: home, cwd: workspace_path, session_id: "codex-thread-1")
         written_before_run = File.read(path) if File.exist?(path)
         result_fixture(session_id: "codex-thread-1", transcript_jsonl: "x")
       }
@@ -1404,12 +1404,12 @@ RSpec.describe ChatTurnJob do
       saved_home = ENV["HOME"]
       ENV["HOME"] = home
 
-      chat.create_claude_session!(provider: "claude", session_id: "missing-session-1", transcript_jsonl: "old-cached")
+      chat.create_provider_session!(provider: "claude", session_id: "missing-session-1", transcript_jsonl: "old-cached")
       chat.messages.create!(role: "assistant", content: [{ "type" => "text", "text" => "Prior response." }])
       next_message = chat.messages.create!(role: "user", content: { text: "Resume please" })
 
       # No JSONL file on disk — simulate a missing disk file (worker restart, etc.)
-      path = ClaudeSession.canonical_path_for(home: home, cwd: workspace_path, session_id: "missing-session-1")
+      path = ProviderSession.canonical_path_for(home: home, cwd: workspace_path, session_id: "missing-session-1")
       expect(File.exist?(path)).to eq(false)
 
       written_before_run = nil
@@ -1562,7 +1562,7 @@ RSpec.describe ChatTurnJob do
     Dir.mktmpdir("syrus-chat-home") do |home|
       saved_home = ENV["HOME"]
       ENV["HOME"] = home
-      transcript_path = ClaudeSession.canonical_path_for(
+      transcript_path = ProviderSession.canonical_path_for(
         home: home,
         cwd: workspace_path,
         session_id: "chat-session-1"
@@ -1576,14 +1576,14 @@ RSpec.describe ChatTurnJob do
 
       described_class.perform_now(chat.id, user_message.id)
 
-      expect(chat.reload.claude_session.transcript_jsonl).to eq("{\"type\":\"system\"}\n")
+      expect(chat.reload.provider_session.transcript_jsonl).to eq("{\"type\":\"system\"}\n")
     ensure
       ENV["HOME"] = saved_home
     end
   end
 
   it "keeps the resumable session when optional normalized metadata persistence fails" do
-    allow_any_instance_of(ClaudeSession).to receive(:update!).and_wrap_original do |original, *args|
+    allow_any_instance_of(ProviderSession).to receive(:update!).and_wrap_original do |original, *args|
       attrs = args.first
       raise ActiveRecord::ValueTooLong, "normalized metadata too large" if attrs.is_a?(Hash) && attrs.key?(:normalized_messages)
 
@@ -1599,7 +1599,7 @@ RSpec.describe ChatTurnJob do
 
     described_class.perform_now(chat.id, user_message.id)
 
-    expect(chat.reload.claude_session).to have_attributes(
+    expect(chat.reload.provider_session).to have_attributes(
       provider: "claude",
       session_id: "chat-session-1",
       transcript_jsonl: "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"chat-session-1\"}\n"

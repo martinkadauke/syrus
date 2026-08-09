@@ -340,7 +340,7 @@ Rails.application.routes.draw do
 
       namespace :admin do
         # `#show` returns the deep-nested Job state (workflows + steps
-        # + runs + diagnostics + claude_session metadata). `#index`
+        # + runs + diagnostics + provider_session metadata). `#index`
         # is a compact list — supports `?pr_number=`, `?issue_number=`,
         # `?repo=owner/name`, `?state=` to find a Job from external
         # references (a GH PR url, an issue link, etc.) so the agent

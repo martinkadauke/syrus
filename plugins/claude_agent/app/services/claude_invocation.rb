@@ -173,14 +173,14 @@ class ClaudeInvocation
   end
 
   def ensure_session_on_disk(session_id, workspace_path, log_sink)
-    path = ClaudeSession.canonical_path_for(
+    path = ProviderSession.canonical_path_for(
       home: ENV.fetch("HOME", "/root"),
       cwd: workspace_path,
       session_id: session_id
     )
     return if File.exist?(path)
 
-    session = ClaudeSession.find_by(session_id: session_id)
+    session = ProviderSession.find_by(session_id: session_id)
     return unless session&.transcript_jsonl.present?
 
     FileUtils.mkdir_p(File.dirname(path))

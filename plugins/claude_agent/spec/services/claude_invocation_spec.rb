@@ -945,12 +945,12 @@ RSpec.describe ClaudeInvocation do
     end
 
     def expected_path
-      ClaudeSession.canonical_path_for(home: home_dir, cwd: workspace_path, session_id: session_id)
+      ProviderSession.canonical_path_for(home: home_dir, cwd: workspace_path, session_id: session_id)
     end
 
     it "writes the transcript to disk when session is in DB but file is missing" do
       run = Factories.job.initial_run
-      ClaudeSession.create!(resumable: run, session_id: session_id, transcript_jsonl: "{\"type\":\"system\"}\n")
+      ProviderSession.create!(resumable: run, session_id: session_id, transcript_jsonl: "{\"type\":\"system\"}\n")
 
       invocation.send(:ensure_session_on_disk, session_id, workspace_path, log_sink)
 
@@ -961,7 +961,7 @@ RSpec.describe ClaudeInvocation do
 
     it "is a no-op when the file already exists on disk (same-pod resume)" do
       run = Factories.job.initial_run
-      ClaudeSession.create!(resumable: run, session_id: session_id, transcript_jsonl: "db content")
+      ProviderSession.create!(resumable: run, session_id: session_id, transcript_jsonl: "db content")
       FileUtils.mkdir_p(File.dirname(expected_path))
       File.write(expected_path, "existing disk content")
 
@@ -980,7 +980,7 @@ RSpec.describe ClaudeInvocation do
 
     it "is a no-op when session is in DB but transcript_jsonl is nil" do
       run = Factories.job.initial_run
-      ClaudeSession.create!(resumable: run, session_id: session_id, transcript_jsonl: nil)
+      ProviderSession.create!(resumable: run, session_id: session_id, transcript_jsonl: nil)
 
       invocation.send(:ensure_session_on_disk, session_id, workspace_path, log_sink)
 
@@ -990,7 +990,7 @@ RSpec.describe ClaudeInvocation do
 
     it "logs a warning and does not raise when disk write fails" do
       run = Factories.job.initial_run
-      ClaudeSession.create!(resumable: run, session_id: session_id, transcript_jsonl: "{}")
+      ProviderSession.create!(resumable: run, session_id: session_id, transcript_jsonl: "{}")
       allow(FileUtils).to receive(:mkdir_p).and_raise(Errno::EACCES, "Permission denied")
 
       expect { invocation.send(:ensure_session_on_disk, session_id, workspace_path, log_sink) }.not_to raise_error
@@ -1000,8 +1000,8 @@ RSpec.describe ClaudeInvocation do
     it "restores the session file before spawning the subprocess" do
       run = Factories.job.initial_run
       sid = "spawn-order-test-#{SecureRandom.hex(4)}"
-      ClaudeSession.create!(resumable: run, session_id: sid, transcript_jsonl: "{\"v\":1}\n")
-      expected = ClaudeSession.canonical_path_for(home: home_dir, cwd: workspace_path, session_id: sid)
+      ProviderSession.create!(resumable: run, session_id: sid, transcript_jsonl: "{\"v\":1}\n")
+      expected = ProviderSession.canonical_path_for(home: home_dir, cwd: workspace_path, session_id: sid)
       file_existed_at_spawn = nil
 
       allow(Open3).to receive(:popen2e) do |_env, *_args, **_opts, &blk|

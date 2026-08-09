@@ -16,7 +16,7 @@ class ResumeWorkflowEnqueuer
     return failure("Only failed or cancelled Runs are resumable.") unless source_run.failed? || source_run.cancelled?
     return failure("A Run is already in progress - wait for it to finish.") if job.any_active_run?
 
-    session = source_run.claude_session
+    session = source_run.provider_session
     return failure("No agent session captured for that Run - try Retry instead.") unless session
 
     failed_workflow = source_run.step&.workflow

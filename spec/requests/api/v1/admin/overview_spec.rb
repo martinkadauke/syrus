@@ -32,7 +32,7 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
       expect(body).to have_key("data_root_disk_usage")
       expect(body).to have_key("worker_health")
       expect(body).to have_key("resource_admission")
-      expect(body).not_to have_key("claude_session_capture_rate")
+      expect(body).not_to have_key("provider_session_capture_rate")
       expect(body).to have_key("workers")
       expect(body).to have_key("recurring")
       expect(body).to have_key("stuck")
@@ -43,7 +43,7 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
       run = job.initial_run
       run.update!(state: "succeeded", agent_provider: "codex", finished_at: Time.current)
       run.step.update!(kind: "implement")
-      ClaudeSession.create!(resumable: run, provider: "codex",
+      ProviderSession.create!(resumable: run, provider: "codex",
                             session_id: "codex-thread", transcript_jsonl: "{}\n")
 
       get "/api/v1/admin/overview", headers: auth
@@ -53,7 +53,7 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
         "captured" => 1,
         "rate" => 1.0
       )
-      expect(parse_body).not_to have_key("claude_session_capture_rate")
+      expect(parse_body).not_to have_key("provider_session_capture_rate")
     end
 
     it "surfaces cached stuck Runs in the overview watchlist" do

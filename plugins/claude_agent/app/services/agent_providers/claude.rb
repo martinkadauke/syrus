@@ -19,7 +19,7 @@ module AgentProviders
       session_id = normalized_session_id(result.session_id)
       return missing_session_capture(result) unless session_id
 
-      path = ClaudeSession.canonical_path_for(
+      path = ProviderSession.canonical_path_for(
         home: ENV.fetch("HOME"),
         cwd: workspace.path,
         session_id: session_id

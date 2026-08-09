@@ -15,7 +15,7 @@ RSpec.describe "Admin transcripts", type: :request do
 
   describe "GET /admin/runs/:run_id/transcript" do
     before do
-      ClaudeSession.create!(
+      ProviderSession.create!(
         resumable: run,
         session_id: "abc-123",
         transcript_jsonl: jsonl(
@@ -59,7 +59,7 @@ RSpec.describe "Admin transcripts", type: :request do
 
   describe "GET /admin/runs/:run_id/transcript/download" do
     before do
-      ClaudeSession.create!(resumable: run, session_id: "xyz",
+      ProviderSession.create!(resumable: run, session_id: "xyz",
                             transcript_jsonl: %({"type":"result","subtype":"success"}\n))
     end
 

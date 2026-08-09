@@ -18,7 +18,7 @@ RSpec.describe "API: /api/v1/app/admin/runs/:run_id/transcript", type: :request 
   end
 
   before do
-    ClaudeSession.create!(
+    ProviderSession.create!(
       resumable: run,
       provider: "codex",
       session_id: "abc-123",
@@ -77,7 +77,7 @@ RSpec.describe "API: /api/v1/app/admin/runs/:run_id/transcript", type: :request 
 
   it "returns JobLog fallback events when no session was captured" do
     sign_in_as(admin)
-    run.claude_session.destroy
+    run.provider_session.destroy
     JobLog.append!(run: run, chunk: "fallback transcript row", kind: "system")
 
     get "/api/v1/app/admin/runs/#{run.id}/transcript"

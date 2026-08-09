@@ -15,7 +15,7 @@ require "json"
 class ChatSessionRehydrator::Claude
   def initialize(chat_session, session_id: nil, cwd: nil, model: nil, tools: nil, messages: nil)
     @chat_session = chat_session
-    @session_id   = session_id || chat_session.claude_session&.session_id
+    @session_id   = session_id || chat_session.provider_session&.session_id
     @cwd          = cwd
     @model        = model
     @tools        = tools

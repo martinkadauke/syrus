@@ -24,7 +24,7 @@ module Api
 
         def raw
           run = Run.find(params[:run_id])
-          session = run.claude_session
+          session = run.provider_session
           unless session
             render_error("not_found", I18n.t("api.admin_transcripts.no_session", id: run.id), status: :not_found)
             return

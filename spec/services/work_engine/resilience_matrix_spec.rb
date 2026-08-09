@@ -334,7 +334,7 @@ RSpec.describe "Work engine resilience regression matrix" do
       setup: lambda {
         _job, workflow, step, run = matrix_graph
         fail_run!(workflow, step, run, classification: "worker_died", retryable: true, step_kind: "implement", agent_outcome: "worker_died")
-        ClaudeSession.create!(resumable: run, provider: "claude", session_id: "session-1", transcript_jsonl: "{}\n")
+        ProviderSession.create!(resumable: run, provider: "claude", session_id: "session-1", transcript_jsonl: "{}\n")
         { run_id: run.id }
       }
     },

@@ -138,7 +138,7 @@ class McpToolUsageRecorder
       {
         surface: @surface,
         provider: @provider || @run.agent_provider,
-        session_id: @run.live_session_id || @run.claude_session&.session_id,
+        session_id: @run.live_session_id || @run.provider_session&.session_id,
         tool_use_id: tool_use_id,
         user: @run.user,
         repository: job&.repository,

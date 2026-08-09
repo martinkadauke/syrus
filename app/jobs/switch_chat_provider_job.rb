@@ -10,7 +10,7 @@ class SwitchChatProviderJob < ApplicationJob
                      duration: 30.minutes
 
   def perform(chat_session_id, provider)
-    @chat = ChatSession.includes(:user, :claude_session).find(chat_session_id)
+    @chat = ChatSession.includes(:user, :provider_session).find(chat_session_id)
 
     if @chat.turn_in_flight? || @chat.agent_busy?
       @chat.messages.create!(role: "system", content: { "text" => "Cannot switch provider while a turn is in progress." })
@@ -35,7 +35,7 @@ class SwitchChatProviderJob < ApplicationJob
     workspace_path = ChatWorkspace.path_for(@chat).to_s
     jsonl = rehydrate_for(provider, new_session_id, workspace_path)
 
-    write_claude_session_to_disk!(workspace_path, new_session_id, jsonl) if provider == "claude" && jsonl.present?
+    write_provider_session_to_disk!(workspace_path, new_session_id, jsonl) if provider == "claude" && jsonl.present?
 
     ApplicationRecord.transaction do
       previous_provider = @chat.effective_chat_provider
@@ -43,10 +43,10 @@ class SwitchChatProviderJob < ApplicationJob
 
       if @chat.messages.exists?
         attrs = { provider: provider, session_id: new_session_id, transcript_jsonl: jsonl }
-        if @chat.claude_session
-          @chat.claude_session.update!(attrs)
+        if @chat.provider_session
+          @chat.provider_session.update!(attrs)
         else
-          @chat.create_claude_session!(attrs)
+          @chat.create_provider_session!(attrs)
         end
       end
       App::ProviderAvailability.broadcast_changed(user: @chat.user, provider: previous_provider) if previous_provider.present? && previous_provider != provider
@@ -61,8 +61,8 @@ class SwitchChatProviderJob < ApplicationJob
     klass&.new(@chat, session_id: session_id, cwd: workspace_path)&.call
   end
 
-  def write_claude_session_to_disk!(workspace_path, session_id, jsonl)
-    path = ClaudeSession.canonical_path_for(
+  def write_provider_session_to_disk!(workspace_path, session_id, jsonl)
+    path = ProviderSession.canonical_path_for(
       home: ENV.fetch("HOME"),
       cwd: workspace_path,
       session_id: session_id

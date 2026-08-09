@@ -10,7 +10,7 @@ module Admin
 
       def show(run_id)
         run = Run.find(run_id)
-        session = run.claude_session
+        session = run.provider_session
 
         transcript = ClaudeTranscript.new(session&.transcript_jsonl)
         all_events = transcript.events.to_a

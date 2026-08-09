@@ -53,7 +53,7 @@ module Admin
     end
 
     def run(run)
-      session = run.claude_session
+      session = run.provider_session
       session_payload = agent_session_payload(session)
 
       {

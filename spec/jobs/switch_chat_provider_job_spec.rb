@@ -49,7 +49,7 @@ RSpec.describe SwitchChatProviderJob do
 
     after { FileUtils.rm_rf(tmpdir) }
 
-    it "updates chat_provider and creates a claude_session for codex" do
+    it "updates chat_provider and creates a provider_session for codex" do
       allow(ChatSessionRehydrator::Codex).to receive(:new).and_call_original
       broadcast_payloads = []
       allow(AppEvents).to receive(:broadcast) { |**kwargs| broadcast_payloads << kwargs[:payload] }
@@ -57,9 +57,9 @@ RSpec.describe SwitchChatProviderJob do
       described_class.new.perform(chat.id, "codex")
 
       expect(chat.reload.chat_provider).to eq("codex")
-      expect(chat.claude_session.provider).to eq("codex")
-      expect(chat.claude_session.session_id).to be_present
-      expect(chat.claude_session.transcript_jsonl).to be_present
+      expect(chat.provider_session.provider).to eq("codex")
+      expect(chat.provider_session.session_id).to be_present
+      expect(chat.provider_session.transcript_jsonl).to be_present
 
       switching_on = broadcast_payloads.find { |p| p&.dig(:switching_provider) == true }
       switching_off = broadcast_payloads.find { |p| p&.dig(:action) == "update_controls" && p[:switching_provider] == false }
@@ -83,15 +83,15 @@ RSpec.describe SwitchChatProviderJob do
 
     after { FileUtils.rm_rf(tmpdir) }
 
-    it "writes the claude session to disk and updates claude_session" do
+    it "writes the provider session to disk and updates provider_session" do
       described_class.new.perform(chat.id, "claude")
 
       expect(chat.reload.chat_provider).to eq("claude")
-      session = chat.claude_session
+      session = chat.provider_session
       expect(session.provider).to eq("claude")
       session_id = session.session_id
 
-      expected_path = ClaudeSession.canonical_path_for(
+      expected_path = ProviderSession.canonical_path_for(
         home: tmpdir,
         cwd: workspace_path.to_s,
         session_id: session_id
@@ -102,17 +102,17 @@ RSpec.describe SwitchChatProviderJob do
   end
 
   describe "switching when chat has no messages" do
-    it "updates chat_provider but does not create a claude_session" do
+    it "updates chat_provider but does not create a provider_session" do
       allow(AppEvents).to receive(:broadcast)
 
       described_class.new.perform(chat.id, "codex")
 
       expect(chat.reload.chat_provider).to eq("codex")
-      expect(chat.claude_session).to be_nil
+      expect(chat.provider_session).to be_nil
     end
   end
 
-  describe "updating an existing claude_session" do
+  describe "updating an existing provider_session" do
     let(:tmpdir) { Dir.mktmpdir("switch-provider-test") }
 
     before do
@@ -121,17 +121,17 @@ RSpec.describe SwitchChatProviderJob do
       allow(ChatWorkspace).to receive(:path_for).with(chat).and_return(Pathname.new(tmpdir).join("workspace"))
       chat.messages.create!(role: "user", content: { "text" => "hello" })
       chat.messages.create!(role: "assistant", content: [ { "type" => "text", "text" => "world" } ])
-      chat.create_claude_session!(provider: "claude", session_id: "old-session-id", transcript_jsonl: "old-jsonl")
+      chat.create_provider_session!(provider: "claude", session_id: "old-session-id", transcript_jsonl: "old-jsonl")
     end
 
     after { FileUtils.rm_rf(tmpdir) }
 
-    it "updates the existing claude_session record" do
+    it "updates the existing provider_session record" do
       allow(AppEvents).to receive(:broadcast)
 
       described_class.new.perform(chat.id, "codex")
 
-      session = chat.reload.claude_session
+      session = chat.reload.provider_session
       expect(session.provider).to eq("codex")
       expect(session.session_id).not_to eq("old-session-id")
       expect(session.transcript_jsonl).not_to eq("old-jsonl")

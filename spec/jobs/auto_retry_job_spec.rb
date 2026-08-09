@@ -35,7 +35,7 @@ RSpec.describe AutoRetryJob do
       agent_outcome: "worker_died",
       finished_at: Time.current
     )
-    ClaudeSession.create!(
+    ProviderSession.create!(
       resumable: agent_run,
       provider: "claude",
       session_id: "claude-thread",

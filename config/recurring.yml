@@ -90,8 +90,8 @@ default: &default
     class: SpawnedProcessPruneJob
     queue: cleanup
     schedule: every day at 3:20am
-  prune_claude_sessions:
-    class: ClaudeSessionPruneJob
+  prune_provider_sessions:
+    class: ProviderSessionPruneJob
     queue: cleanup
     schedule: every day at 3:00am
   prune_run_diagnostics:

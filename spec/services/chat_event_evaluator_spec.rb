@@ -71,7 +71,7 @@ RSpec.describe ChatEventEvaluator do
   end
 
   it "persists a no-op evaluator result without mutating the live provider session" do
-    live_session = chat_session.create_claude_session!(
+    live_session = chat_session.create_provider_session!(
       provider: "claude",
       session_id: "live-session",
       transcript_jsonl: "{\"type\":\"system\"}\n"
@@ -88,8 +88,8 @@ RSpec.describe ChatEventEvaluator do
     expect(event.evaluator_state).to eq("completed")
     expect(event.evaluator_result).to include("decision" => "no_op", "reason" => "duplicate event")
     expect(event.evaluated_at).to be_present
-    expect(chat_session.reload.claude_session).to eq(live_session)
-    expect(chat_session.claude_session.session_id).to eq("live-session")
-    expect(ClaudeSession.where(resumable: chat_session).count).to eq(1)
+    expect(chat_session.reload.provider_session).to eq(live_session)
+    expect(chat_session.provider_session.session_id).to eq("live-session")
+    expect(ProviderSession.where(resumable: chat_session).count).to eq(1)
   end
 end

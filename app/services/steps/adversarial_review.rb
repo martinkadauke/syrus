@@ -27,7 +27,7 @@ module Steps
           .where(kind: "adversarial_review", loop_id: step.loop_id)
           .where("iteration < ?", step.iteration)
           .order(iteration: :desc)
-          .first&.latest_run&.claude_session&.session_id
+          .first&.latest_run&.provider_session&.session_id
     end
 
     def reviewer_prompt

@@ -4,7 +4,7 @@ class AutoRetryJob < ApplicationJob
   discard_on ActiveRecord::RecordNotFound
 
   def perform(auto_retry_attempt_id)
-    attempt = AutoRetryAttempt.includes(:job, :workflow, run: :claude_session).find(auto_retry_attempt_id)
+    attempt = AutoRetryAttempt.includes(:job, :workflow, run: :provider_session).find(auto_retry_attempt_id)
     return if attempt.performed_at.present? || attempt.skipped_reason.present?
 
     if stale_attempt?(attempt)
@@ -96,7 +96,7 @@ class AutoRetryJob < ApplicationJob
   end
 
   def resume_failed_step(attempt)
-    session = attempt.run&.claude_session
+    session = attempt.run&.provider_session
     return retry_workflow(attempt) unless session && attempt.workflow.retry_available? && attempt.run.step&.agentic?
 
     RetryFailedStepEnqueuer.call(

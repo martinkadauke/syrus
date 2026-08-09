@@ -89,7 +89,7 @@ module ChatProviders
       return nil if session_id.blank?
 
       # Fast path: provider matches and transcript is cached
-      session = chat.claude_session
+      session = chat.provider_session
       if session&.provider == provider && session.session_id == session_id && session.transcript_jsonl.present?
         return session.transcript_jsonl
       end

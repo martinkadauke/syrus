@@ -41,7 +41,7 @@ RSpec.describe ChatProviders::Codex do
 
   describe "#invoke" do
     it "invokes Codex with chat MCP servers, chat Codex home, and resume transcript" do
-      chat.create_claude_session!(
+      chat.create_provider_session!(
         provider: "codex",
         session_id: "codex-thread-1",
         transcript_jsonl: "{\"type\":\"session_meta\"}\n"

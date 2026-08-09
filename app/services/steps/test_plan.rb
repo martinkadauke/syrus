@@ -65,7 +65,7 @@ module Steps
     end
 
     def implement_session_id
-      successful_implement_run&.claude_session&.session_id
+      successful_implement_run&.provider_session&.session_id
     end
 
     def successful_implement_run

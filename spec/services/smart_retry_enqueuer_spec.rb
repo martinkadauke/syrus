@@ -144,7 +144,7 @@ RSpec.describe SmartRetryEnqueuer do
 
   it "resumes a failed agentic step when a captured session exists" do
     job, workflow, step, run = failed_job(step_kind: "implement")
-    ClaudeSession.create!(resumable: run, session_id: "session-123", provider: "claude")
+    ProviderSession.create!(resumable: run, session_id: "session-123", provider: "claude")
 
     result = described_class.call(job: job, automatic: true)
 

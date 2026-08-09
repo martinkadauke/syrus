@@ -203,10 +203,10 @@ describe "details JSON bag" do
       expect(step_b.upstream_session_id).to be_nil
     end
 
-    it "returns the latest succeeded run's claude_session.session_id" do
+    it "returns the latest succeeded run's provider_session.session_id" do
       step_a.update!(state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
       run = Run.create!(job: job, step: step_a, trigger_kind: "initial", state: "succeeded")
-      ClaudeSession.create!(resumable: run, session_id: "S-upstream", transcript_jsonl: "x")
+      ProviderSession.create!(resumable: run, session_id: "S-upstream", transcript_jsonl: "x")
       expect(step_b.upstream_session_id).to eq("S-upstream")
     end
 
@@ -216,7 +216,7 @@ describe "details JSON bag" do
       step_a.update!(next_step_id: grade.id, state: "succeeded", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
       grade.update!(next_step_id: summarize.id, state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
       run = Run.create!(job: job, step: step_a, trigger_kind: "retry", state: "succeeded")
-      ClaudeSession.create!(resumable: run, session_id: "S-implement", transcript_jsonl: "x")
+      ProviderSession.create!(resumable: run, session_id: "S-implement", transcript_jsonl: "x")
 
       expect(summarize.upstream_session_id).to eq("S-implement")
     end
@@ -227,7 +227,7 @@ describe "details JSON bag" do
       step_a.update!(next_step_id: grade.id, state: "succeeded", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
       grade.update!(next_step_id: summarize.id)
       run = Run.create!(job: job, step: step_a, trigger_kind: "retry", state: "succeeded")
-      ClaudeSession.create!(resumable: run, session_id: "S-implement", transcript_jsonl: "x")
+      ProviderSession.create!(resumable: run, session_id: "S-implement", transcript_jsonl: "x")
 
       expect(summarize.upstream_session_id).to be_nil
     end

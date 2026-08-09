@@ -268,7 +268,7 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
                                    started_at: 1.minute.ago, finished_at: Time.current)
       implement.update!(state: "succeeded", finished_at: Time.current)
       wf.update!(state: "succeeded", finished_at: Time.current, cleaned_up_at: Time.current)
-      ClaudeSession.create!(resumable: run, provider: "codex", session_id: "abc-123",
+      ProviderSession.create!(resumable: run, provider: "codex", session_id: "abc-123",
                             transcript_jsonl: "{\"a\":1}\n{\"b\":2}\n")
 
       get "/api/v1/admin/jobs/#{job.id}", headers: auth(admin_token)
@@ -344,7 +344,7 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       expect(run_payload["agent_session"]["transcript_pruned"]).to be false
       expect(run_payload["created_at"]).to be_present
       expect(run_payload["updated_at"]).to be_present
-      expect(run_payload).not_to have_key("claude_session")
+      expect(run_payload).not_to have_key("provider_session")
     end
 
     it "can include a live GitHub PR snapshot without changing the default payload" do
@@ -404,7 +404,7 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       job_with = Factories.job(user: admin)
       run = job_with.initial_run
       run.update!(state: "succeeded")
-      ClaudeSession.create!(resumable: run, session_id: "pruned-1", transcript_jsonl: nil)
+      ProviderSession.create!(resumable: run, session_id: "pruned-1", transcript_jsonl: nil)
 
       get "/api/v1/admin/jobs/#{job_with.id}", headers: auth(admin_token)
       expect(response).to be_successful
@@ -419,7 +419,7 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
         "transcript_bytes"  => nil,
         "transcript_lines"  => nil
       )
-      expect(run_payload).not_to have_key("claude_session")
+      expect(run_payload).not_to have_key("provider_session")
     end
 
     it "swaps in an error envelope when a single Run's serializer raises (others still render)" do

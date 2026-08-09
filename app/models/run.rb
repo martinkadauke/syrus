@@ -20,11 +20,11 @@ class Run < ApplicationRecord
   has_many :auto_retry_attempts, dependent: :nullify
   has_many :spawned_processes, dependent: :nullify
   has_many :command_spans, -> { order(:sequence, :id) }, dependent: :destroy
-  has_one :claude_session, as: :resumable, dependent: :destroy
-  has_one :claude_session_metadata,
+  has_one :provider_session, as: :resumable, dependent: :destroy
+  has_one :provider_session_metadata,
           -> { metadata_only },
           as: :resumable,
-          class_name: "ClaudeSession"
+          class_name: "ProviderSession"
   has_one :run_diagnostic, dependent: :destroy
   has_one :run_failure_classification, dependent: :destroy
   has_one :run_resource_summary, dependent: :destroy

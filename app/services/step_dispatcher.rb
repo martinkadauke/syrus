@@ -961,7 +961,7 @@ class StepDispatcher
   end
 
   def prior_iteration_session_id
-    prior_iteration_agent_step&.latest_run&.claude_session&.session_id
+    prior_iteration_agent_step&.latest_run&.provider_session&.session_id
   end
 
   def prior_iteration_agent_step

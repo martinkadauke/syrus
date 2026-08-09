@@ -18,7 +18,7 @@ class ChatSessionRehydrator::Codex
 
   def initialize(chat_session, session_id: nil, cwd: nil, messages: nil)
     @chat_session = chat_session
-    @session_id   = session_id || chat_session.claude_session&.session_id
+    @session_id   = session_id || chat_session.provider_session&.session_id
     @messages     = messages
   end
 

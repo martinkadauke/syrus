@@ -17,7 +17,7 @@ RSpec.describe ResumeWorkflowEnqueuer do
   it "reopens the failed step instead of creating a new resume workflow" do
     fail_source_run!
     job.update!(state: "failed")
-    ClaudeSession.create!(
+    ProviderSession.create!(
       resumable: source_run,
       provider: "codex",
       session_id: "codex-thread",
@@ -51,7 +51,7 @@ RSpec.describe ResumeWorkflowEnqueuer do
 
   it "rejects active jobs" do
     fail_source_run!
-    ClaudeSession.create!(
+    ProviderSession.create!(
       resumable: source_run,
       provider: "codex",
       session_id: "codex-thread",

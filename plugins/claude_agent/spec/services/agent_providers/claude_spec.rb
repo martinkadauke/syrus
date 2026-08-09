@@ -221,7 +221,7 @@ RSpec.describe AgentProviders::Claude do
       Dir.mktmpdir do |home|
         saved_home = ENV["HOME"]
         ENV["HOME"] = home
-        path = ClaudeSession.canonical_path_for(
+        path = ProviderSession.canonical_path_for(
           home: home,
           cwd: workspace.path,
           session_id: "S-captured"

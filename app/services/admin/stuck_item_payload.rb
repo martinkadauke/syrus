@@ -25,7 +25,7 @@ module Admin
         job_state: item.job&.state,
         job_path: item.job ? "/jobs/#{item.job.id}" : nil,
         force_fail_path: include_actions ? force_fail_path_for(item.job) : nil,
-        has_transcript: item.run&.claude_session.present?,
+        has_transcript: item.run&.provider_session.present?,
         issue: item.issue&.as_json,
         repair_plan: item.repair_plan&.as_json,
         repair_execution: item.repair_execution&.as_json

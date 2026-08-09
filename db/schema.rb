@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_08_201500) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_08_203000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -429,21 +429,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_201500) do
     t.datetime "updated_at", null: false
     t.integer "version", default: 0, null: false
     t.index ["chat_session_id"], name: "index_chat_whiteboards_on_chat_session_id", unique: true
-  end
-
-  create_table "claude_sessions", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.json "normalized_messages"
-    t.string "provider", default: "claude", null: false
-    t.integer "resumable_id"
-    t.string "resumable_type"
-    t.integer "run_id"
-    t.string "session_id", null: false
-    t.text "transcript_jsonl", limit: 67108864
-    t.datetime "updated_at", null: false
-    t.index ["created_at"], name: "index_claude_sessions_on_created_at"
-    t.index ["resumable_type", "resumable_id"], name: "index_claude_sessions_on_resumable", unique: true
-    t.index ["run_id"], name: "index_claude_sessions_on_run_id", unique: true
   end
 
   create_table "command_spans", force: :cascade do |t|
@@ -1273,6 +1258,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_201500) do
     t.index ["state"], name: "index_preview_environments_on_state"
   end
 
+  create_table "provider_sessions", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.json "normalized_messages"
+    t.string "provider", default: "claude", null: false
+    t.integer "resumable_id"
+    t.string "resumable_type"
+    t.integer "run_id"
+    t.string "session_id", null: false
+    t.text "transcript_jsonl", limit: 67108864
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_provider_sessions_on_created_at"
+    t.index ["resumable_type", "resumable_id"], name: "index_provider_sessions_on_resumable", unique: true
+    t.index ["run_id"], name: "index_provider_sessions_on_run_id", unique: true
+  end
+
   create_table "repositories", force: :cascade do |t|
     t.string "agent_provider"
     t.boolean "approval_propagates_to_github", default: true
@@ -1978,7 +1978,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_201500) do
   add_foreign_key "chat_wakeups", "chat_sessions"
   add_foreign_key "chat_wakeups", "users"
   add_foreign_key "chat_whiteboards", "chat_sessions"
-  add_foreign_key "claude_sessions", "runs"
   add_foreign_key "command_spans", "jobs"
   add_foreign_key "command_spans", "runs"
   add_foreign_key "command_spans", "spawned_processes"
@@ -2079,6 +2078,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_201500) do
   add_foreign_key "provider_availability_evidences", "users"
   add_foreign_key "provider_availability_evidences", "users", column: "repaired_by_user_id"
   add_foreign_key "preview_environments", "jobs"
+  add_foreign_key "provider_sessions", "runs"
   add_foreign_key "repositories", "installations"
   add_foreign_key "repositories", "repositories", column: "upstream_repository_id"
   add_foreign_key "repositories", "users"

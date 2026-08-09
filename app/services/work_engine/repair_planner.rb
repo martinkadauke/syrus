@@ -160,7 +160,7 @@ module WorkEngine
         end
 
         def primary_run
-          @primary_run ||= Run.includes(:step, :job, :claude_session_metadata, :run_failure_classification).find_by(id: first_id(:run_ids))
+          @primary_run ||= Run.includes(:step, :job, :provider_session_metadata, :run_failure_classification).find_by(id: first_id(:run_ids))
         end
 
         def primary_step
@@ -352,7 +352,7 @@ module WorkEngine
             )
           end
 
-          return resume_worker_died if primary_step&.agentic? && primary_run&.claude_session_metadata.present?
+          return resume_worker_died if primary_step&.agentic? && primary_run&.provider_session_metadata.present?
           return retry_step_after_worker_died if workspace_available?
           return retry_workflow_after_worker_died if retry_whole_workflow_safe?
 
@@ -501,7 +501,7 @@ module WorkEngine
             )
           end
 
-          return resume_failed_step if primary_step&.agentic? && primary_run&.claude_session_metadata.present?
+          return resume_failed_step if primary_step&.agentic? && primary_run&.provider_session_metadata.present?
           return retry_failed_step if workspace_available? && safe_step_retry?
           return retry_workflow if retry_whole_workflow_safe?
 

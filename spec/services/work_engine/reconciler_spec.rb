@@ -773,7 +773,7 @@ RSpec.describe WorkEngine::Reconciler do
       started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago,
       last_heartbeat_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago
     )
-    ClaudeSession.create!(resumable: agent_run, provider: "claude", session_id: "session-1", transcript_jsonl: "{}\n")
+    ProviderSession.create!(resumable: agent_run, provider: "claude", session_id: "session-1", transcript_jsonl: "{}\n")
     agent_step.update_columns(state: "running", started_at: agent_run.started_at)
     workflow.update_columns(state: "running", started_at: agent_run.started_at)
     ensure_solid_queue_test_tables!
@@ -941,7 +941,7 @@ RSpec.describe WorkEngine::Reconciler do
       started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago,
       last_heartbeat_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago
     )
-    ClaudeSession.create!(resumable: agent_run, provider: "claude", session_id: "session-1", transcript_jsonl: "{}\n")
+    ProviderSession.create!(resumable: agent_run, provider: "claude", session_id: "session-1", transcript_jsonl: "{}\n")
     agent_step.update_columns(state: "running", started_at: agent_run.started_at)
     workflow.update_columns(state: "running", started_at: agent_run.started_at)
     ensure_solid_queue_test_tables!
@@ -1431,7 +1431,7 @@ RSpec.describe WorkEngine::Reconciler do
       agent_outcome: "worker_died",
       finished_at: Time.current
     )
-    ClaudeSession.create!(resumable: present, provider: "claude", session_id: "session-1", transcript_jsonl: "{}\n")
+    ProviderSession.create!(resumable: present, provider: "claude", session_id: "session-1", transcript_jsonl: "{}\n")
     missing = agent_step.runs.create!(
       job: job,
       trigger_kind: workflow.trigger_kind,

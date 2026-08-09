@@ -119,7 +119,7 @@ RSpec.describe Steps::Base do
     it "returns the upstream step's last successful run's session_id" do
       upstream_run = Run.create!(job: job, step: upstream_step, trigger_kind: "initial",
                                   state: "succeeded")
-      ClaudeSession.create!(resumable: upstream_run, session_id: "S-upstream", transcript_jsonl: "x")
+      ProviderSession.create!(resumable: upstream_run, session_id: "S-upstream", transcript_jsonl: "x")
       upstream_step.update!(state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
 
       current_run = Run.create!(job: job, step: current_step, trigger_kind: "initial")
@@ -134,7 +134,7 @@ RSpec.describe Steps::Base do
       grade_step.update!(next_step_id: current_step.id)
       upstream_run = Run.create!(job: job, step: upstream_step, trigger_kind: "retry",
                                   state: "succeeded")
-      ClaudeSession.create!(resumable: upstream_run, session_id: "S-implement", transcript_jsonl: "x")
+      ProviderSession.create!(resumable: upstream_run, session_id: "S-implement", transcript_jsonl: "x")
       upstream_step.update!(state: "succeeded", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
       grade_step.update!(state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
 
@@ -154,7 +154,7 @@ RSpec.describe Steps::Base do
     it "treats the no-resume sentinel as an explicit nil parent" do
       upstream_run = Run.create!(job: job, step: upstream_step, trigger_kind: "initial",
                                   state: "succeeded")
-      ClaudeSession.create!(resumable: upstream_run, session_id: "S-upstream", transcript_jsonl: "x")
+      ProviderSession.create!(resumable: upstream_run, session_id: "S-upstream", transcript_jsonl: "x")
       upstream_step.update!(state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
 
       current_run = Run.create!(job: job, step: current_step, trigger_kind: "initial",
