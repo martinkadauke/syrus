@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { memo } from "react"
+import { memo, useState } from "react"
 import type { FormEvent, KeyboardEvent, MouseEvent } from "react"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 import { Link } from "react-router-dom"
 import "@excalidraw/excalidraw/index.css"
 import { useDismissiblePopup } from "../../lib/useDismissiblePopup"
@@ -420,6 +420,8 @@ function BookmarkControl({ item, payload, queryKey, onNotice }: { item: Extract<
 }
 
 export const ToolGroup = memo(function ToolGroup({ item, simpleMode = false }: { item: ChatToolGroupItem; simpleMode?: boolean }) {
+  const [open, setOpen] = useState(false)
+
   if (simpleMode) {
     return (
       <div className="space-y-1">
@@ -435,7 +437,7 @@ export const ToolGroup = memo(function ToolGroup({ item, simpleMode = false }: {
 
   const details = item.calls.map((call) => [call.detail, call.result_summary].filter(Boolean).join(" · ")).filter(Boolean).join(", ")
   return (
-    <details className="group/tool">
+    <details className="group/tool" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="flex min-w-0 cursor-pointer items-baseline gap-2 py-0.5 text-sm text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100">
         <span className="text-gray-400 group-open/tool:rotate-90 dark:text-gray-500">▸</span>
         <span className="font-mono font-medium text-gray-900 dark:text-gray-100">{item.tool}</span>
@@ -447,7 +449,7 @@ export const ToolGroup = memo(function ToolGroup({ item, simpleMode = false }: {
           <div key={call.message_id}>
             <div className="break-words font-mono text-gray-700 dark:text-gray-300">{item.tool}{call.detail ? `(${call.detail})` : ""}</div>
             {call.result_summary ? <div className="mt-1 font-mono text-gray-500 dark:text-gray-400">{call.result_summary}</div> : null}
-            {call.result_body ? <HighlightedToolResult code={call.result_body} detail={call.detail} error={call.result_error} tool={item.tool} /> : null}
+            {open && call.result_body ? <HighlightedToolResult code={call.result_body} detail={call.detail} error={call.result_error} tool={item.tool} /> : null}
           </div>
         ))}
       </div>
@@ -466,14 +468,15 @@ function HighlightedToolResult({ code, detail, error, tool }: { code: string; de
 
 function StructuredTool({ tool, fallback }: { tool?: ChatStructuredTool; fallback: string }) {
   const name = tool?.name || "tool"
+  const [open, setOpen] = useState(false)
   return (
-    <details className="text-xs open:rounded open:border open:border-gray-200 open:bg-gray-50 dark:open:border-gray-700 dark:open:bg-gray-900">
+    <details className="text-xs open:rounded open:border open:border-gray-200 open:bg-gray-50 dark:open:border-gray-700 dark:open:bg-gray-900" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="flex cursor-pointer items-baseline gap-2 py-0.5 text-sm text-gray-700 hover:text-gray-900 group-open/tool:px-3 group-open/tool:py-2 dark:text-gray-300 dark:hover:text-gray-100">
         <span className="text-gray-400 dark:text-gray-500">▸</span>
         <span className="font-mono font-medium text-gray-900 dark:text-gray-100">{name}</span>
         {tool?.proposal_id ? <span className="text-gray-600 dark:text-gray-400">Proposal #{tool.proposal_id} {tool.proposal_state_label ? `created (${tool.proposal_state_label})` : ""}</span> : null}
       </summary>
-      <pre className="overflow-x-auto px-3 pb-3 font-mono text-gray-700 whitespace-pre-wrap break-words dark:text-gray-300">{JSON.stringify(tool?.payload || fallback, null, 2)}</pre>
+      {open ? <pre className="overflow-x-auto px-3 pb-3 font-mono text-gray-700 whitespace-pre-wrap break-words dark:text-gray-300">{JSON.stringify(tool?.payload || fallback, null, 2)}</pre> : null}
     </details>
   )
 }

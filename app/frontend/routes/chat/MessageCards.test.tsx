@@ -2,8 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { ChatMessage, resolveWorkspaceFileLink } from "./MessageCards"
-import type { ChatPayload, ChatRenderItem } from "../../api/chats"
+import { ChatMessage, resolveWorkspaceFileLink, ToolGroup } from "./MessageCards"
+import type { ChatPayload, ChatRenderItem, ChatToolGroupItem } from "../../api/chats"
 import { fetchSourceFileContent } from "../../api/chats"
 
 vi.mock("../../api/chats", async (importOriginal) => {
@@ -157,5 +157,38 @@ describe("chat workspace source links", () => {
 
     expect(screen.getByRole("link", { name: "dashboard" })).toHaveAttribute("href", "/app")
     expect(screen.getByRole("link", { name: "site" })).toHaveAttribute("href", "https://example.com")
+  })
+})
+
+describe("tool result rendering", () => {
+  it("defers large tool result bodies until the operator expands the group", () => {
+    const item: ChatToolGroupItem = {
+      type: "tool_group",
+      tool: "read_live_state",
+      calls: [
+        {
+          message_id: 1,
+          detail: "detail",
+          progress_label: "Reading",
+          result_body: "very large hidden body",
+          result_error: false,
+          result_summary: "summary"
+        }
+      ]
+    }
+
+    render(<ToolGroup item={item} />)
+
+    expect(screen.getByText("summary")).toBeInTheDocument()
+    expect(screen.queryByText("very large hidden body")).not.toBeInTheDocument()
+
+    const details = screen.getByText("read_live_state").closest("details")
+    expect(details).not.toBeNull()
+    if (!details) return
+
+    details.open = true
+    fireEvent(details, new Event("toggle"))
+
+    expect(screen.getByText("very large hidden body")).toBeInTheDocument()
   })
 })
