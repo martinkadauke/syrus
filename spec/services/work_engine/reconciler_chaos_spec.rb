@@ -51,6 +51,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       stale_auto_retry_after_branch_divergence_recovery
       epic_workflow_conflict
       stale_branch_diverged_workflow
+      recovered_branch_diverged_failed_job
       closed_job_with_active_workflow
       queued_step_without_run_after_succeeded_step
       running_step_with_failed_terminal_run
@@ -910,6 +911,49 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       )
     end
 
+    def recovered_branch_diverged_failed_job
+      job, workflow, step, run = graph
+      branch = "syrus/issue-#{case_number}-#{job.id}"
+      remote_sha = "remote-#{case_number}"
+      local_sha = "local-#{case_number}"
+      job.update_columns(
+        state: "failed",
+        pr_number: 10_000 + case_number,
+        branch_name: branch,
+        mergeability_head_sha: remote_sha
+      )
+      workflow.update_columns(state: "failed", trigger_kind: "retry", finished_at: 5.minutes.ago)
+      step.update_columns(kind: "pr_open", state: "failed", finished_at: 5.minutes.ago)
+      run.update_columns(state: "failed", finished_at: 5.minutes.ago)
+      workflow.set_artifact!("branch_divergence", {
+        "branch" => branch,
+        "remote_sha" => remote_sha,
+        "local_sha" => local_sha
+      })
+      workflow.set_artifact!("branch_divergence_recovery", {
+        "action" => "superseded_by_current_pr_branch",
+        "at" => 4.minutes.ago.iso8601
+      })
+      RunFailureClassification.create!(
+        run: run,
+        classification: "branch_diverged",
+        retryable: false,
+        confidence: 0.95,
+        reason: "chaos branch divergence",
+        classified_at: 5.minutes.ago
+      )
+      trace << "job=#{job.id}:failed_recovered_branch_divergence remote=#{remote_sha} local=#{local_sha}"
+
+      expectation(
+        "recovered branch-diverged failed job",
+        target: { job_id: job.id },
+        expected_issue: :unambiguous_job_state_drift,
+        expected_action: :reconcile_job_state,
+        forbidden_issues: %i[nonretryable_semantic_git_failure retryable_run_failure branch_diverged_pr_open],
+        forbidden_actions: %i[operator_review_nonretryable_failure retry_workflow]
+      )
+    end
+
     def running_step_with_failed_terminal_run
       _job, workflow, step, _run = graph
       run = failed_terminal_run_on_running_step!(workflow, step)
@@ -1331,6 +1375,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
     assert_chaos_case!(simulation.send(:stale_auto_retry_workflow_with_queued_run))
     assert_chaos_case!(simulation.send(:stale_auto_retry_after_branch_divergence_recovery))
     assert_chaos_case!(simulation.send(:stale_branch_diverged_workflow))
+    assert_chaos_case!(simulation.send(:recovered_branch_diverged_failed_job))
     assert_chaos_case!(simulation.send(:running_step_with_failed_terminal_run))
     assert_chaos_case!(simulation.send(:running_step_with_succeeded_terminal_run))
     assert_chaos_case!(simulation.send(:running_workflow_with_failed_step))

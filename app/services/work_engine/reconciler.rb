@@ -916,6 +916,7 @@ module WorkEngine
     def classify_resumable_sessions
       runs.select { |run| run.failed? && run.step&.agentic? }.filter_map do |run|
         next if run.job&.closed?
+        next unless latest_workflow_run?(run)
         next if step_needs_terminal_run_reconciliation?(run.step)
 
         retryable_worker_failure = run.agent_outcome == AutoRetryAttempt::WORKER_DIED_CLASSIFICATION ||
@@ -949,6 +950,7 @@ module WorkEngine
     def classify_retryable_failures
       runs.select(&:failed?).filter_map do |run|
         next if run.job&.closed?
+        next unless latest_workflow_run?(run)
         next if step_needs_terminal_run_reconciliation?(run.step)
         next if recoverable_branch_divergence?(run)
         next if branch_divergence_recovered_by_current_pr_branch?(run.workflow)
@@ -1492,6 +1494,12 @@ module WorkEngine
     def branch_diverged_pr_open_run?(run)
       run.step&.kind == "pr_open" &&
         run.run_failure_classification&.classification == "branch_diverged"
+    end
+
+    def latest_workflow_run?(run)
+      workflow = run.workflow
+      job = run.job
+      workflow && job && workflow == job.latest_workflow
     end
 
     def divergence_current_pr_head?(job, divergence)

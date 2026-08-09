@@ -611,6 +611,81 @@ RSpec.describe WorkEngine::Reconciler do
     expect(enqueued_jobs.map { |entry| entry[:job] }).to include(AutoRetryJob)
   end
 
+  it "marks a failed Job implemented after the latest branch-diverged workflow was superseded by the current PR branch" do
+    job.update_columns(
+      state: "failed",
+      pr_number: 77,
+      branch_name: "syrus/issue-42-#{job.id}",
+      mergeability_head_sha: "remote-head"
+    )
+    workflow.update_columns(state: "failed", trigger_kind: "retry", finished_at: 10.minutes.ago)
+    step.update_columns(kind: "pr_open", state: "failed", finished_at: 10.minutes.ago)
+    run.update_columns(state: "failed", finished_at: 10.minutes.ago)
+    run.create_run_failure_classification!(
+      classification: "branch_diverged",
+      retryable: false,
+      confidence: 0.95,
+      reason: "The PR branch changed before Syrus could push this workflow.",
+      classified_at: 10.minutes.ago
+    )
+    workflow.set_artifact!("branch_divergence", {
+      "branch" => job.branch_name,
+      "remote_sha" => "remote-head",
+      "local_sha" => "stale-local"
+    })
+    workflow.set_artifact!("branch_divergence_recovery", {
+      "action" => "superseded_by_current_pr_branch",
+      "at" => 9.minutes.ago.iso8601
+    })
+
+    result = reconcile_and_execute(job_id: job.id)
+
+    issue = kind(result, :unambiguous_job_state_drift)
+    expect(issue).to have_attributes(
+      safe_to_auto_repair: true,
+      recommended_repair_action: "reconcile_job_state"
+    )
+    expect(issue.evidence).to include(
+      "target_state" => "implemented",
+      "reason" => "latest workflow :failed but recovered branch divergence shows Job has a ready PR"
+    )
+    expect(plan(result, :reconcile_job_state)).to have_attributes(auto_executable: true)
+    expect(job.reload).to be_implemented
+  end
+
+  it "does not mark a failed recovered branch-divergence Job implemented when the current PR head no longer matches" do
+    job.update_columns(
+      state: "failed",
+      pr_number: 77,
+      branch_name: "syrus/issue-42-#{job.id}",
+      mergeability_head_sha: "newer-remote-head"
+    )
+    workflow.update_columns(state: "failed", trigger_kind: "retry", finished_at: 10.minutes.ago)
+    step.update_columns(kind: "pr_open", state: "failed", finished_at: 10.minutes.ago)
+    run.update_columns(state: "failed", finished_at: 10.minutes.ago)
+    run.create_run_failure_classification!(
+      classification: "branch_diverged",
+      retryable: false,
+      confidence: 0.95,
+      reason: "The PR branch changed before Syrus could push this workflow.",
+      classified_at: 10.minutes.ago
+    )
+    workflow.set_artifact!("branch_divergence", {
+      "branch" => job.branch_name,
+      "remote_sha" => "remote-head",
+      "local_sha" => "stale-local"
+    })
+    workflow.set_artifact!("branch_divergence_recovery", {
+      "action" => "superseded_by_current_pr_branch",
+      "at" => 9.minutes.ago.iso8601
+    })
+
+    result = reconcile_and_execute(job_id: job.id)
+
+    expect(kind(result, :unambiguous_job_state_drift)).to be_nil
+    expect(job.reload).to be_failed
+  end
+
   it "does not re-enqueue a queued Run while a normal-queue RunJob is scheduled for retry" do
     run.update_columns(state: "queued", created_at: 5.minutes.ago, updated_at: 5.minutes.ago)
     workflow.update_columns(state: "running", started_at: 5.minutes.ago, worker_storage_key: "storage-dead")
@@ -1488,6 +1563,39 @@ RSpec.describe WorkEngine::Reconciler do
     expect(missing_issue.affected_ids[:run_ids]).to include(missing.id)
     expect(missing_issue.safe_to_auto_repair).to eq(false)
     expect(plan(result, :resume_failed_step)).to have_attributes(auto_executable: true, target_id: present.id)
+  end
+
+  it "ignores generic failed-run repairs on superseded non-latest workflows" do
+    agent_step = workflow.steps.find_by!(kind: "implement")
+    workflow.update_columns(state: "failed", finished_at: 20.minutes.ago)
+    agent_step.update_columns(state: "failed", finished_at: 20.minutes.ago)
+    run.update_columns(
+      state: "failed",
+      agent_outcome: "worker_died",
+      finished_at: 20.minutes.ago
+    )
+    run.create_run_failure_classification!(
+      classification: "worker_died",
+      retryable: true,
+      confidence: 0.95,
+      reason: "worker died",
+      classified_at: 20.minutes.ago
+    )
+    newer = Workflow.create!(
+      job: job,
+      trigger_kind: "retry",
+      state: "failed",
+      created_at: 10.minutes.ago,
+      finished_at: 5.minutes.ago
+    )
+    newer.steps.create!(kind: "pr_open", position: 0, state: "failed", finished_at: 5.minutes.ago)
+
+    result = reconcile(job_id: job.id)
+
+    expect(job.latest_workflow).to eq(newer)
+    expect(kind(result, :resumable_agent_session_missing)).to be_nil
+    expect(kind(result, :retryable_run_failure)).to be_nil
+    expect(plan(result, :retry_workflow)).to be_nil
   end
 
   it "plans retryable rate-limit failures for the reset time instead of immediate retry" do

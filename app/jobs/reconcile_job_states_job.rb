@@ -63,6 +63,19 @@ class ReconcileJobStatesJob < ApplicationJob
                   reason: "latest workflow :cancelled but Job stuck at :failed",
                   steps: %i[ retry_after_failure! ])
 
+      when [ "failed", "failed" ]
+        # A branch-diverged pr_open failure can be repaired by adopting or
+        # discarding in favor of the current PR branch. If that recovery is
+        # already recorded on the latest failed workflow, the PR is the source
+        # of truth and the Job should be actionable for approval again.
+        return nil unless recovered_branch_divergence_ready_pr?(job, latest_wf)
+        return nil if job.any_active_run?
+        return nil if job.workflows.where(state: %w[ queued running ]).exists?
+
+        new(job, target_state: "implemented",
+                  reason: "latest workflow :failed but recovered branch divergence shows Job has a ready PR",
+                  steps: %i[ retry_after_failure! mark_implemented! ])
+
       when [ "implemented", "running" ]
         # Workflow restarted (reopened) after a successful run, but
         # Job didn't follow into :running. This happens when
@@ -158,6 +171,26 @@ class ReconcileJobStatesJob < ApplicationJob
          .any? do |workflow|
            workflow.artifact("publication_branch").presence == branch_name
          end
+    end
+
+    def self.recovered_branch_divergence_ready_pr?(job, latest_wf)
+      return false unless job.pr_number.present?
+      return false unless job.branch_name.present?
+      return false unless latest_wf&.failed?
+      return false unless latest_wf.artifact("branch_divergence_recovery").is_a?(Hash)
+      return false unless latest_wf.artifact("branch_divergence_recovery")["action"].in?(%w[
+        superseded_by_current_pr_branch
+        adopted_current_pr_head
+      ])
+
+      divergence = latest_wf.artifact("branch_divergence")
+      return false unless divergence.is_a?(Hash)
+
+      remote_sha = divergence["remote_sha"].presence
+      return false if remote_sha.blank?
+
+      current_head = job.mergeability_head_sha.presence || job.pr_checks_sha.presence
+      current_head == remote_sha
     end
 
     def initialize(job, target_state:, reason:, steps:)
