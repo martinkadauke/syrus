@@ -328,12 +328,15 @@ module App
     end
 
     def latest_terminal_provider_run
-      Run.left_outer_joins(:run_diagnostic, :run_failure_classification)
-         .includes(:run_diagnostic, :run_failure_classification)
-         .where(user_id: user.id, agent_provider: provider, state: %w[succeeded failed])
-         .where.not(finished_at: nil)
-         .order(finished_at: :desc, updated_at: :desc, id: :desc)
-         .first
+      run_id = Run
+        .where(user_id: user.id, agent_provider: provider, state: %w[succeeded failed])
+        .where.not(finished_at: nil)
+        .order(finished_at: :desc, updated_at: :desc, id: :desc)
+        .limit(1)
+        .pick(:id)
+      return unless run_id
+
+      Run.includes(:run_diagnostic, :run_failure_classification).find(run_id)
     end
 
     def usage_limit_failed_runs
