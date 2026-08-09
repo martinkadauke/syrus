@@ -92,11 +92,11 @@ module App
           }
         }
 
-        if deployment_stages_configured?(job.repository)
-          payload[:latest_deployment_stage] = App::DeploymentStageSummary.for(
-            job,
-            stages: deployment_stages_for(job.repository)
-          )
+        if job.deployment_stage_statuses.any?
+          stages = deployment_stages_for(job.repository)
+          payload[:latest_deployment_stage] = App::DeploymentStageSummary.for(job, stages: stages) if stages.any?
+        elsif job.landed_sha.present?
+          payload[:latest_deployment_stage] = nil
         end
 
         payload
