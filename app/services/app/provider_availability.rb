@@ -1,12 +1,8 @@
-require "set"
-
 module App
   class ProviderAvailability
     CACHE_TTL = 2.minutes
-    CACHE_VERSION = "v3"
     @cache_mutex = Mutex.new
     @process_cache = {}
-    @shared_cache_keys = Set.new
 
     def self.for_user(user, provider, now: Time.current, cached: true)
       return PerformanceLogging.phase("provider_availability.status", provider: provider, cached: false) { new(user: user, provider: provider, now: now).status } unless cached
@@ -19,9 +15,7 @@ module App
 
       cache[key] = PerformanceLogging.phase("provider_availability.for_user", provider: provider, cached: true) do
         fetch_process_cache(key, now: now) do
-          fetch_shared_cache(key) do
-            PerformanceLogging.phase("provider_availability.status", provider: provider, cached: true) { new(user: user, provider: provider, now: now).status }
-          end
+          PerformanceLogging.phase("provider_availability.status", provider: provider, cached: true) { new(user: user, provider: provider, now: now).status }
         end
       end
     end
@@ -57,7 +51,6 @@ module App
       provider = provider.to_s
       cache&.delete_if { |(cached_user_id, cached_provider), _| cached_user_id == user_id && cached_provider == provider }
       delete_process_cache([ user_id, provider ])
-      delete_shared_cache([ user_id, provider ])
     end
 
     def self.cache_key(user, provider)
@@ -80,44 +73,14 @@ module App
       value
     end
 
-    def self.fetch_shared_cache(key)
-      store_key = cache_store_key(key)
-      @cache_mutex.synchronize { @shared_cache_keys.add(store_key) }
-      wrapped = Rails.cache.read(store_key)
-      return wrapped.fetch("value") if wrapped.is_a?(Hash) && wrapped.key?("value")
-
-      value = yield
-      return value if value.nil?
-
-      Rails.cache.write(store_key, { "value" => value }, expires_in: CACHE_TTL)
-      value
-    rescue StandardError
-      yield
-    end
-
     def self.delete_process_cache(key)
       @cache_mutex.synchronize { @process_cache.delete(key) }
     end
 
-    def self.delete_shared_cache(key)
-      Rails.cache.delete(cache_store_key(key))
-    rescue StandardError
-      nil
-    end
-
     def self.clear_process_cache!
-      keys = @cache_mutex.synchronize do
+      @cache_mutex.synchronize do
         @process_cache = {}
-        @shared_cache_keys.to_a
       end
-      keys.each { |key| Rails.cache.delete(key) }
-    rescue StandardError
-      nil
-    end
-
-    def self.cache_store_key(key)
-      user_id, provider = key
-      "provider_availability/#{CACHE_VERSION}/users/#{user_id}/providers/#{provider}"
     end
 
     def initialize(user:, provider:, now: Time.current)
