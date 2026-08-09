@@ -362,7 +362,7 @@ export function DashboardContent({ payload, pathname, prefix, search }: { payloa
   return (
     <section className="min-w-0 space-y-4" data-tour="dashboard-table">
       <DashboardTable payload={payload} pathname={pathname} prefix={prefix} search={search} setupStatus={setupStatus} />
-      {payload.view === "list" ? <Pagination pathname={pathname} search={search} payload={payload} /> : null}
+      {payload.view === "list" && payload.rows_current_for_search !== false ? <Pagination pathname={pathname} search={search} payload={payload} /> : null}
     </section>
   )
 }
@@ -658,6 +658,10 @@ export function DashboardTable({ payload, pathname = "", prefix, search = "", se
         sort_direction: nextDirection
       })
     }
+  }
+
+  if (payload.rows_current_for_search === false) {
+    return <div className="mx-4 rounded border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 sm:mx-0">{t("loading")}</div>
   }
 
   if (payload.view === "kanban") return <DashboardKanban payload={payload} prefix={prefix} rowsSearch={dashboardApiSearch(pathname, search)} setupStatus={setupStatus} />

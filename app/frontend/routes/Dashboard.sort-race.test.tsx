@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -170,5 +170,19 @@ describe("DashboardTable landing queue sort race condition", () => {
     })
 
     expect(prefCalls).toHaveLength(1)
+  })
+
+  it("shows loading instead of an empty result while rows are still from the previous folder", () => {
+    const payload = buildPayload({
+      rows_current_for_search: false,
+      total: 0,
+      counts: { jobs: 3, epics: 0, workflows: 0 },
+      items: []
+    })
+
+    renderTable(payload)
+
+    expect(screen.getByText("Loading...")).toBeInTheDocument()
+    expect(screen.queryByText("No Jobs match this view.")).not.toBeInTheDocument()
   })
 })
