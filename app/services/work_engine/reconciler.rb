@@ -129,6 +129,14 @@ module WorkEngine
     end
 
     def call
+      WorkEngine::ReconcilerActivity.record_run_started!(
+        source: source,
+        job_id: job_id,
+        workflow_id: workflow_id,
+        run_id: run_id,
+        now: now,
+        execute_repairs: execute_repairs?
+      )
       @jobs = scoped_jobs.includes(:repository, :dependencies, :epic).to_a
       @workflows = scoped_workflows.includes(:job, :steps).to_a
       @runs = scoped_runs.includes(:job, :step, :provider_session_metadata, :run_failure_classification, :run_diagnostic).to_a
@@ -165,9 +173,41 @@ module WorkEngine
       result = Result.new(source: source, captured_at: now, snapshot: snapshot, issues: issues, repair_plans: [], repair_executions: [])
       repair_plans = WorkEngine::RepairPlanner.call(result: result, now: now)
       result = result.with(repair_plans: repair_plans)
-      return result unless execute_repairs?
+      unless execute_repairs?
+        WorkEngine::ReconcilerActivity.record_result!(
+          source: source,
+          job_id: job_id,
+          workflow_id: workflow_id,
+          run_id: run_id,
+          now: now,
+          execute_repairs: false,
+          result: result
+        )
+        return result
+      end
 
-      result.with(repair_executions: WorkEngine::RepairExecutor.call(result: result, now: now))
+      result = result.with(repair_executions: WorkEngine::RepairExecutor.call(result: result, now: now))
+      WorkEngine::ReconcilerActivity.record_result!(
+        source: source,
+        job_id: job_id,
+        workflow_id: workflow_id,
+        run_id: run_id,
+        now: now,
+        execute_repairs: true,
+        result: result
+      )
+      result
+    rescue StandardError => e
+      WorkEngine::ReconcilerActivity.record_failure!(
+        source: source,
+        job_id: job_id,
+        workflow_id: workflow_id,
+        run_id: run_id,
+        now: now,
+        execute_repairs: execute_repairs?,
+        error: e
+      )
+      raise
     ensure
       Rails.logger.info(
         "[WorkEngine::Reconciler] requested by #{source}" \

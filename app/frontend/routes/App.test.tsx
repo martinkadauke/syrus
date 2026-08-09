@@ -2680,6 +2680,7 @@ describe("App", () => {
       expect(within(adminNav).getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/app-shell/admin")
       expect(within(adminNav).getByRole("link", { name: "Resource Admission" })).toHaveAttribute("href", "/app-shell/admin/resource_admission")
       expect(within(adminNav).getByRole("link", { name: "Scoped Chat Events" })).toHaveAttribute("href", "/app-shell/admin/scoped_chat_events")
+      expect(within(adminNav).getByRole("link", { name: "Reconciler Activity" })).toHaveAttribute("href", "/app-shell/admin/reconciler_activity")
       expect(within(adminNav).getByRole("link", { name: "Stuck" })).toHaveAttribute("href", "/app-shell/admin/stuck")
       expect(within(adminNav).getByRole("link", { name: "Users" })).toHaveAttribute("href", "/app-shell/admin/users")
       expect(within(adminNav).getByRole("link", { name: "Queue" })).toHaveAttribute("href", "/app-shell/admin/queue")
@@ -2804,6 +2805,56 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Scoped chat events", level: 1 })).toBeInTheDocument()
     expect(screen.getByText("respond: 1")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "JOB-12" })).toHaveAttribute("href", "/app-shell/jobs/12")
+  })
+
+  it("renders the admin reconciler activity route", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats") {
+        return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path.startsWith("/api/v1/app/admin/reconciler_activity")) {
+        return Promise.resolve(new Response(JSON.stringify({
+          event_types: ["run_started", "issues_detected", "repair_executed", "run_finished"],
+          filters: { event_type: null, job_id: null, workflow_id: null, run_id: null },
+          pagination: { page: 1, per_page: 50, total: 1, total_pages: 1, first_item: 1, last_item: 1, previous_path: null, next_path: null },
+          events: [
+            {
+              id: 1,
+              event_type: "repair_executed",
+              severity: "info",
+              source: "spec",
+              message: "re-enqueued Run #42",
+              issue_kind: "queued_run_without_queue_claim",
+              repair_action: "reenqueue_run",
+              repair_status: "applied",
+              occurred_at: "2026-06-05T12:00:00Z",
+              details: { status: "applied" },
+              job: { id: 7, slug: "JOB-7", title: "Fix queue drift", path: "/jobs/7" },
+              workflow: { id: 12, slug: "WF-12", trigger_kind: "retry", state: "running", path: "/jobs/7?tab=workflows#workflow-12" },
+              run: { id: 42, state: "queued", path: "/admin/runs/42/transcript" }
+            }
+          ]
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin/reconciler_activity"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Reconciler activity" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Reconciler activity", level: 1 })).toBeInTheDocument()
+    expect(await screen.findByText("re-enqueued Run #42")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "JOB-7" })).toHaveAttribute("href", "/app-shell/jobs/7")
+    expect(screen.getByRole("link", { name: "WF-12" })).toHaveAttribute("href", "/app-shell/jobs/7?tab=workflows#workflow-12")
+    expect(screen.getByRole("link", { name: "Run #42" })).toHaveAttribute("href", "/app-shell/admin/runs/42/transcript")
   })
 
   it("renders the migrated /admin route from the same admin overview component", async () => {

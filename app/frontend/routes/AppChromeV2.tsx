@@ -438,6 +438,7 @@ function AdminSubnav({ featureFlags, normalizedPath, prefix }: { featureFlags: R
     { label: t("admin:nav_scoped_chat_events"), to: "/admin/scoped_chat_events", paths: ["/admin/scoped_chat_events"] },
     { label: t("admin:nav_queue"), to: "/admin/queue", paths: ["/admin/queue"] },
     { label: t("admin:nav_stuck"), to: "/admin/stuck", paths: ["/admin/stuck"] },
+    { label: t("admin:nav_reconciler_activity"), to: "/admin/reconciler_activity", paths: ["/admin/reconciler_activity"] },
     { label: t("admin:nav_processes"), to: "/admin/processes", paths: ["/admin/processes"] },
     { label: t("admin:nav_users"), to: "/admin/users", paths: ["/admin/users"] },
     { label: t("admin:nav_console"), to: "/admin/console", paths: ["/admin/console"] },

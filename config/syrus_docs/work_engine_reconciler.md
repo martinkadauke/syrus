@@ -161,6 +161,15 @@ count; the overview embeds the first page from the cached snapshot plus
 `stuck_pagination` so the health tile can show the last known total without
 rendering every row or blocking on reconciliation.
 
+The admin Reconciler Activity page (`/admin/reconciler_activity`) is the
+operator activity log for what the reconciler did and why. Every reconciler call
+records a `run_started` row, issue rows for detected inconsistencies, repair-plan
+rows explaining the planned action, repair-execution rows for applied/skipped/
+failed executor outcomes, and a `run_finished` or `run_failed` summary. The app
+API endpoint is `/api/v1/app/admin/reconciler_activity`; the token admin API
+endpoint is `/api/v1/admin/reconciler_activity`. Both are paginated newest-first
+and accept `event_type`, `job_id`, `workflow_id`, and `run_id` filters.
+
 - `auto_repairable` when the plan is safe for automatic execution
 - `waiting` when the plan is blocked by queue capacity, dependency or stack
   readiness, main-branch health, provider rate limits, or queue-claim

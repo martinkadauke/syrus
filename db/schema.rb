@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_09_193000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_09_201500) do
 
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
@@ -1827,6 +1827,34 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_193000) do
     t.index ["chat_session_id"], name: "index_whiteboards_on_chat_session_id", unique: true
   end
 
+  create_table "work_engine_reconciler_activity_events", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.json "details", null: false
+    t.string "event_type", null: false
+    t.string "issue_kind"
+    t.integer "job_id"
+    t.text "message", null: false
+    t.datetime "occurred_at", null: false
+    t.string "repair_action"
+    t.string "repair_status"
+    t.integer "run_id"
+    t.string "severity", default: "info", null: false
+    t.string "source", null: false
+    t.integer "step_id"
+    t.datetime "updated_at", null: false
+    t.integer "workflow_id"
+    t.index ["event_type", "occurred_at"], name: "index_reconciler_activity_on_type_and_occurred_at"
+    t.index ["job_id", "occurred_at"], name: "index_reconciler_activity_on_job_and_occurred_at"
+    t.index ["job_id"], name: "index_work_engine_reconciler_activity_events_on_job_id"
+    t.index ["occurred_at"], name: "index_work_engine_reconciler_activity_events_on_occurred_at"
+    t.index ["run_id", "occurred_at"], name: "index_reconciler_activity_on_run_and_occurred_at"
+    t.index ["run_id"], name: "index_work_engine_reconciler_activity_events_on_run_id"
+    t.index ["source", "occurred_at"], name: "index_reconciler_activity_on_source_and_occurred_at"
+    t.index ["step_id"], name: "index_work_engine_reconciler_activity_events_on_step_id"
+    t.index ["workflow_id", "occurred_at"], name: "index_reconciler_activity_on_workflow_and_occurred_at"
+    t.index ["workflow_id"], name: "index_work_engine_reconciler_activity_events_on_workflow_id"
+  end
+
   create_table "worker_host_health_samples", force: :cascade do |t|
     t.float "cpu_pressure_full"
     t.float "cpu_pressure_some"
@@ -2142,6 +2170,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_193000) do
   add_foreign_key "test_runs", "runs"
   add_foreign_key "whiteboard_snapshots", "chat_sessions"
   add_foreign_key "whiteboards", "chat_sessions"
+  add_foreign_key "work_engine_reconciler_activity_events", "jobs"
+  add_foreign_key "work_engine_reconciler_activity_events", "runs"
+  add_foreign_key "work_engine_reconciler_activity_events", "steps"
+  add_foreign_key "work_engine_reconciler_activity_events", "workflows"
   add_foreign_key "workflow_step_resource_profiles", "repositories"
   add_foreign_key "workflows", "jobs"
   add_foreign_key "workflows", "users"

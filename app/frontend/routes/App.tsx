@@ -19,6 +19,7 @@ import { AdminInstallations } from "./AdminInstallations"
 import { AdminOverview, AdminResourceAdmission, AdminScopedChatEvents } from "./AdminOverview"
 import { AdminPlugins } from "./AdminPlugins"
 import { AdminQueueRoute } from "./AdminQueue"
+import { AdminReconcilerActivity } from "./AdminReconcilerActivity"
 import { AdminProcessDetail, AdminProcessesIndex } from "./AdminProcesses"
 import { AdminSettings } from "./AdminSettings"
 import { AdminStuck } from "./AdminStuck"
@@ -83,6 +84,7 @@ const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/admin/queue", element: <AdminQueueRoute /> },
   { path: "/admin/queue/:tab", element: <AdminQueueRoute /> },
   { path: "/admin/stuck", element: <AdminStuck /> },
+  { path: "/admin/reconciler_activity", element: <AdminReconcilerActivity /> },
   { path: "/admin/plugins", element: <AdminPlugins /> },
   { path: "/admin/processes", element: <AdminProcessesIndex /> },
   { path: "/admin/processes/:id", element: <AdminProcessDetail /> },
