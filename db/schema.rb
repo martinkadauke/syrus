@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_09_133000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_09_143100) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -143,6 +143,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_133000) do
     t.string "kind", null: false
     t.string "label", null: false
     t.datetime "updated_at", null: false
+    t.index ["chat_message_id", "id"], name: "idx_chat_bookmarks_message_id_id"
     t.index ["chat_message_id"], name: "index_chat_bookmarks_on_chat_message_id"
   end
 

@@ -1,12 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Markdown } from "../lib/Markdown"
 import type { Step } from "react-joyride"
-import type { CSSProperties, FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, MutableRefObject, UIEvent } from "react"
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import type { CSSProperties, FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode, UIEvent } from "react"
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
-import "@excalidraw/excalidraw/index.css"
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import { ProviderAvailabilityWarning } from "../components/ProviderAvailabilityWarning"
@@ -34,7 +31,6 @@ import {
   createChat,
   createChatBookmark,
   createChatTopicBookmark,
-  createWhiteboardSnapshot,
   createScratchpadItem,
   deleteScratchpadItem,
   deleteQueuedChatMessage,
@@ -43,15 +39,9 @@ import {
   reorderScratchpadItems,
   updateScratchpadItem,
   fetchChat,
-  fetchChatMedia,
   fetchChatMessages,
   fetchSharedChat,
-  fetchChatWhiteboard,
-  fetchWhiteboardSnapshot,
-  fetchWhiteboardSnapshots,
   markChatRead,
-  patchChatWhiteboard,
-  postSnapshotPng,
   rejectChatProposal,
   rejectPendingAction,
   renameChat,
@@ -62,10 +52,6 @@ import {
   shareChat,
   stopChat,
   cancelCodingCheckout,
-  fetchCodingFileTree,
-  fetchCodingFileContent,
-  fetchCodingDiff,
-  updateChatMode,
   updateChatProposal,
   updateChatPinned,
   updateQueuedChatMessage,
@@ -98,15 +84,9 @@ import {
   type ChatRenderItem,
   type ChatStructuredTool,
   type ChatSystemMessage,
-  type ChatWhiteboardElement,
-  type ChatWhiteboardScene,
   type ChatToolGroupItem,
   type ShareChatPayload,
   type SharedChatPayload,
-  type WhiteboardSnapshot,
-  type CodingFilesPayload,
-  type CodingFileContentPayload,
-  type CodingDiffPayload
 } from "../api/chats"
 import { fetchBootstrap, readInitialBootstrap } from "../api/bootstrap"
 import { CloseIcon } from "../components/CloseIcon"
@@ -116,12 +96,12 @@ import { usePageTitle } from "../hooks/usePageTitle"
 import { errorMessage } from "../lib/errorMessage"
 import { type ChatQueryKey, CHAT_WORKSPACE_COLLAPSED_KEY, CHAT_WORKSPACE_MIN_WIDTH, CHAT_WORKSPACE_TAB_KEY, CHAT_WORKSPACE_WIDTH_KEY } from "./chat/constants"
 import { findChatMessageAnchor, isMessageStreamAtBottom, isMessageStreamNearTop, messageIdFromHash, messageStreamNeedsOlderMessages, scrollChatMessageIntoView, scrollMessageStreamToBottom } from "./chat/messageStream"
-import { appendSearch, visualViewportHeight, chatDisplayTitle, isSupervisorChat, primaryButton, secondaryButton, withRoutePrefix } from "./chat/utils"
+import { appendSearch, visualViewportHeight, chatDisplayTitle, formatCurrency, formatTokenCount, isSupervisorChat, primaryButton, secondaryButton, withRoutePrefix } from "./chat/utils"
 import { PendingActionCard } from "./chat/ProposalCards"
 import { ChatMessage, shouldAnimateMessageEntrance, ToolGroup } from "./chat/MessageCards"
 import { AgentActivityIndicator, DayDivider, MessageTimestamp, SwitchingProviderIndicator, SystemMessagesToggle } from "./chat/streamChrome"
 import { Compose } from "./chat/Compose"
-import { routePrefix, ChatSettingsDialog, ChatWorkspacePanel, PanelMessage, UsageOverlay } from "./chat/WorkspacePanels"
+import { routePrefix } from "../lib/routing"
 import type { ChatSystemCommandHandlers } from "./chat/composeTypes"
 import { chatStreamItemsSignature, maxMessageId, mergeChatMessages, oldestMessageId, renderItemKey } from "./chat/messageStreamItems"
 import { buildMessageStreamItems, injectTemporalMarkers, pendingActionCardData, renderChatMessages } from "./chat/streamBuilders"
@@ -131,7 +111,25 @@ import { availableWorkspaceTabs, clampWorkspaceWidth, defaultWorkspaceTab, mobil
 import { SyrusTour } from "../components/SyrusTour"
 import { useTour } from "../hooks/useTour"
 
+const ChatWorkspacePanel = lazy(() => import("./chat/WorkspacePanels").then((module) => ({ default: module.ChatWorkspacePanel })))
+const ChatSettingsDialog = lazy(() => import("./chat/WorkspacePanels").then((module) => ({ default: module.ChatSettingsDialog })))
 
+function UsageOverlay({ payload }: { payload: ChatPayload }) {
+  return (
+    <p className="pointer-events-none absolute left-0 right-0 top-0 border-b border-gray-100 bg-white/95 px-4 py-1.5 text-xs text-gray-500 dark:border-gray-800 dark:bg-gray-950/95 dark:text-gray-400">
+      Tokens: {formatTokenCount(payload.chat.cumulative_input_tokens)} in / {formatTokenCount(payload.chat.cumulative_output_tokens)} out · {formatCurrency(payload.chat.cumulative_cost_usd)}
+    </p>
+  )
+}
+
+function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" | "success" }) {
+  const colors = {
+    error: "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-200",
+    success: "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-200",
+    muted: "border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+  }
+  return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
+}
 
 export function ChatRoute() {
   const params = useParams()
@@ -818,22 +816,28 @@ function ChatWorkspace({
           {activeMobileTab === "chat" ? (
             <ChatColumn bookmarkTarget={bookmarkTarget} chatId={chatId} commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
           ) : (
-            <ChatWorkspacePanel
-              activeTab={activeTab}
-              fullscreen={false}
-              showTabs={false}
-              onSelectTab={selectTab}
-              onToggleWhiteboardFullscreen={() => onWhiteboardFullscreenChange(true)}
-              payload={payload}
-              prefix={prefix}
-              queryKey={queryKey}
-              onNotice={onNotice}
-              onBookmarkSelect={selectBookmark}
-              simpleMode={simpleMode}
-            />
+            <Suspense fallback={<PanelMessage>{t("loading_chat")}</PanelMessage>}>
+              <ChatWorkspacePanel
+                activeTab={activeTab}
+                fullscreen={false}
+                showTabs={false}
+                onSelectTab={selectTab}
+                onToggleWhiteboardFullscreen={() => onWhiteboardFullscreenChange(true)}
+                payload={payload}
+                prefix={prefix}
+                queryKey={queryKey}
+                onNotice={onNotice}
+                onBookmarkSelect={selectBookmark}
+                simpleMode={simpleMode}
+              />
+            </Suspense>
           )}
         </div>
-        {settingsOpen ? <ChatSettingsDialog payload={payload} prefix={prefix} queryKey={queryKey} onClose={() => onSettingsOpenChange(false)} /> : null}
+        {settingsOpen ? (
+          <Suspense fallback={null}>
+            <ChatSettingsDialog payload={payload} prefix={prefix} queryKey={queryKey} onClose={() => onSettingsOpenChange(false)} />
+          </Suspense>
+        ) : null}
         {bookmarkPickerOpen ? <BookmarkPickerModal bookmarks={payload.bookmarks} onClose={() => setBookmarkPickerOpen(false)} onSelect={selectBookmark} /> : null}
       </div>
     )
@@ -880,21 +884,27 @@ function ChatWorkspace({
         </div>
       ) : null}
       {expanded || !panelCollapsed ? (
-        <ChatWorkspacePanel
-          activeTab={activeTab}
-          fullscreen={expanded}
-          onSelectTab={selectTab}
-          onToggleCollapse={expanded ? undefined : () => setPanelCollapsed(true)}
-          onToggleWhiteboardFullscreen={() => onWhiteboardFullscreenChange(!expanded)}
-          payload={payload}
-          prefix={prefix}
-          queryKey={queryKey}
-          onNotice={onNotice}
-          onBookmarkSelect={selectBookmark}
-          simpleMode={simpleMode}
-        />
+        <Suspense fallback={<PanelMessage>{t("loading_chat")}</PanelMessage>}>
+          <ChatWorkspacePanel
+            activeTab={activeTab}
+            fullscreen={expanded}
+            onSelectTab={selectTab}
+            onToggleCollapse={expanded ? undefined : () => setPanelCollapsed(true)}
+            onToggleWhiteboardFullscreen={() => onWhiteboardFullscreenChange(!expanded)}
+            payload={payload}
+            prefix={prefix}
+            queryKey={queryKey}
+            onNotice={onNotice}
+            onBookmarkSelect={selectBookmark}
+            simpleMode={simpleMode}
+          />
+        </Suspense>
       ) : null}
-      {settingsOpen ? <ChatSettingsDialog payload={payload} prefix={prefix} queryKey={queryKey} onClose={() => onSettingsOpenChange(false)} /> : null}
+      {settingsOpen ? (
+        <Suspense fallback={null}>
+          <ChatSettingsDialog payload={payload} prefix={prefix} queryKey={queryKey} onClose={() => onSettingsOpenChange(false)} />
+        </Suspense>
+      ) : null}
       {bookmarkPickerOpen ? <BookmarkPickerModal bookmarks={payload.bookmarks} onClose={() => setBookmarkPickerOpen(false)} onSelect={selectBookmark} /> : null}
     </div>
   )

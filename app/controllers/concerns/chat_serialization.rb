@@ -32,8 +32,7 @@ module ChatSerialization
       attachment_groups = PerformanceLogging.phase("chat_payload.attachment_groups", chat_id: chat_session.id) do
         chat_session.chat_attachments.includes(:attachable).order(:attachable_type, :attached_at, :id).group_by(&:attachable_type)
       end
-      whiteboard = chat_session.whiteboard
-      whiteboard_scene = PerformanceLogging.phase("chat_payload.whiteboard", chat_id: chat_session.id) { whiteboard ? whiteboard.current_state : Whiteboard.default_state }
+      whiteboard_scene = PerformanceLogging.phase("chat_payload.whiteboard", chat_id: chat_session.id) { whiteboard_state_for_payload(chat_session) }
       speech_to_text = PerformanceLogging.phase("chat_payload.speech_to_text", chat_id: chat_session.id) do
         ChatSpeechToText::Capability.for(user: Current.user).as_json
       end
@@ -112,7 +111,6 @@ module ChatSerialization
       records: [ chat_session ],
       associations: [
         :user,
-        :whiteboard,
         :queued_messages,
         :scratchpad_items,
         :agent_questions,
@@ -153,6 +151,21 @@ module ChatSerialization
         anchor_message_id: bookmark_anchor_message_id(chat_session.id, chat_message_id, role)
       }
     end
+  end
+
+  def whiteboard_state_for_payload(chat_session)
+    row = whiteboard_payload_scope(chat_session.id).pick(:scene_json, :version)
+    return Whiteboard.default_state unless row
+
+    scene_json, version = row
+    Whiteboard.normalize_scene!(scene_json).merge("version" => version)
+  end
+
+  def whiteboard_payload_scope(chat_session_id)
+    scope = Whiteboard.where(chat_session_id: chat_session_id)
+    return scope unless ActiveRecord::Base.connection.adapter_name.downcase.include?("mysql")
+
+    scope.from(Arel.sql("#{Whiteboard.quoted_table_name} FORCE INDEX (index_whiteboards_on_chat_session_id)"))
   end
 
   def bookmark_anchor_message_id(chat_session_id, chat_message_id, role)

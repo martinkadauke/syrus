@@ -121,7 +121,13 @@ module Admin
     end
 
     def worker_health_payload(sample_limit_per_host:)
-      ::Admin::WorkerHealthPayload.new(sample_limit_per_host: sample_limit_per_host, include_raw_metrics: false).as_json
+      ::Admin::WorkerHealthPayload.new(
+        since: ::Admin::WorkerHealthPayload::CURRENT_SAMPLE_WINDOW.ago.iso8601,
+        sample_limit_per_host: sample_limit_per_host,
+        minute_bucket_window_minutes: 0,
+        include_raw_metrics: false,
+        include_history: false
+      ).as_json
     end
 
     def chat_scoped_events_payload

@@ -165,7 +165,9 @@ RSpec.describe "API: /api/v1/app/admin/overview", type: :request do
     get api_v1_app_admin_overview_path
 
     expect(response).to have_http_status(:ok)
-    sample = parse_body.dig("worker_health", "hosts", 0, "recent_samples", 0)
+    body = parse_body
+    expect(body.dig("worker_health", "hosts")).to eq([])
+    sample = body.dig("worker_health", "current", 0, "sample")
     expect(sample).to include("cpu_used_percent" => 42.0)
     expect(sample).not_to have_key("raw_metrics")
   end

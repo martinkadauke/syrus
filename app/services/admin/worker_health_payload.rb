@@ -12,13 +12,14 @@ module Admin
       "24h" => 24.hours
     }.freeze
 
-    def initialize(hostname: nil, since: nil, until_time: nil, sample_limit_per_host: SAMPLE_LIMIT_PER_HOST, minute_bucket_window_minutes: DEFAULT_MINUTE_BUCKET_WINDOW / 1.minute, include_raw_metrics: true)
+    def initialize(hostname: nil, since: nil, until_time: nil, sample_limit_per_host: SAMPLE_LIMIT_PER_HOST, minute_bucket_window_minutes: DEFAULT_MINUTE_BUCKET_WINDOW / 1.minute, include_raw_metrics: true, include_history: true)
       @hostname = hostname.presence
       @until_time = parse_time(until_time) || Time.current
       @since = parse_time(since) || (@until_time - DEFAULT_WINDOW)
       @sample_limit_per_host = sample_limit_per_host.to_i.clamp(0, 100)
       @minute_bucket_window = minute_bucket_window_minutes.to_i.minutes.clamp(0.seconds, MAX_MINUTE_BUCKET_WINDOW)
       @include_raw_metrics = include_raw_metrics != false
+      @include_history = include_history != false
     end
 
     def as_json(*)
@@ -35,7 +36,7 @@ module Admin
           max_window_minutes: (MAX_MINUTE_BUCKET_WINDOW / 1.minute).to_i
         },
         current: current_workers,
-        hosts: host_history
+        hosts: include_history? ? host_history : []
       }
     end
 
@@ -203,6 +204,10 @@ module Admin
 
     def include_raw_metrics?
       @include_raw_metrics
+    end
+
+    def include_history?
+      @include_history
     end
 
     def worker_health_scalar_columns

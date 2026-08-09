@@ -208,10 +208,7 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
         "hostname" => "syrus-worker-a",
         "health" => include("level" => "warning")
       )
-      expect(health.dig("hosts", 0, "windows", "1h")).to include(
-        "sample_count" => 1,
-        "warning_count" => 1
-      )
+      expect(health["hosts"]).to eq([])
     end
 
     it "includes resource admission diagnostics" do

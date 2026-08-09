@@ -166,7 +166,7 @@ describe("ChatWorkspace panel collapse", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open workspace panel" }))
 
-    expect(screen.getByRole("complementary", { name: "Chat workspace" })).toBeInTheDocument()
+    expect(await screen.findByRole("complementary", { name: "Chat workspace" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Close workspace panel" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Open workspace panel" })).not.toBeInTheDocument()
     expect(window.localStorage.getItem("syrus.chat.workspace.collapsed")).toBe("false")
