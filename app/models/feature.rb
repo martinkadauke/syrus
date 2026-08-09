@@ -62,6 +62,10 @@ class Feature < ApplicationRecord
     enabled?(:admin_supervisor_chat)
   end
 
+  def self.chat_context_compaction_enabled?
+    enabled?(:chat_context_compaction)
+  end
+
   def self.landing_validation_prefetch_enabled?
     enabled?(:landing_validation_prefetch)
   end

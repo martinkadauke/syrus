@@ -55,6 +55,15 @@ Workflows/Runs through their Job, and pull request numbers that map back to a
 Syrus Job. Ordinary chats do not receive events for unrelated Jobs or Epics, and
 generic chat attachments are not treated as origin evidence.
 
+When the `chat_context_compaction` feature is enabled, long-running Supervisor
+chats keep their durable `ChatMessage` transcript but stop replaying all older
+raw messages into the provider session. `ChatTurnJob` stores
+`ChatContextCheckpoint` rows after the chat crosses the compaction threshold,
+and provider rehydration sends one synthetic prior-context summary plus the
+latest raw messages after the checkpoint. The summary is deterministic and
+extractive; exact older details remain available through persisted chat history
+and admin/search tools. Ordinary chats are not compacted by this feature.
+
 The chat composer recognizes leading slash commands. Typing `/` opens the
 command palette.
 

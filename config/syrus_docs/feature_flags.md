@@ -61,6 +61,29 @@ Supervisor agent turns receive the `chat:admin` role with a constrained Supervis
 
 Initial event sources are existing notifications (`NotificationService`) for job failures, implemented Jobs, merged PRs, PR feedback completion, upstream PR closure, Epic completion, and main-branch health changes, plus `submit_insight` when an Agent Insight suggestion becomes available. Callers should pass stable `dedupe_key` values for poll-driven events; the service suppresses duplicate scoped events for the same target chat to prevent repeated poll loops from flooding admins.
 
+## chat_context_compaction
+
+**Category:** Operations
+
+Compacts provider replay context for long-running Supervisor chats without
+deleting or hiding any durable `ChatMessage` rows. The full chat remains visible
+and auditable in the UI and searchable through normal chat/admin tools.
+
+When enabled, `ChatTurnJob` creates a `ChatContextCheckpoint` once a Supervisor
+chat has at least 120 messages. The checkpoint deterministically summarizes all
+but the latest 40 messages, stores the summary and
+`compacted_through_message_id`, and leaves the original messages untouched.
+Provider rehydration then sends one synthetic "prior context summary" assistant
+message followed by the recent raw messages after that checkpoint. This keeps
+normal live turns from replaying huge old tool results forever while still
+telling the agent to use tools if exact older details are needed.
+
+This first implementation intentionally avoids an extra LLM summarizer call:
+the summary is an extractive operational digest of older user/assistant/system
+text, tool calls, and bounded tool-result snippets. It is only applied to
+Supervisor chats; ordinary chats continue using their existing provider
+transcript behavior even when the flag is on.
+
 ## landing_validation_prefetch
 
 **Category:** Operations

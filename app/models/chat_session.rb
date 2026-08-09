@@ -39,6 +39,7 @@ class ChatSession < ApplicationRecord
            source: :attachable,
            source_type: "Document"
   has_many :messages, class_name: "ChatMessage", dependent: :destroy
+  has_many :context_checkpoints, class_name: "ChatContextCheckpoint", dependent: :destroy
   has_many :scoped_events, class_name: "ChatScopedEvent", dependent: :destroy
   has_many :mcp_tool_usages, dependent: :nullify
   has_many :chat_queued_messages, class_name: "ChatQueuedMessage", dependent: :destroy

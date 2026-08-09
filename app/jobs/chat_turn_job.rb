@@ -64,6 +64,7 @@ class ChatTurnJob < ApplicationJob
 
     workspace_path = ensure_workspace!
     parent_session_id = resume_session_id_for(provider)
+    ChatContextCompactor.maybe_compact!(@chat) if Feature.chat_context_compaction_enabled?
     attachment_context = attachment_context_for(workspace_path)
     return if stop_requested?
 

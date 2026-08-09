@@ -10,8 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_09_201500) do
-
+ActiveRecord::Schema[8.1].define(version: 2026_08_09_213000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -146,6 +145,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_201500) do
     t.datetime "updated_at", null: false
     t.index ["chat_message_id", "id"], name: "idx_chat_bookmarks_message_id_id"
     t.index ["chat_message_id"], name: "index_chat_bookmarks_on_chat_message_id"
+  end
+
+  create_table "chat_context_checkpoints", force: :cascade do |t|
+    t.integer "chat_session_id", null: false
+    t.bigint "compacted_through_message_id", null: false
+    t.datetime "created_at", null: false
+    t.integer "source_message_count", null: false
+    t.text "summary", null: false
+    t.integer "summary_version", default: 1, null: false
+    t.datetime "updated_at", null: false
+    t.index ["chat_session_id", "compacted_through_message_id"], name: "idx_chat_context_checkpoints_session_message", unique: true
+    t.index ["chat_session_id", "created_at"], name: "idx_chat_context_checkpoints_session_created"
+    t.index ["chat_session_id"], name: "index_chat_context_checkpoints_on_chat_session_id"
   end
 
   create_table "chat_memories", force: :cascade do |t|
@@ -1287,7 +1299,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_201500) do
     t.index ["run_id"], name: "index_provider_sessions_on_run_id", unique: true
   end
 
-
   create_table "repositories", force: :cascade do |t|
     t.string "agent_provider"
     t.boolean "approval_propagates_to_github", default: true
@@ -1995,6 +2006,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_201500) do
   add_foreign_key "chat_agent_questions", "chat_sessions"
   add_foreign_key "chat_attachments", "chat_sessions"
   add_foreign_key "chat_bookmarks", "chat_messages"
+  add_foreign_key "chat_context_checkpoints", "chat_sessions"
   add_foreign_key "chat_memories", "users"
   add_foreign_key "chat_memories", "users", column: "deleted_by_user_id"
   add_foreign_key "chat_memory_audit_events", "chat_memories"

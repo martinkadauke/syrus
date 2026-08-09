@@ -209,6 +209,10 @@
         "name": "Agenten-Einblicke",
         "description": "Aktiviert Agenten-Einblick-Analysejobs, die aktuelle Workflow-Ausführungen untersuchen und Verbesserungsvorschläge aufzeigen."
       },
+      "chat_context_compaction": {
+        "name": "Chat-Kontextkompaktierung",
+        "description": "Kompaktiert älteren Provider-Wiedergabekontext für lange Chats, während das vollständige dauerhafte Chatprotokoll erhalten bleibt."
+      },
       "landing_validation_prefetch": {
         "name": "Landing-Validierungs-Prefetch",
         "description": "Führt spekulativ Landing-Grader für den nächsten geeigneten Job desselben Repositorys aus, nachdem die aktuellen Landing-Grader bestanden haben. Der eigentliche Merge bleibt serialisiert."

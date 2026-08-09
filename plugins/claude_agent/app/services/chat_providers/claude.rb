@@ -177,7 +177,7 @@ module ChatProviders
         cwd: workspace_path,
         session_id: session_id
       )
-      return if File.exist?(path)
+      return if File.exist?(path) && !ChatContextCompactor.enabled_for?(chat)
       return unless chat.messages.exists?
 
       jsonl = ChatSessionRehydrator::Claude.new(chat, session_id: session_id, cwd: workspace_path.to_s).call

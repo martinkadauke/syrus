@@ -118,6 +118,58 @@ RSpec.describe ChatProviders::Codex do
     ensure
       mcp_config&.close!
     end
+
+    it "bypasses the cached full transcript for compacted Supervisor chats" do
+      allow(Feature).to receive(:chat_context_compaction_enabled?).and_return(true)
+      chat.update!(system_kind: "supervisor", title: "Supervisor")
+      130.times do |i|
+        chat.messages.create!(role: "assistant", content: [
+          { "type" => "text", "text" => "assistant event #{i}" }
+        ])
+      end
+      ChatContextCompactor.maybe_compact!(chat)
+      chat.create_provider_session!(
+        provider: "codex",
+        session_id: "codex-thread-1",
+        transcript_jsonl: "{\"type\":\"full_uncompacted_session\"}\n"
+      )
+      mcp_config = Tempfile.new([ "syrus-chat-mcp", ".json" ])
+      mcp_config.write({
+        mcpServers: {
+          "syrus-chat-sidecar" => {
+            type: "stdio",
+            command: "/app/bin/syrus-chat-sidecar",
+            args: [],
+            env: {},
+            alwaysLoad: true
+          }
+        }
+      }.to_json)
+      mcp_config.flush
+
+      received = nil
+      runner = ->(**kwargs) {
+        received = kwargs
+        result_fixture(session_id: "codex-thread-2", transcript_jsonl: "{\"type\":\"turn\"}\n")
+      }
+
+      described_class.new(chat: chat, runner: runner).invoke(
+        workspace_path: "/tmp/chat-workspace",
+        prompt: "What changed?",
+        log_sink: ->(*, **) { },
+        mcp_config: mcp_config.path,
+        resume_session_id: "codex-thread-1",
+        stop_requested: -> { false },
+        process_started: ->(_process) { }
+      )
+
+      expect(received[:resume_transcript_jsonl]).to include("Prior durable chat context summary")
+      expect(received[:resume_transcript_jsonl]).to include("assistant event 129")
+      expect(received[:resume_transcript_jsonl]).not_to include("full_uncompacted_session")
+      expect(received[:resume_transcript_jsonl]).not_to include("assistant event 0")
+    ensure
+      mcp_config&.close!
+    end
   end
 
   describe "#credentials_missing?" do

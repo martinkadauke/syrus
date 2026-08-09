@@ -88,6 +88,10 @@ module ChatProviders
     def resume_transcript_jsonl(session_id)
       return nil if session_id.blank?
 
+      if ChatContextCompactor.enabled_for?(chat)
+        return ChatSessionRehydrator::Codex.new(chat, session_id: session_id).call
+      end
+
       # Fast path: provider matches and transcript is cached
       session = chat.provider_session
       if session&.provider == provider && session.session_id == session_id && session.transcript_jsonl.present?

@@ -128,6 +128,10 @@ class ChatSessionRehydrator::Codex
   def messages_in_order
     return @messages if @messages
 
+    if ChatContextCompactor.enabled_for?(@chat_session)
+      return ChatContextCompactor.context_messages_for(@chat_session)
+    end
+
     @chat_session.messages.order(:id)
   end
 

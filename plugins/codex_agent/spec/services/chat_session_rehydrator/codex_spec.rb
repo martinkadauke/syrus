@@ -561,4 +561,23 @@ RSpec.describe ChatSessionRehydrator::Codex do
       expect(last_line).to include("type" => "turn.completed")
     end
   end
+
+  describe "chat context compaction" do
+    it "rehydrates from a Supervisor checkpoint plus recent messages" do
+      allow(Feature).to receive(:chat_context_compaction_enabled?).and_return(true)
+      session.update!(system_kind: "supervisor", title: "Supervisor")
+      130.times do |i|
+        create_message!(role: "assistant", content: [
+          { "type" => "text", "text" => "assistant event #{i}" }
+        ])
+      end
+      ChatContextCompactor.maybe_compact!(session)
+
+      jsonl = described_class.new(session, session_id: "compact-thread").call
+
+      expect(jsonl).to include("Prior durable chat context summary")
+      expect(jsonl).to include("assistant event 129")
+      expect(jsonl).not_to include("assistant event 0")
+    end
+  end
 end

@@ -338,6 +338,11 @@ work is needed, it recommends the next step in prose for an ordinary planning
 surface instead of initiating it. Supervisor event messages and
 pending-action outcome notices are retained in compact history fallback so the
 chat remains auditable even when provider resume needs fallback context.
+When the `chat_context_compaction` operations flag is enabled, long-running
+Supervisor chats also get durable context checkpoints: older raw messages are
+summarized for provider replay while the complete stored transcript remains
+visible, searchable, and auditable. The live agent receives the summary plus
+recent raw messages and can use Syrus tools when exact older details are needed.
 In the V2 layout, the
 sidebar search field opens a dedicated search
 page where operators can search Jobs, Epics, and chat messages from
