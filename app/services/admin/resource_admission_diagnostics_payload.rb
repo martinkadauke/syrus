@@ -71,8 +71,8 @@ module Admin
 
     def admission_overrides
       workflows = Workflow.includes(:job)
-        .where("artifacts LIKE ?", "%\"workflow_admission_override\"%")
-        .order(updated_at: :desc)
+        .where(workflow_admission_override_present: true)
+        .order(workflow_admission_override_at: :desc, updated_at: :desc, id: :desc)
         .limit(OVERRIDE_LIMIT)
 
       workflows.map { |workflow| serialize_override(workflow) }
@@ -185,7 +185,7 @@ module Admin
         reason: override["reason"],
         action: override["action"],
         override: override["override"],
-        decided_at: workflow.artifact("workflow_admission_decided_at"),
+        decided_at: iso8601(workflow.workflow_admission_override_at) || workflow.artifact("workflow_admission_decided_at"),
         job: job_payload(workflow.job),
         workflow_path: workflow_path(workflow),
         decision: compact_decision(override),

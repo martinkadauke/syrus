@@ -19,6 +19,7 @@ class Workflow < ApplicationRecord
   validate :user_matches_job
   validate :job_must_be_open_on_create, on: :create
   before_validation :default_user_from_job, on: :create
+  before_save :sync_workflow_admission_override_metadata
 
   # Free-form bag of artifacts produced during this workflow. The
   # MCP sidecar's `submit_summary` writes pr_title/pr_body/summary
@@ -144,6 +145,21 @@ class Workflow < ApplicationRecord
 
   def enforce_job_workflow_runaway_limits_on_fail!
     job.enforce_workflow_runaway_limits!(failed_workflow: self)
+  end
+
+  def sync_workflow_admission_override_metadata
+    override = artifacts.to_h["workflow_admission_override"]
+    self.workflow_admission_override_present = override.present?
+    self.workflow_admission_override_at = override.present? ? parse_workflow_admission_override_at : nil
+  end
+
+  def parse_workflow_admission_override_at
+    value = artifacts.to_h["workflow_admission_decided_at"].to_s
+    return if value.blank?
+
+    Time.zone.parse(value)
+  rescue ArgumentError, TypeError
+    nil
   end
 
   def job_must_be_open_on_create
