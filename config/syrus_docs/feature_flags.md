@@ -61,12 +61,6 @@ Supervisor agent turns receive the `chat:admin` role with a constrained Supervis
 
 Initial event sources are existing notifications (`NotificationService`) for job failures, implemented Jobs, merged PRs, PR feedback completion, upstream PR closure, Epic completion, and main-branch health changes, plus `submit_insight` when an Agent Insight suggestion becomes available. Callers should pass stable `dedupe_key` values for poll-driven events; the service suppresses duplicate scoped events for the same target chat to prevent repeated poll loops from flooding admins.
 
-## chat_polish
-
-**Category:** UI Experiments
-
-Adds subtle motion-safe chat animations: new messages fade in, the jump-to-bottom scroll is smooth. Respects the user's `prefers-reduced-motion` setting.
-
 ## performance_logging
 
 **Category:** Operations

@@ -21,8 +21,8 @@ export function messageStreamNeedsOlderMessages(element: HTMLElement) {
 
 export function scrollMessageStreamToBottom(element: HTMLElement | null, options: { smooth?: boolean } = {}) {
   if (!element) return
-  // Smooth only for explicit user gestures under chat_polish; auto-follow
-  // during streaming stays instant so the viewport never chases animations.
+  // Smooth only for explicit user gestures; auto-follow during streaming stays
+  // instant so the viewport never chases animations.
   const reduceMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches
   if (options.smooth && !reduceMotion && typeof element.scrollTo === "function") {
     element.scrollTo({ top: element.scrollHeight, behavior: "smooth" })

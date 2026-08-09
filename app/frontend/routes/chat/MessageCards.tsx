@@ -28,7 +28,7 @@ import { attachmentDataUrl, formatMessageTimestamp } from "./messageDisplay"
 
 export const ChatMessage = memo(function ChatMessage({ animateIn = false, item, payload, pendingActionIds, prefix, queryKey, readOnly = false, onNotice }: { animateIn?: boolean; item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; pendingActionIds: Set<number>; prefix: string; queryKey: ChatQueryKey; readOnly?: boolean; onNotice: (message: string | null) => void }) {
   const { t } = useT("chat")
-  // chat_polish entrance; motion-safe: keeps reduced-motion users at rest.
+  // Motion-safe entrance; reduced-motion users stay at rest.
   const entranceClass = animateIn ? " motion-safe:animate-chat-message-in" : ""
   const [sourcePreview, setSourcePreview] = useState<WorkspaceFileLink | null>(null)
 
@@ -337,11 +337,11 @@ function SourceCodeTable({ content, path, targetLine }: { content: string; path:
   )
 }
 
-// chat_polish: only messages that ARRIVE while the thread is open animate in —
+// Only messages that ARRIVE while the thread is open animate in —
 // the initially loaded history must render at rest (and older pages prepend
 // with LOWER ids, so they can never satisfy the > check).
-export function shouldAnimateMessageEntrance(polish: boolean, messageId: number | null | undefined, initialMaxId: number | null): boolean {
-  if (!polish || messageId == null || initialMaxId == null) return false
+export function shouldAnimateMessageEntrance(messageId: number | null | undefined, initialMaxId: number | null): boolean {
+  if (messageId == null || initialMaxId == null) return false
   return messageId > initialMaxId
 }
 

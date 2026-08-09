@@ -6,13 +6,6 @@ features:
     description: "Enables the interactive terminal experience."
     description_i18n_key: "features.slugs.terminal.description"
     default: false
-  - slug: chat_polish
-    category: "UI Experiments"
-    name: "Chat polish"
-    name_i18n_key: "features.slugs.chat_polish.name"
-    description: "Subtle chat animations: new messages fade in, the new-messages jump scrolls smoothly. Motion-safe (respects reduced-motion)."
-    description_i18n_key: "features.slugs.chat_polish.description"
-    default: false
   - slug: video_walkthroughs
     category: "Labs"
     name: "Walkthrough videos"

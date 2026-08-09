@@ -1830,28 +1830,22 @@ describe("chat composer paste-to-attach", () => {
   })
 })
 
-describe("chat_polish message entrance", () => {
+describe("chat message entrance", () => {
   beforeEach(() => {
     window.localStorage.clear()
     mockDesktopViewport()
   })
 
   it("animates only messages that arrive after the initial load", () => {
-    expect(shouldAnimateMessageEntrance(true, 10, 5)).toBe(true)
-    // History and older pages stay at rest; the flag and null ids gate hard.
-    expect(shouldAnimateMessageEntrance(true, 5, 5)).toBe(false)
-    expect(shouldAnimateMessageEntrance(true, 3, 5)).toBe(false)
-    expect(shouldAnimateMessageEntrance(false, 10, 5)).toBe(false)
-    expect(shouldAnimateMessageEntrance(true, null, 5)).toBe(false)
-    expect(shouldAnimateMessageEntrance(true, 10, null)).toBe(false)
+    expect(shouldAnimateMessageEntrance(10, 5)).toBe(true)
+    // History and older pages stay at rest; null ids gate hard.
+    expect(shouldAnimateMessageEntrance(5, 5)).toBe(false)
+    expect(shouldAnimateMessageEntrance(3, 5)).toBe(false)
+    expect(shouldAnimateMessageEntrance(null, 5)).toBe(false)
+    expect(shouldAnimateMessageEntrance(10, null)).toBe(false)
   })
 
-  it("renders initially loaded messages at rest even with the flag on", async () => {
-    const script = document.createElement("script")
-    script.id = "syrus-bootstrap-data"
-    script.type = "application/json"
-    script.textContent = JSON.stringify({ feature_flags: { chat_polish: true } })
-    document.body.appendChild(script)
+  it("renders initially loaded messages at rest", async () => {
     mockChatRouteFetch()
 
     renderRoute()
@@ -1860,7 +1854,6 @@ describe("chat_polish message entrance", () => {
     const article = document.getElementById("chat_message_9")
     expect(article).not.toBeNull()
     expect(article!.className).not.toContain("animate-chat-message-in")
-    script.remove()
   })
 })
 

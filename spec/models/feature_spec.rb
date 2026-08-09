@@ -119,11 +119,6 @@ RSpec.describe Feature, type: :model do
   end
 
   describe "declarations" do
-    it "declares the chat_polish UI-experiment flag default-off in config/features.yml" do
-      declaration = FeatureRegistry.declarations.find { |feature| feature.slug == "chat_polish" }
-      expect(declaration).to have_attributes(category: "UI Experiments", default_enabled: false, type: :boolean)
-    end
-
     it "declares the video_walkthroughs labs flag default-off in config/features.yml" do
       declaration = FeatureRegistry.declarations.find { |feature| feature.slug == "video_walkthroughs" }
       expect(declaration).to have_attributes(category: "Labs", default_enabled: false, type: :boolean)

@@ -410,20 +410,7 @@ type OlderMessageRequester = (options: { preserveScroll: boolean }) => boolean
 function MessageStream({ bookmarkTarget, olderMessageRequesterRef, onCanLoadOlderChange, payload, prefix, queryKey, onNotice }: { bookmarkTarget: BookmarkTarget | null; olderMessageRequesterRef?: MutableRefObject<OlderMessageRequester | null>; onCanLoadOlderChange?: (canLoad: boolean) => void; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const location = useLocation()
   const { t } = useT("chat")
-  // Passive observer of the shared bootstrap cache (AppChrome owns the
-  // fetch; flags also arrive via the inline syrus-bootstrap-data script) —
-  // same pattern as useSetupStatus. An enabled query here would clobber the
-  // seeded cache and double-fetch on every thread mount.
-  const initialBootstrap = readInitialBootstrap()
-  const bootstrap = useQuery({
-    queryKey: ["bootstrap"],
-    queryFn: fetchBootstrap,
-    enabled: false,
-    initialData: initialBootstrap ?? undefined,
-    staleTime: initialBootstrap ? Number.POSITIVE_INFINITY : 0
-  })
-  const chatPolish = Boolean(bootstrap.data?.feature_flags?.chat_polish)
-  const simpleMode = bootstrap.data?.app?.mode === "simple"
+  const simpleMode = useSimpleMode()
   const streamRef = useRef<HTMLDivElement | null>(null)
   const atBottomRef = useRef(true)
   const streamChatIdRef = useRef(payload.chat.id)
@@ -457,10 +444,10 @@ function MessageStream({ bookmarkTarget, olderMessageRequesterRef, onCanLoadOlde
   })
 
   const scrollToBottom = useCallback(() => {
-    scrollMessageStreamToBottom(streamRef.current, { smooth: chatPolish })
+    scrollMessageStreamToBottom(streamRef.current, { smooth: true })
     atBottomRef.current = true
     setNewMessageCount(0)
-  }, [chatPolish])
+  }, [])
 
   const requestOlderMessages = useCallback((options: { preserveScroll: boolean }) => {
     if (!hasMoreOlder || oldestId == null || loadOlder.isPending) return false
@@ -615,7 +602,7 @@ function MessageStream({ bookmarkTarget, olderMessageRequesterRef, onCanLoadOlde
         ) : item.type === "tool_group" ? (
           <ToolGroup item={item} key={renderItemKey(item)} simpleMode={simpleMode} />
         ) : (
-          <ChatMessage animateIn={shouldAnimateMessageEntrance(chatPolish, item.id, entranceBaselineMessageIdRef.current)} item={item} key={renderItemKey(item)} payload={payload} pendingActionIds={pendingActionIds} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
+          <ChatMessage animateIn={shouldAnimateMessageEntrance(item.id, entranceBaselineMessageIdRef.current)} item={item} key={renderItemKey(item)} payload={payload} pendingActionIds={pendingActionIds} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
         ))}
         {agentQuestions.length > 0 ? <AgentQuestions questions={agentQuestions} queryKey={queryKey} onNotice={onNotice} /> : null}
         {payload.switching_provider ? <SwitchingProviderIndicator provider={payload.chat.chat_provider ?? ""} /> : agentActive ? <AgentActivityIndicator running={payload.agent_busy} /> : null}

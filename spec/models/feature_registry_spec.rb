@@ -19,7 +19,6 @@ RSpec.describe FeatureRegistry do
 
     expect(defaults).to include(
       "terminal" => false,
-      "chat_polish" => false,
       "video_walkthroughs" => false,
       "coding_mode" => false,
       "performance_logging" => false,
