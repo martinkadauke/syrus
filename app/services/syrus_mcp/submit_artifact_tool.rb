@@ -35,16 +35,16 @@ module SyrusMcp
 
     class << self
       def call(type:, title:, payload:, server_context:)
-        run = SyrusMcp.run_from_context(server_context)
+        run = Mcp::Tools.run_from_context(server_context)
         context = McpToolContext.from_run(run)
-        return SyrusMcp.not_authorized unless McpToolPolicy.capability_permitted?(context, :submit_artifact)
+        return Mcp::Tools.not_authorized unless McpToolPolicy.capability_permitted?(context, :submit_artifact)
 
-        artifact_type  = SyrusMcp.utf8(type).strip
-        artifact_title = SyrusMcp.utf8(title).strip
+        artifact_type  = Mcp::Tools.utf8(type).strip
+        artifact_title = Mcp::Tools.utf8(title).strip
 
-        return SyrusMcp.invalid("type is required")           if artifact_type.empty?
-        return SyrusMcp.invalid("title is required")          if artifact_title.empty?
-        return SyrusMcp.invalid("payload must be an object")  unless payload.is_a?(Hash)
+        return Mcp::Tools.invalid("type is required")           if artifact_type.empty?
+        return Mcp::Tools.invalid("title is required")          if artifact_title.empty?
+        return Mcp::Tools.invalid("payload must be an object")  unless payload.is_a?(Hash)
 
         entry = {
           "type"       => artifact_type,
@@ -59,7 +59,7 @@ module SyrusMcp
         updated << entry
 
         workflow.set_artifact!("typed_artifacts", updated)
-        SyrusMcp.write_log(run, "[mcp] submit_artifact: #{artifact_type.inspect} — #{artifact_title.truncate(60)}")
+        Mcp::Tools.write_log(run, "[mcp] submit_artifact: #{artifact_type.inspect} — #{artifact_title.truncate(60)}")
 
         MCP::Tool::Response.new([ { type: "text", text: "Saved." } ])
       rescue StandardError => e
