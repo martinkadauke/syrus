@@ -1,9 +1,13 @@
 class RemoveCoreToolsPluginRecord < ActiveRecord::Migration[8.1]
   def up
+    return unless table_exists?(:plugin_records)
+
     PluginRecord.where(name: [ "core_tools", "syrus_core_tools" ]).delete_all
   end
 
   def down
+    return unless table_exists?(:plugin_records)
+
     PluginRecord.find_or_create_by!(name: "core_tools") do |record|
       record.enabled = true
       record.default_enabled = true if record.has_attribute?(:default_enabled)

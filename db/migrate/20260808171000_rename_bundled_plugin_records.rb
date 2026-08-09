@@ -18,6 +18,8 @@ class RenameBundledPluginRecords < ActiveRecord::Migration[8.1]
   private
 
   def rename_plugin_records(mapping)
+    return unless table_exists?(:plugin_records)
+
     mapping.each do |old_name, new_name|
       old_record = PluginRecord.find_by(name: old_name)
       next unless old_record
