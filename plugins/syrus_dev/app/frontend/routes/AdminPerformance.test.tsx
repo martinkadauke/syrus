@@ -53,10 +53,15 @@ describe("AdminPerformance", () => {
     expect(within(summary).getByText("rails.cache")).toBeInTheDocument()
     expect(within(summary).getByText("1.00s")).toBeInTheDocument()
 
+    expect(screen.getByText("Browser traces")).toBeInTheDocument()
+    expect(screen.getByText("Browser max")).toBeInTheDocument()
+    expect(screen.getByText("Backend API avg / max")).toBeInTheDocument()
+    expect(screen.getByText("Frontend overhead avg / max")).toBeInTheDocument()
     expect(screen.getByText("GET /api/v1/app/chats/126")).toBeInTheDocument()
     expect(screen.getAllByText("chat_payload.recent_chats").length).toBeGreaterThan(0)
     expect(screen.getAllByText("dashboard.route").length).toBeGreaterThan(0)
     expect(screen.getByText("frontend-request-1")).toBeInTheDocument()
+    expect(screen.getByText("300ms / 300ms")).toBeInTheDocument()
     expect(screen.getByText("SELECT `jobs`.* FROM `jobs` WHERE `jobs`.`state` = ?")).toBeInTheDocument()
     expect(screen.getByText("request")).toBeInTheDocument()
     expect(screen.getByText("246 SQL · 629ms")).toBeInTheDocument()
@@ -65,6 +70,16 @@ describe("AdminPerformance", () => {
     await waitFor(() => expect(fetchSpy).toHaveBeenLastCalledWith("/api/v1/app/admin/performance?limit=200&revision_scope=all", expect.objectContaining({
       credentials: "same-origin"
     })))
+  })
+
+  it("puts browser traces above backend-only slow request details", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse(performancePayload()))
+
+    renderRoute(<AdminPerformance />)
+
+    const browserTraces = await screen.findByText("Browser traces")
+    const slowRequests = await screen.findByText("Slow requests")
+    expect(browserTraces.compareDocumentPosition(slowRequests) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
 

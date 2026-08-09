@@ -62,9 +62,9 @@ function PerformanceView({ payload }: { payload: AdminPerformancePayload }) {
         <Metric title={t("performance.thresholds")} value={formatMs(payload.thresholds.slow_request_ms)} context={t("performance.threshold_context", { phase: formatMs(payload.thresholds.slow_phase_ms), sql: formatMs(payload.thresholds.slow_sql_ms) })} />
       </section>
 
+      <BrowserTracesTable rows={payload.summaries.browser_traces ?? []} />
       <SlowRequestsTable rows={payload.summaries.slow_requests} />
       <SlowPhasesTable rows={payload.summaries.slow_phases} />
-      <BrowserTracesTable rows={payload.summaries.browser_traces ?? []} />
       <SqlFingerprintsTable rows={payload.summaries.sql_fingerprints} />
       <EventsTable rows={payload.events} />
     </div>
@@ -156,10 +156,11 @@ function BrowserTracesTable({ rows }: { rows: BrowserTraceSummary[] }) {
           <tr>
             <th className="px-4 py-2">{t("performance.col_trace")}</th>
             <th className="px-4 py-2 text-right">{t("performance.col_count")}</th>
-            <th className="px-4 py-2 text-right">{t("performance.col_total")}</th>
-            <th className="px-4 py-2 text-right">{t("performance.col_avg")}</th>
-            <th className="px-4 py-2 text-right">{t("performance.col_max")}</th>
-            <th className="px-4 py-2 text-right">{t("performance.col_api")}</th>
+            <th className="px-4 py-2 text-right">{t("performance.col_browser_total")}</th>
+            <th className="px-4 py-2 text-right">{t("performance.col_browser_avg")}</th>
+            <th className="px-4 py-2 text-right">{t("performance.col_browser_max")}</th>
+            <th className="px-4 py-2 text-right">{t("performance.col_backend_api")}</th>
+            <th className="px-4 py-2 text-right">{t("performance.col_frontend_overhead")}</th>
             <th className="px-4 py-2">{t("performance.col_request_ids")}</th>
             <th className="px-4 py-2">{t("performance.col_last_seen")}</th>
           </tr>
@@ -176,6 +177,7 @@ function BrowserTracesTable({ rows }: { rows: BrowserTraceSummary[] }) {
               <NumberCell value={formatMs(row.average_duration_ms)} />
               <NumberCell value={formatMs(row.max_duration_ms)} />
               <NumberCell value={`${formatMs(row.average_api_duration_ms)} / ${formatMs(row.max_api_duration_ms)}`} />
+              <NumberCell value={`${formatMs(frontendOverhead(row.average_duration_ms, row.average_api_duration_ms))} / ${formatMs(frontendOverhead(row.max_duration_ms, row.max_api_duration_ms))}`} />
               <td className="max-w-md px-4 py-2 font-mono text-xs text-gray-600 dark:text-gray-300">
                 <div className="truncate" title={row.recent_api_request_ids.join(", ")}>{row.recent_api_request_ids.join(", ") || "-"}</div>
               </td>
@@ -186,6 +188,11 @@ function BrowserTracesTable({ rows }: { rows: BrowserTraceSummary[] }) {
       </table>
     </TableSection>
   )
+}
+
+function frontendOverhead(browserDuration: number | null | undefined, apiDuration: number | null | undefined) {
+  if (browserDuration == null || apiDuration == null) return null
+  return Math.max(0, browserDuration - apiDuration)
 }
 
 function SqlFingerprintsTable({ rows }: { rows: SqlFingerprintSummary[] }) {
