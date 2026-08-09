@@ -114,9 +114,12 @@ merged into i18next whenever the plugin is installed. This does not depend on
 the plugin being enabled.
 
 Plugin Rails controllers can live under `plugins/<name>/app/controllers` and
-inherit the host controller base classes. The host owns auth namespaces; plugin
-route metadata declares the installed API/SPA routes, while runtime
-enable/disable checks happen in the controller or extension point lookup.
+inherit the host controller base classes. The host owns auth namespaces. Plugin
+route metadata declares installed API/SPA routes: `/api/v1/app/*` and
+`/api/v1/admin/*` metadata routes are served by the host plugin-route dispatcher
+after concrete core routes, while `/admin/*` SPA metadata routes are accepted by
+the SPA fallback. Runtime enable/disable checks happen in the controller or
+extension point lookup.
 
 ## Install / uninstall flow
 

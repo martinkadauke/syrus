@@ -54,8 +54,10 @@ Admin-page plugins should declare:
   `syrus_dev/AdminPerformance` to plugin frontend files.
 - install-time `frontend.i18n` metadata listing plugin locale files.
 - install-time `routes` metadata for API and SPA routes. The host serves
-  `/admin/*` through the SPA for plugin pages while concrete API controllers can
-  live inside the plugin engine.
+  `/admin/*` through the SPA for plugin pages. API routes declared under
+  `/api/v1/app/*` or `/api/v1/admin/*` are served by the host plugin-route
+  dispatcher after concrete core routes, so plugin controllers can live inside
+  the plugin engine without adding one-off host routes.
 
 Built-in workflow MCP tools are core app functionality, not a plugin. Optional
 or installation-specific MCP tools should be contributed through plugin

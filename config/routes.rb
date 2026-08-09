@@ -266,7 +266,6 @@ Rails.application.routes.draw do
         get "repositories/:id/insight_schedule_config", to: "insight_schedule_configs#show", constraints: { id: /\d+/ }
         patch "repositories/:id/insight_schedule_config", to: "insight_schedule_configs#update", constraints: { id: /\d+/ }
         get "workflows/:workflow_id/coverage_hit_map", to: "workflows#coverage_hit_map", constraints: { workflow_id: /\d+/ }
-        get "linear/teams", to: "linear#teams"
         get "repositories/:repository_id/input_sources/:type", to: "input_sources#show"
         patch "repositories/:repository_id/input_sources/:type", to: "input_sources#update"
         get "repositories/:repository_id/documents", to: "repository_documents#index"
@@ -330,12 +329,14 @@ Rails.application.routes.draw do
           get "supervisor_chat", to: "supervisor_chats#show"
           resources :invitations, only: %i[ index create destroy ]
           resources :features, only: %i[ index update ], param: :slug
-          get "performance", to: "performance#show"
           get "operational_logs", to: "operational_logs#index"
           get "settings", to: "settings#show"
           patch "settings", to: "settings#update"
           post "settings/clear_secret", to: "settings#clear_secret"
         end
+        match "*plugin_route", to: "plugin_routes#show", via: :all, constraints: lambda { |request|
+          PluginRouteResolver.match?(request, controller_prefix: "api/v1/app/")
+        }
       end
 
       namespace :admin do
@@ -392,8 +393,6 @@ Rails.application.routes.draw do
         get "plugins",  to: "plugins#index"
         post "plugins/:name/enable", to: "plugins#enable", constraints: { name: /[^\/]+/ }
         post "plugins/:name/disable", to: "plugins#disable", constraints: { name: /[^\/]+/ }
-        get "performance", to: "performance#show"
-
         # Operator console kill switches.
         get  "console",                 to: "console#show"
         post "console/pause_polling",   to: "console#pause_polling"
@@ -435,6 +434,9 @@ Rails.application.routes.draw do
             post :kill
           end
         end
+        match "*plugin_route", to: "plugin_routes#show", via: :all, constraints: lambda { |request|
+          PluginRouteResolver.match?(request, controller_prefix: "api/v1/admin/")
+        }
       end
     end
   end
