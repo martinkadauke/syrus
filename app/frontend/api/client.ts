@@ -1,3 +1,5 @@
+import { reloadPage } from "../lib/pageReload"
+
 export type ApiErrorPayload = {
   error?: {
     code?: string
@@ -17,6 +19,10 @@ export class ApiError extends Error {
   }
 }
 
+const REVISION_HEADER = "X-Syrus-Revision"
+const RELOAD_STORAGE_KEY = "syrus:revision-reload"
+let embeddedRevision: string | null | undefined
+
 export async function getJson<T>(path: string, options: { signal?: AbortSignal } = {}): Promise<T> {
   const response = await fetch(path, {
     credentials: "same-origin",
@@ -25,6 +31,7 @@ export async function getJson<T>(path: string, options: { signal?: AbortSignal }
     },
     signal: options.signal
   })
+  reloadIfBackendRevisionChanged(response)
 
   if (response.status === 401) {
     window.location.assign("/session/new")
@@ -60,6 +67,7 @@ export async function getJsonWithMeta<T>(path: string, options: { signal?: Abort
     signal: options.signal
   })
   const meta = responseMeta(path, response, startedAt)
+  reloadIfBackendRevisionChanged(response)
 
   if (response.status === 401) {
     window.location.assign("/session/new")
@@ -106,6 +114,7 @@ export async function postForm<T>(path: string, body: FormData): Promise<T> {
     headers,
     body
   })
+  reloadIfBackendRevisionChanged(response)
 
   if (response.status === 401) {
     window.location.assign("/session/new")
@@ -143,6 +152,7 @@ async function writeJson<T>(path: string, method: "POST" | "PATCH" | "DELETE", b
     headers,
     body: body === undefined ? undefined : JSON.stringify(body)
   })
+  reloadIfBackendRevisionChanged(response)
 
   if (response.status === 401) {
     window.location.assign("/session/new")
@@ -180,4 +190,45 @@ function responseMeta(path: string, response: Response, startedAt: number): Json
 
 function performanceNow(): number {
   return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now()
+}
+
+function reloadIfBackendRevisionChanged(response: Response): void {
+  const backendRevision = response.headers.get(REVISION_HEADER)
+  if (!backendRevision || backendRevision === "dev") return
+
+  const frontendRevision = initialEmbeddedRevision()
+  if (!frontendRevision || frontendRevision === "dev" || frontendRevision === backendRevision) return
+  if (typeof window === "undefined") return
+
+  const key = `${frontendRevision}->${backendRevision}`
+  try {
+    if (window.sessionStorage.getItem(RELOAD_STORAGE_KEY) === key) return
+    window.sessionStorage.setItem(RELOAD_STORAGE_KEY, key)
+  } catch {
+    // Storage can be unavailable in private or locked-down contexts. Reloading
+    // once is still better than keeping an old module graph alive indefinitely.
+  }
+
+  reloadPage()
+}
+
+function initialEmbeddedRevision(): string | null {
+  if (embeddedRevision !== undefined) return embeddedRevision
+  embeddedRevision = null
+
+  const element = typeof document === "undefined" ? null : document.getElementById("syrus-bootstrap-data")
+  if (!element?.textContent) return embeddedRevision
+
+  try {
+    const payload = JSON.parse(element.textContent) as { app?: { revision?: unknown } }
+    embeddedRevision = typeof payload.app?.revision === "string" ? payload.app.revision : null
+  } catch {
+    embeddedRevision = null
+  }
+
+  return embeddedRevision
+}
+
+export function resetRevisionReloadStateForTests(): void {
+  embeddedRevision = undefined
 }

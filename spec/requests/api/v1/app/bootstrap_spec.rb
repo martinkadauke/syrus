@@ -39,6 +39,7 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(response.media_type).to eq("application/json")
+    expect(response.headers["X-Syrus-Revision"]).to eq(SyrusVersion.current)
     expect(parse_body).to include(
       "current_user" => nil,
       "public" => include(

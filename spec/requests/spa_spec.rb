@@ -61,7 +61,8 @@ RSpec.describe "SPA shell", type: :request do
     get root_path
 
     expect(response).to have_http_status(:ok)
-    expect(response.headers["Cache-Control"]).to include("no-cache")
+    expect(response.headers["Cache-Control"]).to include("no-store")
+    expect(response.headers["X-Syrus-Revision"]).to eq(SyrusVersion.current)
   end
 
   it "serves the authenticated app shell at root when signed in" do

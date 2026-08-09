@@ -5,6 +5,7 @@ class ApplicationController < ActionController::Base
   allow_browser versions: :modern
 
   before_action :compute_system_alerts
+  after_action :set_syrus_revision_header
   around_action :switch_locale
   helper_method :current_user, :default_chat_path
 
@@ -16,6 +17,10 @@ class ApplicationController < ActionController::Base
   # the underlying problem (e.g. updates their GH token).
   def compute_system_alerts
     @system_alerts = SystemAlerts.active_for(user: Current.user)
+  end
+
+  def set_syrus_revision_header
+    response.headers["X-Syrus-Revision"] = SyrusVersion.current
   end
 
   def switch_locale(&action)

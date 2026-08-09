@@ -4,9 +4,9 @@ class SpaController < ApplicationController
   before_action :enforce_signup_gate, if: :signup_spa_path?
   before_action :require_admin, if: :admin_spa_path?
   before_action :require_chat_owner, if: :chat_spa_path?
+  after_action :prevent_spa_shell_storage, only: :show
 
   def show
-    expires_now
     authenticated?
   end
 
@@ -74,6 +74,12 @@ class SpaController < ApplicationController
 
   def chat_spa_id
     normalized_path[%r{\A/chats/(\d+)\z}, 1]
+  end
+
+  def prevent_spa_shell_storage
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
   end
 
   def normalized_path
