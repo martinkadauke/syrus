@@ -12,12 +12,13 @@ module Admin
       "24h" => 24.hours
     }.freeze
 
-    def initialize(hostname: nil, since: nil, until_time: nil, sample_limit_per_host: SAMPLE_LIMIT_PER_HOST, minute_bucket_window_minutes: DEFAULT_MINUTE_BUCKET_WINDOW / 1.minute)
+    def initialize(hostname: nil, since: nil, until_time: nil, sample_limit_per_host: SAMPLE_LIMIT_PER_HOST, minute_bucket_window_minutes: DEFAULT_MINUTE_BUCKET_WINDOW / 1.minute, include_raw_metrics: true)
       @hostname = hostname.presence
       @until_time = parse_time(until_time) || Time.current
       @since = parse_time(since) || (@until_time - DEFAULT_WINDOW)
       @sample_limit_per_host = sample_limit_per_host.to_i.clamp(0, 100)
       @minute_bucket_window = minute_bucket_window_minutes.to_i.minutes.clamp(0.seconds, MAX_MINUTE_BUCKET_WINDOW)
+      @include_raw_metrics = include_raw_metrics != false
     end
 
     def as_json(*)
@@ -85,7 +86,7 @@ module Admin
     end
 
     def sample_payload(sample)
-      {
+      payload = {
         id: sample.id,
         hostname: sample.hostname,
         role: sample.role,
@@ -104,9 +105,10 @@ module Admin
         cpu_pressure_some: sample.cpu_pressure_some,
         cpu_pressure_full: sample.cpu_pressure_full,
         io_pressure_some: sample.io_pressure_some,
-        io_pressure_full: sample.io_pressure_full,
-        raw_metrics: sample.raw_metrics || {}
+        io_pressure_full: sample.io_pressure_full
       }
+      payload[:raw_metrics] = sample.raw_metrics || {} if include_raw_metrics?
+      payload
     end
 
     def summarize(host_samples)
@@ -194,8 +196,17 @@ module Admin
       @samples ||= WorkerHostHealthSample
         .where(observed_at: since..until_time)
         .then { |scope| hostname ? scope.where(hostname: hostname) : scope }
+        .then { |scope| include_raw_metrics? ? scope : scope.select(worker_health_scalar_columns) }
         .order(observed_at: :desc)
         .to_a
+    end
+
+    def include_raw_metrics?
+      @include_raw_metrics
+    end
+
+    def worker_health_scalar_columns
+      WorkerHostHealthSample.column_names - [ "raw_metrics" ]
     end
 
     def parse_time(value)

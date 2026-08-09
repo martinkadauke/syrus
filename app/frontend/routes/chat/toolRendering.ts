@@ -9,6 +9,8 @@ import { contentRecord, firstLine, stringValue } from "./utils"
 const WORKSPACE_ROOT_PATTERN = /(?:\/[^\s'"`,:;\])}]+)+\/\.syrus\/(?:chat-workspaces\/\d+\/repositories\/[^/\s'"`,:;\])}]+\/[^/\s'"`,:;\])}]+|workflows\/\d+)\/?/g
 const COUNTED_RESULT_TOOLS = new Set(["Read", "Glob", "Grep"])
 const RESULT_SUMMARY_LINE_THRESHOLD = 8
+const TOOL_RESULT_PREVIEW_CHARS = 20_000
+const TOOL_RESULT_PREVIEW_LINES = 400
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === "[object Object]"
@@ -105,6 +107,10 @@ export function toolResultSummary(name: string, body: string) {
 }
 
 export function fullResultBody(content: unknown): string {
+  return toolResultPreview(fullResultBodyUnbounded(content))
+}
+
+function fullResultBodyUnbounded(content: unknown): string {
   if (typeof content === "string") return shortenWorkspacePaths(content)
   if (Array.isArray(content)) {
     return content.map((item) => {
@@ -118,4 +124,32 @@ export function fullResultBody(content: unknown): string {
   if (isPlainObject(content)) return shortenWorkspacePaths(JSON.stringify(stableJsonValue(content), null, 2))
 
   return String(content)
+}
+
+export function toolResultPreview(body: string): string {
+  const normalized = shortenWorkspacePaths(body)
+  const lines = normalized.split(/\r?\n/)
+  let preview = normalized
+  let truncated = false
+
+  if (lines.length > TOOL_RESULT_PREVIEW_LINES) {
+    preview = lines.slice(0, TOOL_RESULT_PREVIEW_LINES).join("\n")
+    truncated = true
+  }
+
+  if (preview.length > TOOL_RESULT_PREVIEW_CHARS) {
+    preview = preview.slice(0, TOOL_RESULT_PREVIEW_CHARS)
+    truncated = true
+  }
+
+  if (!truncated) return preview
+
+  const omittedLines = Math.max(0, lines.length - preview.split(/\r?\n/).length)
+  const omittedBytes = Math.max(0, normalized.length - preview.length)
+  const omitted = [
+    omittedLines > 0 ? `${omittedLines} line${omittedLines === 1 ? "" : "s"}` : null,
+    omittedBytes > 0 ? `${omittedBytes} character${omittedBytes === 1 ? "" : "s"}` : null
+  ].filter(Boolean).join(", ")
+
+  return `${preview}\n\n[Tool result preview truncated${omitted ? `; ${omitted} omitted` : ""}. Full content remains in the chat transcript.]`
 }

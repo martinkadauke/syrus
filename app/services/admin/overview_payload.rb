@@ -121,7 +121,7 @@ module Admin
     end
 
     def worker_health_payload(sample_limit_per_host:)
-      ::Admin::WorkerHealthPayload.new(sample_limit_per_host: sample_limit_per_host).as_json
+      ::Admin::WorkerHealthPayload.new(sample_limit_per_host: sample_limit_per_host, include_raw_metrics: false).as_json
     end
 
     def chat_scoped_events_payload

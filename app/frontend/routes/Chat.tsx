@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Markdown } from "../lib/Markdown"
 import type { Step } from "react-joyride"
 import type { CSSProperties, FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, MutableRefObject, UIEvent } from "react"
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import "@excalidraw/excalidraw/index.css"
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
@@ -215,8 +215,9 @@ function SharedChatView({ payload }: { payload: SharedChatPayload }) {
 
 function ReadOnlyMessageStream({ payload }: { payload: SharedChatPayload }) {
   const simpleMode = useSimpleMode()
-  const items = renderChatMessages(payload.messages, { simpleMode })
-  const placeholderPayload = sharedChatRenderPayload(payload)
+  const items = useMemo(() => renderChatMessages(payload.messages, { simpleMode }), [payload.messages, simpleMode])
+  const placeholderPayload = useMemo(() => sharedChatRenderPayload(payload), [payload])
+  const pendingActionIds = useMemo(() => new Set<number>(), [])
   const { t } = useT("chat")
 
   if (items.length === 0) {
@@ -232,7 +233,7 @@ function ReadOnlyMessageStream({ payload }: { payload: SharedChatPayload }) {
       {items.map((item) => item.type === "tool_group" ? (
         <ToolGroup item={item} key={renderItemKey(item)} simpleMode={simpleMode} />
       ) : (
-        <ChatMessage item={item} key={renderItemKey(item)} payload={placeholderPayload} pendingActionIds={new Set()} prefix="" queryKey={chatQueryKey(payload.chat.id, "")} readOnly onNotice={() => undefined} />
+        <ChatMessage item={item} key={renderItemKey(item)} payload={placeholderPayload} pendingActionIds={pendingActionIds} prefix="" queryKey={chatQueryKey(payload.chat.id, "")} readOnly onNotice={() => undefined} />
       ))}
     </div>
   )
@@ -438,13 +439,13 @@ function MessageStream({ bookmarkTarget, olderMessageRequesterRef, onCanLoadOlde
   const [showSystemMessages, setShowSystemMessages] = useState(false)
   const [hasMoreOlder, setHasMoreOlder] = useState(payload.has_more_older)
   const [activeBookmarkTarget, setActiveBookmarkTarget] = useState<BookmarkTarget | null>(null)
-  const displayedMessages = mergeChatMessages(olderMessages, payload.messages)
-  const displayedItems = renderChatMessages(displayedMessages, { simpleMode })
+  const displayedMessages = useMemo(() => mergeChatMessages(olderMessages, payload.messages), [olderMessages, payload.messages])
+  const displayedItems = useMemo(() => renderChatMessages(displayedMessages, { simpleMode }), [displayedMessages, simpleMode])
   const agentQuestions = payload.agent_questions || []
-  const hiddenSystemMessageCount = displayedItems.filter(isLowPrioritySystemMessage).length
-  const visibleItems = showSystemMessages ? displayedItems : displayedItems.filter((item) => !isLowPrioritySystemMessage(item))
-  const pendingActionIds = new Set(payload.pending_actions.map((action) => action.id))
-  const streamItems = injectTemporalMarkers(buildMessageStreamItems(visibleItems, payload.pending_actions))
+  const hiddenSystemMessageCount = useMemo(() => displayedItems.filter(isLowPrioritySystemMessage).length, [displayedItems])
+  const visibleItems = useMemo(() => showSystemMessages ? displayedItems : displayedItems.filter((item) => !isLowPrioritySystemMessage(item)), [displayedItems, showSystemMessages])
+  const pendingActionIds = useMemo(() => new Set(payload.pending_actions.map((action) => action.id)), [payload.pending_actions])
+  const streamItems = useMemo(() => injectTemporalMarkers(buildMessageStreamItems(visibleItems, payload.pending_actions)), [visibleItems, payload.pending_actions])
   const agentActive = isAgentActive(payload)
   const oldestId = oldestMessageId(displayedMessages)
   const payloadMessageIdsSignature = payload.messages.map((message) => message.id).join("|")

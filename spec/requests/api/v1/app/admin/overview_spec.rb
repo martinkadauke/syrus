@@ -141,4 +141,32 @@ RSpec.describe "API: /api/v1/app/admin/overview", type: :request do
     reasons = parse_body.fetch("provider_circuits").map { |circuit| circuit["reason"] }
     expect(reasons).not_to include("provider usage limit exhausted for model for")
   end
+
+  it "keeps raw worker health metrics out of the overview payload" do
+    admin = Factories.user
+    InstanceVersion.create!(
+      hostname: "worker-a",
+      role: "worker",
+      version: "abc123",
+      started_at: 5.minutes.ago,
+      last_heartbeat_at: 10.seconds.ago
+    )
+    WorkerHostHealthSample.create!(
+      hostname: "worker-a",
+      role: "worker",
+      version: "abc123",
+      observed_at: 1.minute.ago,
+      cpu_used_percent: 42,
+      raw_metrics: { "large" => "payload" }
+    )
+    allow(Admin::StuckItemsCache).to receive(:read).and_return(cached_stuck_snapshot([]))
+    sign_in_as(admin)
+
+    get api_v1_app_admin_overview_path
+
+    expect(response).to have_http_status(:ok)
+    sample = parse_body.dig("worker_health", "hosts", 0, "recent_samples", 0)
+    expect(sample).to include("cpu_used_percent" => 42.0)
+    expect(sample).not_to have_key("raw_metrics")
+  end
 end

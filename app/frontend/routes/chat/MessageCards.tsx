@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { memo } from "react"
 import type { FormEvent, KeyboardEvent, MouseEvent } from "react"
 import { useEffect, useRef, useState } from "react"
 import { Link } from "react-router-dom"
@@ -26,7 +27,7 @@ import { attachmentDataUrl, formatMessageTimestamp } from "./messageDisplay"
 // and ToolGroup are the entry points the message stream renders. Depends only on
 // leaf modules and shared UI imports; unused header imports were pruned.
 
-export function ChatMessage({ animateIn = false, item, payload, pendingActionIds, prefix, queryKey, readOnly = false, onNotice }: { animateIn?: boolean; item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; pendingActionIds: Set<number>; prefix: string; queryKey: ChatQueryKey; readOnly?: boolean; onNotice: (message: string | null) => void }) {
+export const ChatMessage = memo(function ChatMessage({ animateIn = false, item, payload, pendingActionIds, prefix, queryKey, readOnly = false, onNotice }: { animateIn?: boolean; item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; pendingActionIds: Set<number>; prefix: string; queryKey: ChatQueryKey; readOnly?: boolean; onNotice: (message: string | null) => void }) {
   const { t } = useT("chat")
   // chat_polish entrance; motion-safe: keeps reduced-motion users at rest.
   const entranceClass = animateIn ? " motion-safe:animate-chat-message-in" : ""
@@ -89,7 +90,7 @@ export function ChatMessage({ animateIn = false, item, payload, pendingActionIds
   }
 
   return <StructuredTool tool={item.tool} fallback={item.text} />
-}
+})
 
 function MessageImageAttachments({ attachments, align = "start" }: { attachments?: ChatMessageItem["attachments"]; align?: "start" | "end" }) {
   const images = (attachments || []).filter((attachment): attachment is ChatMessageImageAttachment => attachment.mime_type.startsWith("image/"))
@@ -418,7 +419,7 @@ function BookmarkControl({ item, payload, queryKey, onNotice }: { item: Extract<
   )
 }
 
-export function ToolGroup({ item, simpleMode = false }: { item: ChatToolGroupItem; simpleMode?: boolean }) {
+export const ToolGroup = memo(function ToolGroup({ item, simpleMode = false }: { item: ChatToolGroupItem; simpleMode?: boolean }) {
   if (simpleMode) {
     return (
       <div className="space-y-1">
@@ -452,7 +453,7 @@ export function ToolGroup({ item, simpleMode = false }: { item: ChatToolGroupIte
       </div>
     </details>
   )
-}
+})
 
 function HighlightedToolResult({ code, detail, error, tool }: { code: string; detail: string; error: boolean; tool: string }) {
   const language = inferToolResultLanguage(detail, tool)
