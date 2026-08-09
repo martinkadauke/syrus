@@ -150,6 +150,7 @@ module WorkEngine
       issues.concat(classify_paused_queues)
       issues.concat(classify_running_runs)
       issues.concat(classify_running_steps_with_terminal_runs)
+      issues.concat(classify_queued_steps_without_runs)
       issues.concat(classify_workflows)
       issues.concat(classify_stale_auto_retry_workflows)
       issues.concat(classify_job_workflow_drift)
@@ -430,6 +431,36 @@ module WorkEngine
             terminal_run_finished_at: terminal_run.finished_at&.iso8601
           ),
           explanation: "Step ##{step.id} is running but all of its Runs are terminal, so no worker can advance it."
+        )
+      end
+    end
+
+    def classify_queued_steps_without_runs
+      steps.select(&:queued?).filter_map do |step|
+        workflow = step.workflow
+        next unless workflow&.running?
+        next unless older_than?(step.created_at, ORPHAN_RUN_GRACE_PERIOD)
+        next if step.runs.exists?
+
+        previous = step.previous_step
+        next unless previous&.succeeded?
+
+        issue(
+          kind: :queued_step_without_run,
+          severity: :error,
+          affected_ids: ids_for(step),
+          safe_to_auto_repair: true,
+          recommended_repair_action: "resume_queued_step",
+          evidence: workflow_evidence(workflow).merge(
+            step_id: step.id,
+            step_kind: step.kind,
+            step_position: step.position,
+            previous_step_id: previous.id,
+            previous_step_kind: previous.kind,
+            previous_step_state: previous.state,
+            age_seconds: seconds_since(step.created_at)
+          ),
+          explanation: "Step ##{step.id} is queued behind succeeded Step ##{previous.id}, but no Run was created for it."
         )
       end
     end

@@ -931,6 +931,43 @@ RSpec.describe WorkEngine::Reconciler do
     expect(result.repair_executions.map(&:message)).to include("reconciled Step ##{step.id} to succeeded from Run ##{run.id}")
   end
 
+  it "resumes a running workflow whose succeeded step did not create a run for the queued successor" do
+    prepare = workflow.steps.order(:position).second
+    step.update!(next_step: prepare)
+    job.update_columns(state: "landing", started_at: 30.minutes.ago)
+    workflow.update_columns(trigger_kind: "auto_merge", state: "running", started_at: 30.minutes.ago)
+    step.update_columns(kind: "mergeability_preflight", state: "succeeded", started_at: 30.minutes.ago, finished_at: 29.minutes.ago)
+    run.update_columns(state: "succeeded", started_at: 30.minutes.ago, finished_at: 29.minutes.ago)
+    prepare.runs.delete_all
+    prepare.update_columns(state: "queued", started_at: nil, finished_at: nil, created_at: 30.minutes.ago)
+
+    result = reconcile_and_execute(workflow_id: workflow.id)
+
+    expect(kind(result, :queued_step_without_run)).to be_present
+    expect(plan(result, :resume_queued_step)).to have_attributes(
+      auto_executable: true,
+      target_type: "Step",
+      target_id: prepare.id
+    )
+    expect(prepare.reload.runs.last).to have_attributes(state: "queued", job_id: job.id, trigger_kind: "auto_merge")
+    expect(result.repair_executions.map(&:message)).to include("resumed Step ##{prepare.id} with Run ##{prepare.runs.last.id}")
+  end
+
+  it "does not resume a queued step whose predecessor has not succeeded" do
+    prepare = workflow.steps.order(:position).second
+    step.update!(next_step: prepare)
+    workflow.update_columns(state: "running", started_at: 30.minutes.ago)
+    step.update_columns(state: "running", started_at: 30.minutes.ago, finished_at: nil)
+    prepare.runs.delete_all
+    prepare.update_columns(state: "queued", started_at: nil, finished_at: nil, created_at: 30.minutes.ago)
+
+    result = reconcile_and_execute(workflow_id: workflow.id)
+
+    expect(kind(result, :queued_step_without_run)).to be_nil
+    expect(plan(result, :resume_queued_step)).to be_nil
+    expect(prepare.reload.runs).to be_empty
+  end
+
   it "executes stale running agent session resume after marking worker_died" do
     agent_step = workflow.steps.find_by!(kind: "implement")
     agent_run = agent_step.runs.create!(

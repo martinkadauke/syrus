@@ -132,6 +132,14 @@ module WorkEngine
           end
         end
 
+        def target_step
+          @target_step ||= if plan.target_type == "Step"
+            Step.includes(:workflow, :runs, :previous_step).find_by(id: plan.target_id)
+          else
+            Step.includes(:workflow, :runs, :previous_step).find_by(id: first_id("step_ids")) || target_run&.step
+          end
+        end
+
         def first_run
           Run.includes(:job, :step, :provider_session_metadata, :run_failure_classification).find_by(id: first_id("run_ids"))
         end
@@ -240,6 +248,25 @@ module WorkEngine
 
           run.reenqueue!
           success("re-enqueued Run ##{run.id}")
+        end
+      end
+
+      class ResumeQueuedStep < Base
+        def perform
+          step = target_step
+          return skipped("Step no longer exists") unless step
+          return skipped("Step is #{step.state}, not queued") unless step.queued?
+          return skipped("Step already has a Run") if step.runs.exists?
+
+          workflow = step.workflow
+          return skipped("Workflow no longer exists") unless workflow
+          return skipped("Workflow is #{workflow.state}, not running") unless workflow.running?
+
+          previous = step.previous_step
+          return skipped("Previous Step is not succeeded") unless previous&.succeeded?
+
+          run = StepDispatcher.resume_deferred_phase(workflow.id, step.id)
+          run ? success("resumed Step ##{step.id} with Run ##{run.id}") : skipped("queued Step remained deferred")
         end
       end
 
@@ -438,10 +465,6 @@ module WorkEngine
         end
 
         private
-
-        def target_step
-          @target_step ||= Step.includes(:workflow, :runs).find_by(id: plan.target_id)
-        end
 
         def latest_terminal_run(step_runs)
           step_runs.select(&:terminal?).max_by { |run| [ run.finished_at || run.updated_at || run.created_at || Time.zone.at(0), run.id || 0 ] }

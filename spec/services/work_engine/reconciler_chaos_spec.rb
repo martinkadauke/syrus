@@ -52,6 +52,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       epic_workflow_conflict
       stale_branch_diverged_workflow
       closed_job_with_active_workflow
+      queued_step_without_run_after_succeeded_step
       running_step_with_failed_terminal_run
       running_step_with_succeeded_terminal_run
       stale_running_run_without_worker_evidence
@@ -73,6 +74,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       topology_queued_failed_solid_queue_execution
       topology_queued_dead_resume_queue
       topology_closed_job_with_active_workflow
+      topology_queued_step_without_run_after_succeeded_step
       topology_running_step_with_failed_terminal_run
       topology_running_step_with_succeeded_terminal_run
       topology_stale_running_run_without_worker_evidence
@@ -435,6 +437,18 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       )
     end
 
+    def topology_queued_step_without_run_after_succeeded_step(workflow, step)
+      queued_step = queued_successor_without_run!(workflow, step)
+      expectation(
+        "topology queued step without run after succeeded predecessor",
+        target: { workflow_id: workflow.id },
+        expected_issue: :queued_step_without_run,
+        expected_action: :resume_queued_step,
+        required_plans: [ [ :resume_queued_step, queued_step ] ],
+        forbidden_actions: %i[reenqueue_run start_workflow]
+      )
+    end
+
     def topology_running_step_with_failed_terminal_run(workflow, step)
       run = failed_terminal_run_on_running_step!(workflow, step)
       expectation(
@@ -522,6 +536,40 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       )
       trace << "run=#{run.id}:topology_running step=#{step.kind} heartbeat_age=#{heartbeat_age.inspect}"
       run
+    end
+
+    def queued_successor_without_run!(workflow, predecessor)
+      age = old_active_age
+      successor = predecessor.next_step
+      unless successor
+        successor = Step.create!(
+          workflow: workflow,
+          kind: "pr_open",
+          position: predecessor.position + 1,
+          iteration: predecessor.iteration
+        )
+        predecessor.update!(next_step: successor)
+      end
+
+      Run.where(step_id: predecessor.id).delete_all
+      Run.where(step_id: successor.id).delete_all
+      workflow.update_columns(state: "running", started_at: age.ago)
+      predecessor.update_columns(state: "succeeded", started_at: age.ago, finished_at: (age - 1.minute).ago, updated_at: (age - 1.minute).ago)
+      predecessor.runs.create!(
+        job: workflow.job,
+        user: workflow.job.user,
+        trigger_kind: workflow.trigger_kind,
+        agent_provider: workflow.agent_provider,
+        state: "succeeded",
+        iteration: predecessor.iteration,
+        started_at: age.ago,
+        finished_at: (age - 1.minute).ago,
+        created_at: age.ago,
+        updated_at: (age - 1.minute).ago
+      )
+      successor.update_columns(state: "queued", started_at: nil, finished_at: nil, created_at: age.ago, updated_at: age.ago)
+      trace << "step=#{successor.id}:queued_without_run predecessor=#{predecessor.id}:#{predecessor.kind} age=#{age.inspect}"
+      successor
     end
 
     def failed_terminal_run_on_running_step!(workflow, step)
@@ -874,6 +922,20 @@ RSpec.describe "Work engine reconciler chaos simulation" do
         required_plans: [ [ :reconcile_step_from_terminal_run, step ] ],
         forbidden_issues: %i[retryable_run_failure nonretryable_semantic_git_failure],
         forbidden_plans: [ [ :retry_failed_step, run ], [ :retry_workflow, workflow ] ]
+      )
+    end
+
+    def queued_step_without_run_after_succeeded_step
+      _job, workflow, step, _run = graph
+      queued_step = queued_successor_without_run!(workflow, step)
+
+      expectation(
+        "queued step without run after succeeded predecessor",
+        target: { workflow_id: workflow.id },
+        expected_issue: :queued_step_without_run,
+        expected_action: :resume_queued_step,
+        required_plans: [ [ :resume_queued_step, queued_step ] ],
+        forbidden_actions: %i[reenqueue_run start_workflow]
       )
     end
 

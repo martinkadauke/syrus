@@ -108,6 +108,10 @@ Planner examples:
   `diagnose_queue_starvation`; it does not duplicate work.
 - Paused Run queues return `wait_for_queue_resume`, preserving the operator's
   pause instead of creating duplicate queue pressure.
+- A running Workflow whose previous Step succeeded but whose queued successor
+  has no Run returns `resume_queued_step`; the executor calls
+  `StepDispatcher.resume_deferred_phase`, so manual pause, provider availability,
+  and phase-admission gates are rechecked before the missing Run is created.
 - A stale running Run first plans to mark the Run as `worker_died`, then
   prefers `ResumeWorkflowEnqueuer` when an agent session exists, otherwise
   `RetryFailedStepEnqueuer` when the workflow workspace exists, otherwise a
@@ -203,6 +207,7 @@ The executor:
 
 Current automatic repairs include re-enqueueing queued Runs with no queue claim,
 starting queued Workflows whose first Step has no Run when readiness gates pass,
+resuming queued successor Steps that missed the post-success handoff,
 clearing stale dependency start blocks whose dependency resolution is now
 satisfied,
 marking dead running Runs as `worker_died` and scheduling the planned retry path,

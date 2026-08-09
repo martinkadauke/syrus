@@ -316,6 +316,23 @@ module WorkEngine
         end
       end
 
+      class QueuedStepWithoutRun < Base
+        def plan
+          automatic_plan(
+            "resume_queued_step",
+            primary_step,
+            "The previous Step succeeded but the handoff did not create a Run on the queued Step, so resume that workflow phase through the dispatcher.",
+            execution_steps: [ "StepDispatcher.resume_deferred_phase" ],
+            preconditions: {
+              workflow_state: "running",
+              step_state: "queued",
+              step_has_no_runs: true,
+              previous_step_state: "succeeded"
+            }
+          )
+        end
+      end
+
       class StaleAutoRetryWorkflow < Base
         def plan
           automatic_plan(
