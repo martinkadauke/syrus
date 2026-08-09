@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import type { ReactNode } from "react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
-import { jsonResponse } from "../testSupport"
+import { jsonResponse } from "@app/testSupport"
 import type { OperationalLogsPayload } from "../api/adminOperationalLogs"
 import { AdminOperationalLogs } from "./AdminOperationalLogs"
 

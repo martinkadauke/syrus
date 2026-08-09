@@ -17,7 +17,6 @@ import { AdminGithubAppConfirm, AdminGithubAppRegister } from "./AdminGithubApp"
 import { AdminInvitations } from "./AdminInvitations"
 import { AdminInstallations } from "./AdminInstallations"
 import { AdminOverview } from "./AdminOverview"
-import { AdminOperationalLogs } from "./AdminOperationalLogs"
 import { AdminPlugins } from "./AdminPlugins"
 import { AdminQueueRoute } from "./AdminQueue"
 import { AdminProcessDetail, AdminProcessesIndex } from "./AdminProcesses"
@@ -82,7 +81,6 @@ const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/admin/queue", element: <AdminQueueRoute /> },
   { path: "/admin/queue/:tab", element: <AdminQueueRoute /> },
   { path: "/admin/stuck", element: <AdminStuck /> },
-  { path: "/admin/operational_logs", element: <AdminOperationalLogs /> },
   { path: "/admin/plugins", element: <AdminPlugins /> },
   { path: "/admin/processes", element: <AdminProcessesIndex /> },
   { path: "/admin/processes/:id", element: <AdminProcessDetail /> },

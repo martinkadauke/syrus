@@ -12,6 +12,15 @@ module SyrusDev
           paths: [ "/admin/performance" ],
           component: "syrus_dev/AdminPerformance",
           order: 40
+        },
+        {
+          id: "syrus_dev.operational_logs",
+          label: "Operational Logs",
+          label_key: "admin:nav_operational_logs",
+          path: "/admin/operational_logs",
+          paths: [ "/admin/operational_logs" ],
+          component: "syrus_dev/AdminOperationalLogs",
+          order: 45
         }
       ]
     end

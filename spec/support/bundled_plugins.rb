@@ -93,7 +93,8 @@ RSpec.configure do |config|
         category:        "dev",
         frontend: {
           routes: {
-            "syrus_dev/AdminPerformance" => "app/frontend/routes/AdminPerformance.tsx"
+            "syrus_dev/AdminPerformance" => "app/frontend/routes/AdminPerformance.tsx",
+            "syrus_dev/AdminOperationalLogs" => "app/frontend/routes/AdminOperationalLogs.tsx"
           },
           i18n: [ "app/frontend/i18n/locales/*/syrus_dev.json" ]
         },
@@ -105,12 +106,22 @@ RSpec.configure do |config|
           },
           {
             verb: "GET",
+            path: "/api/v1/app/admin/operational_logs",
+            controller: "api/v1/app/admin/operational_logs#index"
+          },
+          {
+            verb: "GET",
             path: "/api/v1/admin/performance",
             controller: "api/v1/admin/performance#show"
           },
           {
             verb: "GET",
             path: "/admin/performance",
+            controller: "spa#show"
+          },
+          {
+            verb: "GET",
+            path: "/admin/operational_logs",
             controller: "spa#show"
           }
         ],

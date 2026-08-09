@@ -2,9 +2,9 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { type FormEvent, type ReactNode, useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { fetchAdminOperationalLogs, type OperationalLogRow, type OperationalLogsPayload } from "../api/adminOperationalLogs"
-import { usePageTitle } from "../hooks/usePageTitle"
-import { useT } from "../hooks/useT"
-import { errorMessage } from "../lib/errorMessage"
+import { usePageTitle } from "@app/hooks/usePageTitle"
+import { useT } from "@app/hooks/useT"
+import { errorMessage } from "@app/lib/errorMessage"
 
 const levels = ["", "debug", "info", "warn", "error", "fatal", "unknown"] as const
 const roles = ["", "web", "worker"] as const

@@ -1,4 +1,4 @@
-import { getJson } from "./client"
+import { getJson } from "@app/api/client"
 
 export type OperationalLogLevel = "debug" | "info" | "warn" | "error" | "fatal" | "unknown"
 export type OperationalLogRole = "web" | "worker"

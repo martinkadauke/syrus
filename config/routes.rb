@@ -329,7 +329,6 @@ Rails.application.routes.draw do
           get "supervisor_chat", to: "supervisor_chats#show"
           resources :invitations, only: %i[ index create destroy ]
           resources :features, only: %i[ index update ], param: :slug
-          get "operational_logs", to: "operational_logs#index"
           get "settings", to: "settings#show"
           patch "settings", to: "settings#update"
           post "settings/clear_secret", to: "settings#clear_secret"
@@ -523,7 +522,6 @@ Rails.application.routes.draw do
   get "admin/plugins", to: "spa#show", as: :admin_plugins
   get "admin/insights", to: "spa#show", as: :admin_insights
   get "admin/performance", to: "spa#show", as: :admin_performance
-  get "admin/operational_logs", to: "spa#show", as: :admin_operational_logs
   get "admin/console", to: "spa#show", as: :admin_console
   get "admin/installations", to: "spa#show", as: :admin_installations
   get "admin/github_app/register", to: "spa#show", as: :admin_github_app_register
