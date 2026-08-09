@@ -223,10 +223,11 @@ module Syrus
           .select { |ts| ts.respond_to?(:tool_definitions) }
         return if new_tool_sets.empty?
 
-        existing_names = @plugins
+        existing_plugin_names = @plugins
           .flat_map { |m| Array(m.provides[:mcp_tool_set]) + Array(m.provides[:chat_mcp_tool_set]) }
           .select { |ts| ts.respond_to?(:tool_definitions) }
           .flat_map { |ts| safe_tool_definitions(ts).map { |d| d[:name] } }
+        existing_names = core_mcp_tool_names + existing_plugin_names
 
         new_tool_sets.each do |ts|
           safe_tool_definitions(ts).each do |defn|
@@ -250,6 +251,14 @@ module Syrus
         else
           tool_set.tool_definitions
         end
+      end
+
+      def core_mcp_tool_names
+        return [] unless defined?(SyrusMcp::CoreToolSet)
+
+        safe_tool_definitions(SyrusMcp::CoreToolSet).map { |d| d[:name] }
+      rescue NameError
+        []
       end
     end
   end

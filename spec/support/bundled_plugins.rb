@@ -43,17 +43,6 @@ RSpec.configure do |config|
       )
     end
 
-    unless registered_names.include?("core_tools")
-      Syrus::PluginRegistry.register(
-        name:            "core_tools",
-        version:         SyrusCoreTools::VERSION,
-        default_enabled: true,
-        disableable:     false,
-        category:        "core",
-        provides: { mcp_tool_set: SyrusMcp::CoreToolSet }
-      )
-    end
-
     unless registered_names.include?("github_source")
       Syrus::PluginRegistry.register(
         name:            "github_source",

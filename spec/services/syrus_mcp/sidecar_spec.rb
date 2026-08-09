@@ -366,5 +366,13 @@ RSpec.describe Mcp::Sidecar do
 
       expect(tool_names).not_to include("read_performance_diagnostics", "read_syrus_logs")
     end
+
+    it "still advertises core tools when the plugin registry is empty" do
+      response = jsonrpc(server_for(run), "tools/list", id: 1)
+      tool_names = response[:result][:tools].map { |t| t[:name] }
+
+      expect(tool_names).to include("read_live_state", "submit_summary")
+      expect(tool_names).not_to include("read_performance_diagnostics", "read_syrus_logs")
+    end
   end
 end

@@ -260,6 +260,14 @@ RSpec.describe Syrus::PluginRegistry, :reset_plugin_registry do
         }.to raise_error(described_class::RegistrationError, /MCP tool name collision.*tool_one/)
       end
 
+      it "raises RegistrationError when a plugin claims a built-in workflow tool name" do
+        set = make_tool_set("read_live_state")
+
+        expect {
+          described_class.register(name: "shadow_core", version: "1.0.0", provides: { mcp_tool_set: set })
+        }.to raise_error(described_class::RegistrationError, /MCP tool name collision.*read_live_state/)
+      end
+
       it "does not raise when two tool sets share no tool names" do
         set_a = make_tool_set("tool_alpha")
         set_b = make_tool_set("tool_beta")

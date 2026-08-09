@@ -71,11 +71,11 @@ RSpec.describe SyrusMcp::CoreToolSet do
       context = { run_id: run.id }
 
       result = tool_set.handle("submit_test_plan", {
-        steps: ["Run bin/rspec spec/"]
+        steps: [ "Run bin/rspec spec/" ]
       }, context)
 
       expect(result).not_to be_error
-      expect(run.workflow.reload.artifact("test_plan")).to include("steps" => ["Run bin/rspec spec/"])
+      expect(run.workflow.reload.artifact("test_plan")).to include("steps" => [ "Run bin/rspec spec/" ])
     end
 
     it "delegates read_live_state and returns a JSON payload" do

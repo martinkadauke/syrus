@@ -75,7 +75,6 @@ gem "image_processing", "~> 1.2"
 # PluginRecord at runtime; adding/removing plugin gems still requires restart.
 gem "claude_agent",  path: "plugins/claude_agent"
 gem "codex_agent",   path: "plugins/codex_agent"
-gem "core_tools",    path: "plugins/core_tools"
 gem "github_source", path: "plugins/github_source"
 gem "linear_source", path: "plugins/linear_source"
 gem "syrus_dev",     path: "plugins/syrus_dev"

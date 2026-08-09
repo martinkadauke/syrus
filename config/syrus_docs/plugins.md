@@ -38,8 +38,9 @@ Plugin install and uninstall remain manual operations: edit the Gemfile, run
 Bundler, run migrations if the plugin ships any, rebuild frontend assets when
 the plugin ships JS/i18n, and restart the Rails processes so plugin engine
 initializers register with the in-memory registry.
-Non-disableable plugins are forced enabled and should be reserved for core
-runtime pieces.
+Non-disableable plugins are forced enabled. Avoid them unless there is a strong
+compatibility reason: core runtime pieces should generally live in the core app,
+not in the plugin registry.
 
 Admin-page plugins should declare:
 
@@ -52,9 +53,12 @@ Admin-page plugins should declare:
   `/admin/*` through the SPA for plugin pages while concrete API controllers can
   live inside the plugin engine.
 
+Built-in workflow MCP tools are core app functionality, not a plugin. Optional
+or installation-specific MCP tools should be contributed through plugin
+`mcp_tool_set` providers.
+
 Bundled plugins:
 
-- `core_tools` — non-disableable core workflow MCP tools.
 - `claude_agent` / `codex_agent` — default-enabled workflow and chat providers.
 - `github_source` — default-enabled GitHub issue/PR polling source.
 - `linear_source` — installed but disabled by default until configured.

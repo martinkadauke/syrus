@@ -135,8 +135,9 @@ is preserved across restarts.
 - **Installing or removing** a plugin still requires changing the Gemfile,
   running Bundler, rebuilding frontend assets when applicable, and restarting
   Rails so the engine initializer runs or disappears.
-- **Non-disableable** plugins are forced enabled. Use this for core extension
-  points the app cannot run without.
+- **Non-disableable** plugins are forced enabled. Avoid this for ordinary core
+  runtime functionality; core behavior should generally live in the host app,
+  with plugins used for capabilities that can genuinely be plugged out.
 
 ```ruby
 PluginRecord.find_by!(name: "claude_agent").update!(enabled: false)
