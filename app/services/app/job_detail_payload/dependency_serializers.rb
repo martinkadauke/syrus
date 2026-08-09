@@ -13,6 +13,7 @@ module App
         {
           id: dependency.id,
           source: dependency.source,
+          satisfaction_mode: dependency.satisfaction_mode,
           manual: dependency.manual?,
           pending: dependency.pending?,
           succeeded: dependency.dependency_succeeded?,

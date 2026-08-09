@@ -146,6 +146,8 @@ A Job blocked on another Job will not enter the landing queue until the dependen
 
 If the prerequisite Job closes unsuccessfully, including `cancelled`, dependents remain blocked with `dependency_failed` until an operator removes or overrides the dependency. Syrus should not keep creating maintenance rebase workflows for a dependent while it is in this permanent dependency-failed state.
 
+Manual dependency rows can opt into `satisfaction_mode: "closed"` for cleanup or teardown gates that only need the target Job to reach any terminal close. In that mode a dependency on a cancelled Job is satisfied. Normal implementation dependencies default to `satisfaction_mode: "success"` and must not be weakened to closed mode just because the prompt says "after" or "once"; use closed mode only when any terminal outcome is explicitly acceptable.
+
 Implementation has a narrower, execution-only exception: a same-Epic child Job may start on an `implemented` parent once that parent has a materialized branch, PR, and head SHA, as long as stack parent selection is unambiguous. For approved same-Epic fan-in, Syrus may also create a prepared combined base branch and start the child there when all dependency PR branches merge cleanly. This does not satisfy the landing gate above.
 
 Operators can add or remove manual dependencies from the Job detail page; admins can override the gate.

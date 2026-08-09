@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_09_213000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_09_223000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -801,6 +801,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_213000) do
     t.integer "depends_on_epic_id"
     t.integer "depends_on_job_id"
     t.integer "job_id", null: false
+    t.string "satisfaction_mode", default: "success", null: false
     t.string "source", null: false
     t.integer "unresolved_chat_proposal_id"
     t.integer "unresolved_number"

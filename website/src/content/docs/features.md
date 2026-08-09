@@ -411,6 +411,9 @@ targets that are already terminal and cannot satisfy the normal dependency
 gate, such as a Job closed as `cancelled` or an archived Epic. Successfully
 closed dependencies such as `pr_merged`, `external_pr_merged`, `pr_approved`,
 and `no_changes` remain valid and do not block startup.
+Manual dependency edits can also mark a cleanup or teardown gate as
+wait-until-closed. Those edges start once the target reaches any terminal close;
+normal implementation dependencies continue to require successful completion.
 Actions that need explicit approval, such as
 canceling, closing a Job successfully as `no_changes`, retrying, reopening,
 polling feedback, checking mergeability,

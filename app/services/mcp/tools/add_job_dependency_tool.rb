@@ -4,23 +4,33 @@ module Mcp::Tools
   class AddJobDependencyTool < MCP::Tool
     tool_name "add_job_dependency"
 
-    description "Add a Job dependency so that one Job must land before another. " \
+    description "Add a Job dependency so that one Job waits for another Job or Epic. " \
                 "Supply exactly one of depends_on_job_id (a prerequisite Job) or " \
-                "depends_on_epic_id (a prerequisite Epic)."
+                "depends_on_epic_id (a prerequisite Epic). By default the target must " \
+                "finish successfully; use satisfaction_mode='closed' only for cleanup " \
+                "or teardown gates where any terminal close is acceptable."
 
     input_schema(
       properties: {
         job_id: { type: "integer", description: "Syrus Job id to update." },
-        depends_on_job_id: { type: "integer", description: "Syrus Job id that must land first." },
-        depends_on_epic_id: { type: "integer", description: "Syrus Epic id that must complete first." }
+        depends_on_job_id: { type: "integer", description: "Syrus Job id that must satisfy the dependency first." },
+        depends_on_epic_id: { type: "integer", description: "Syrus Epic id that must satisfy the dependency first." },
+        satisfaction_mode: {
+          type: "string",
+          enum: JobDependency::SATISFACTION_MODES,
+          description: "success waits for a successful close; closed waits for any terminal close. Defaults to success."
+        }
       },
       required: %w[job_id]
     )
 
     class << self
-      def call(job_id:, depends_on_job_id: nil, depends_on_epic_id: nil, server_context:)
+      def call(job_id:, depends_on_job_id: nil, depends_on_epic_id: nil, satisfaction_mode: "success", server_context:)
         chat_session = server_context.fetch(:chat_session)
         user = chat_session.user
+        satisfaction_mode = satisfaction_mode.presence || "success"
+        return Mcp::Tools.invalid("satisfaction_mode must be one of: #{JobDependency::SATISFACTION_MODES.join(', ')}") unless
+          JobDependency::SATISFACTION_MODES.include?(satisfaction_mode)
 
         return Mcp::Tools.invalid("exactly one of depends_on_job_id or depends_on_epic_id must be supplied") if
           depends_on_job_id.nil? == depends_on_epic_id.nil?
@@ -29,9 +39,9 @@ module Mcp::Tools
         return Mcp::Tools.invalid("job not found: #{job_id}") unless job
 
         if depends_on_job_id
-          add_job_target(job, depends_on_job_id, user)
+          add_job_target(job, depends_on_job_id, user, satisfaction_mode)
         else
-          add_epic_target(job, depends_on_epic_id, user)
+          add_epic_target(job, depends_on_epic_id, user, satisfaction_mode)
         end
       rescue ActiveRecord::RecordInvalid => e
         Mcp::Tools.invalid(e.record.errors.full_messages.to_sentence)
@@ -39,32 +49,34 @@ module Mcp::Tools
 
       private
 
-      def add_job_target(job, depends_on_job_id, user)
+      def add_job_target(job, depends_on_job_id, user, satisfaction_mode)
         depends_on_job = user.jobs.find_by(id: depends_on_job_id)
         return Mcp::Tools.invalid("job not found: #{depends_on_job_id}") unless depends_on_job
 
-        JobDependency.find_or_create_by!(
+        dependency = JobDependency.find_or_initialize_by(
           job: job,
           depends_on_job: depends_on_job
-        ) do |dependency|
-          dependency.source = "manual"
-          dependency.created_by_user = user
-        end
+        )
+        dependency.source = "manual"
+        dependency.created_by_user ||= user
+        dependency.satisfaction_mode = satisfaction_mode
+        dependency.save!
 
         success_payload(job.reload)
       end
 
-      def add_epic_target(job, depends_on_epic_id, user)
+      def add_epic_target(job, depends_on_epic_id, user, satisfaction_mode)
         epic = user.epics.find_by(id: depends_on_epic_id)
         return Mcp::Tools.invalid("epic not found: #{depends_on_epic_id}") unless epic
 
-        JobDependency.find_or_create_by!(
+        dependency = JobDependency.find_or_initialize_by(
           job: job,
           depends_on_epic: epic
-        ) do |dependency|
-          dependency.source = "manual"
-          dependency.created_by_user = user
-        end
+        )
+        dependency.source = "manual"
+        dependency.created_by_user ||= user
+        dependency.satisfaction_mode = satisfaction_mode
+        dependency.save!
 
         success_payload(job.reload)
       end

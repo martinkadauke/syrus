@@ -54,8 +54,10 @@ module JobDependencies
   private
 
   def dependency_terminal_unsuccessful?(dependency)
+    return false if dependency.dependency_succeeded?
+
     if dependency.depends_on_job
-      dependency.depends_on_job.closed? && !dependency.dependency_succeeded?
+      dependency.depends_on_job.closed?
     elsif dependency.depends_on_epic
       dependency.depends_on_epic.archived?
     else

@@ -174,6 +174,51 @@ RSpec.describe JobDependency do
   end
 
   describe "#dependency_succeeded?" do
+    it "keeps success-mode dependencies blocked when the target Job is cancelled" do
+      prerequisite = Factories.job_record(user: user, repository: repository, issue_number: 10, state: "closed", closure_reason: "cancelled")
+      dependent = Factories.job_record(user: user, repository: repository, issue_number: 11, state: "queued")
+
+      dependency = described_class.create!(job: dependent, depends_on_job: prerequisite, source: "manual")
+
+      expect(dependency.satisfaction_mode).to eq("success")
+      expect(dependency).not_to be_dependency_succeeded
+      expect(dependent.failed_dependencies_for_execution).to contain_exactly(dependency)
+    end
+
+    it "treats closed-mode dependencies as satisfied when the target Job is cancelled" do
+      prerequisite = Factories.job_record(user: user, repository: repository, issue_number: 10, state: "closed", closure_reason: "cancelled")
+      dependent = Factories.job_record(user: user, repository: repository, issue_number: 11, state: "queued")
+
+      dependency = described_class.create!(
+        job: dependent,
+        depends_on_job: prerequisite,
+        source: "manual",
+        satisfaction_mode: "closed"
+      )
+
+      expect(dependency).to be_dependency_succeeded
+      expect(dependency).to be_execution_dependency_satisfied
+      expect(dependent.unsatisfied_dependencies).to be_empty
+      expect(dependent.failed_dependencies_for_execution).to be_empty
+    end
+
+    it "keeps closed-mode dependencies blocked while the target Job is still open" do
+      prerequisite = Factories.job_record(user: user, repository: repository, issue_number: 10, state: "queued")
+      dependent = Factories.job_record(user: user, repository: repository, issue_number: 11, state: "queued")
+
+      dependency = described_class.create!(
+        job: dependent,
+        depends_on_job: prerequisite,
+        source: "manual",
+        satisfaction_mode: "closed"
+      )
+
+      expect(dependency).not_to be_dependency_succeeded
+      expect(dependency).not_to be_execution_dependency_satisfied
+      expect(dependent.unsatisfied_dependencies).to contain_exactly(dependency)
+      expect(dependent.failed_dependencies_for_execution).to be_empty
+    end
+
     it "treats an approved dependency in the same Epic as satisfied" do
       epic = Factories.epic(user: user, repository: repository)
       prerequisite = Factories.job_record(user: user, repository: repository, epic: epic, issue_number: 10, state: "approved")

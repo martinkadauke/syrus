@@ -317,6 +317,12 @@ module Prompts
         Epic child Jobs must form one linear chain. Only set
         `epic.nonlinear_dependency_override` on `propose_epic_with_jobs`
         when the operator explicitly requested nonlinear execution.
+        If the operator explicitly needs a cleanup or teardown Job to
+        wait only until another Job is terminal, even if that Job is
+        canceled, do not encode that only in prose. After the Job exists,
+        use `add_job_dependency` with `satisfaction_mode: "closed"` for
+        that edge. Normal implementation dependencies should keep the
+        default `success` mode.
 
         Cross-entity dependencies are also runtime-enforced. Use
         `depends_on_epic_ids` when a proposed Job must wait for an

@@ -308,6 +308,7 @@ export type JobDependencyEpicTarget = {
 export type JobDependency = {
   id: number
   source: string
+  satisfaction_mode?: "success" | "closed"
   manual: boolean
   pending: boolean
   succeeded: boolean

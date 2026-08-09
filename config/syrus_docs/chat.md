@@ -107,3 +107,8 @@ dependency gate are rejected with an operator-facing message, for example a Job
 closed as `cancelled` or an archived Epic. Successfully closed Job dependencies
 (`pr_merged`, `external_pr_merged`, `pr_approved`, `no_changes`) are valid and
 do not block the new Job from starting.
+
+The chat MCP `add_job_dependency` tool accepts `satisfaction_mode`. The default
+`success` mode is for implementation ordering and waits for a successful close.
+Use `closed` only for cleanup or teardown gates where the dependent Job should
+start once the target Job is terminal even if it was cancelled.

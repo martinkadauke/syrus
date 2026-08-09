@@ -1,6 +1,8 @@
 require "set"
 
 class JobDependency < ApplicationRecord
+  SATISFACTION_MODES = %w[success closed].freeze
+
   belongs_to :job
   belongs_to :depends_on_job, class_name: "Job", optional: true
   belongs_to :depends_on_epic, class_name: "Epic", optional: true
@@ -8,6 +10,8 @@ class JobDependency < ApplicationRecord
   belongs_to :created_by_user, class_name: "User", optional: true
 
   enum :source, { parsed: "parsed", manual: "manual" }, validate: true
+
+  validates :satisfaction_mode, presence: true, inclusion: { in: SATISFACTION_MODES }
 
   validate :exactly_one_target
   validate :no_self_reference
@@ -55,6 +59,7 @@ class JobDependency < ApplicationRecord
   end
 
   def dependency_succeeded?
+    return dependency_closed? if satisfaction_mode == "closed"
     return depends_on_epic.done? if depends_on_epic_id.present?
     return resolved_dependency_succeeded? if resolved?
 
@@ -62,6 +67,8 @@ class JobDependency < ApplicationRecord
   end
 
   def execution_dependency_satisfied?
+    return dependency_succeeded? if satisfaction_mode == "closed"
+
     dependency_succeeded? || same_epic_dependency_ready_for_execution?
   end
 
@@ -95,6 +102,13 @@ class JobDependency < ApplicationRecord
 
   def resolved_dependency_succeeded?
     depends_on_job.dependency_succeeded? || same_epic_dependency_approved?
+  end
+
+  def dependency_closed?
+    return depends_on_job.closed? if depends_on_job_id.present?
+    return depends_on_epic.done? || depends_on_epic.archived? if depends_on_epic_id.present?
+
+    referenced_epic&.then { |epic| epic.done? || epic.archived? } == true
   end
 
   def same_epic_dependency_approved?

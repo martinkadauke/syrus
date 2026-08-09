@@ -49,6 +49,38 @@ RSpec.describe "Mcp::Tools job dependency tools" do
       expect(dependency).to have_attributes(source: "manual", created_by_user: user)
     end
 
+    it "can create a closed-mode JobDependency for wait-until-closed cleanup gates" do
+      job = Factories.job_record(user: user, repository: repository)
+      prerequisite = Factories.job_record(user: user, repository: repository, issue_number: 43)
+
+      response = call_tool("add_job_dependency", job_id: job.id, depends_on_job_id: prerequisite.id, satisfaction_mode: "closed")
+
+      expect(response.dig(:result, :isError)).to be_falsey
+      expect(payload(response)).to include(job_id: job.id, depends_on_job_ids: [ prerequisite.id ], depends_on_epic_ids: [])
+      expect(job.reload.dependencies.sole).to have_attributes(satisfaction_mode: "closed", source: "manual", created_by_user: user)
+    end
+
+    it "updates an existing dependency satisfaction mode when requested explicitly" do
+      job = Factories.job_record(user: user, repository: repository)
+      prerequisite = Factories.job_record(user: user, repository: repository, issue_number: 43)
+      JobDependency.create!(job: job, depends_on_job: prerequisite, source: "manual", created_by_user: user)
+
+      response = call_tool("add_job_dependency", job_id: job.id, depends_on_job_id: prerequisite.id, satisfaction_mode: "closed")
+
+      expect(response.dig(:result, :isError)).to be_falsey
+      expect(job.reload.dependencies.sole.satisfaction_mode).to eq("closed")
+    end
+
+    it "rejects unknown satisfaction modes" do
+      job = Factories.job_record(user: user, repository: repository)
+      prerequisite = Factories.job_record(user: user, repository: repository, issue_number: 43)
+
+      response = call_tool("add_job_dependency", job_id: job.id, depends_on_job_id: prerequisite.id, satisfaction_mode: "anything")
+
+      expect(response.dig(:error, :message)).to eq("Invalid params")
+      expect(job.reload.dependencies).to be_empty
+    end
+
     it "is idempotent when the dependency already exists" do
       job = Factories.job_record(user: user, repository: repository)
       prerequisite = Factories.job_record(user: user, repository: repository, issue_number: 43)
