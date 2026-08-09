@@ -13,7 +13,7 @@ module PerformanceLogging
 
   module Store
     CACHE_KEY = "syrus:performance_logging:events:v1"
-    MAX_EVENTS = 200
+    MAX_EVENTS = 1_000
     EXPIRES_IN = 6.hours
     FLUSH_INTERVAL = 10.seconds
 

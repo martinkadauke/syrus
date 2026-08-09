@@ -7,8 +7,10 @@ import { App } from "./routes/App"
 import { AppErrorBoundary } from "./components/AppErrorBoundary"
 import i18n from "./i18n"
 import { initErrorRingBuffer } from "./lib/errorRingBuffer"
+import { startBrowserPerformanceObservers } from "./lib/performanceTrace"
 
 initErrorRingBuffer()
+startBrowserPerformanceObservers()
 
 const root = document.getElementById("syrus-spa-root")
 const queryClient = new QueryClient()
