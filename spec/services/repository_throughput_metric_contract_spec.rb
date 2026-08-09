@@ -625,4 +625,21 @@ RSpec.describe RepositoryThroughputMetricContract do
 
     expect(per_workflow_step_loads).to be_empty
   end
+
+  it "loads shared throughput source datasets once instead of once per window" do
+    job = Factories.job_record(user: user, repository: repository, pr_number: 123, created_at: now - 30.minutes)
+    workflow = workflow_for(job, trigger_kind: "initial")
+    step = step_for(workflow, kind: "implement", finished_at: now - 20.minutes)
+    run_for(job, step, head_sha: "a" * 40, step_agent_diff: "+one\n")
+
+    queries = captured_sql { call }
+    output_run_queries = queries.select do |sql|
+      normalized = sql.downcase
+      normalized.include?("from \"runs\"") &&
+        normalized.include?("inner join \"steps\"") &&
+        normalized.include?("\"steps\".\"kind\"")
+    end
+
+    expect(output_run_queries.size).to eq(1)
+  end
 end

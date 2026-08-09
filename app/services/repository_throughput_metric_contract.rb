@@ -37,7 +37,7 @@ class RepositoryThroughputMetricContract
       version: VERSION,
       repository_id: repository.id,
       generated_at: now.iso8601,
-      windows: windows.transform_values { |range| metrics_for(range) }
+      windows: window_ranges.transform_values { |range| metrics_for(range) }
     }
   end
 
@@ -45,10 +45,22 @@ class RepositoryThroughputMetricContract
 
   attr_reader :repository, :now
 
-  def windows
-    WINDOW_DEFINITIONS
-      .transform_values { |duration| (now - duration)..now }
-      .merge("last_active" => last_active_window)
+  def window_ranges
+    @window_ranges ||= begin
+      defined_windows = WINDOW_DEFINITIONS.transform_values { |duration| (now - duration)..now }
+      defined_windows.merge("last_active" => last_active_window)
+    end
+  end
+
+  def in_range?(value, range)
+    value.present? && value >= range.begin && value <= range.end
+  end
+
+  def window_condition(table_name, column_name)
+    table = Arel::Table.new(table_name)
+    window_ranges.values
+      .map { |range| table[column_name].gteq(range.begin).and(table[column_name].lteq(range.end)) }
+      .reduce { |memo, condition| memo.or(condition) }
   end
 
   def metrics_for(range)
@@ -149,7 +161,7 @@ class RepositoryThroughputMetricContract
   end
 
   def jobs_in(range)
-    repository.jobs.where(created_at: range).to_a
+    created_jobs.select { |job| in_range?(job.created_at, range) }
   end
 
   def pr_creation_for(range, hours)
@@ -173,16 +185,7 @@ class RepositoryThroughputMetricContract
   end
 
   def pr_open_steps_in(range)
-    Step.joins(workflow: :job)
-      .where(jobs: { repository_id: repository.id })
-      .where(kind: "pr_open", state: "succeeded", finished_at: range)
-      .includes(workflow: :job)
-      .to_a
-      .select do |step|
-        step.workflow.job.pr_number.present? ||
-          step.workflow.job.external_pr_number.present? ||
-          step.workflow.job.fork_review_pr_number.present?
-      end
+    pr_open_steps.select { |step| in_range?(step.finished_at, range) }
   end
 
   def pr_source_for(job)
@@ -194,11 +197,7 @@ class RepositoryThroughputMetricContract
   end
 
   def landed_jobs_in(range)
-    repository.jobs
-      .where(state: "closed", closure_reason: %w[ pr_merged external_pr_merged ])
-      .where(finished_at: range)
-      .includes(:pr_review_comments)
-      .to_a
+    landed_jobs.select { |job| in_range?(job.finished_at, range) }
   end
 
   LandingAttempt = Struct.new(
@@ -265,12 +264,9 @@ class RepositoryThroughputMetricContract
   private_constant :LandingAttempt
 
   def workflows_in(range, trigger_kinds:)
-    Workflow.joins(:job)
-      .where(jobs: { repository_id: repository.id })
-      .where(trigger_kind: trigger_kinds)
-      .where(finished_at: range)
-      .includes(:steps, :job)
-      .to_a
+    finished_workflows.select do |workflow|
+      trigger_kinds.include?(workflow.trigger_kind) && in_range?(workflow.finished_at, range)
+    end
   end
 
   def landing_attempts_in(range)
@@ -283,19 +279,12 @@ class RepositoryThroughputMetricContract
       )
     end
 
-    train_workflows_by_train_id = Workflow.joins(:job)
-      .where(jobs: { repository_id: repository.id })
-      .where(trigger_kind: "merge_train")
-      .where(finished_at: range)
-      .includes(:steps, :job)
-      .to_a
+    train_workflows_by_train_id = workflows_in(range, trigger_kinds: [ "merge_train" ])
       .filter_map { |workflow| [ workflow.artifact("merge_train_id").to_i, workflow ] if workflow.artifact("merge_train_id").present? }
       .to_h
 
-    train_attempts = MergeTrain
-      .where(repository_id: repository.id, finished_at: range)
-      .where(state: %w[ succeeded failed cancelled ])
-      .includes(members: :job)
+    train_attempts = merge_trains
+      .select { |train| in_range?(train.finished_at, range) }
       .map do |train|
         LandingAttempt.new(
           unit_type: "merge_train",
@@ -310,12 +299,7 @@ class RepositoryThroughputMetricContract
   end
 
   def output_for(range)
-    runs = Run.joins(step: { workflow: :job })
-      .where(jobs: { repository_id: repository.id })
-      .where(steps: { kind: OUTPUT_STEP_KINDS })
-      .where(state: "succeeded", finished_at: range)
-      .preload(:job)
-      .to_a
+    runs = output_runs.select { |run| in_range?(run.finished_at, range) }
 
     diffs = runs.filter_map { |run| run.step_agent_diff.presence || run.agent_diff.presence }
     loc = diffs.map { |diff| diff_loc(diff) }
@@ -359,19 +343,8 @@ class RepositoryThroughputMetricContract
   end
 
   def feedback_for(range)
-    comments = PrReviewComment.joins(:job)
-      .where(jobs: { repository_id: repository.id })
-      .where(comment_created_at: range)
-      .where(actionable: true)
-      .includes(:job)
-      .to_a
-
-    feedback_workflows = Workflow.joins(:job)
-      .where(jobs: { repository_id: repository.id })
-      .where(trigger_kind: %w[ pr_comment chat_feedback ])
-      .where(created_at: range)
-      .includes(:job)
-      .to_a
+    comments = actionable_comments.select { |comment| in_range?(comment.comment_created_at, range) }
+    feedback_workflows = created_feedback_workflows.select { |workflow| in_range?(workflow.created_at, range) }
     feedback_rounds_by_job = feedback_rounds_by_job(comments, feedback_workflows)
 
     {
@@ -420,7 +393,7 @@ class RepositoryThroughputMetricContract
   end
 
   def approvals_in(range)
-    repository.jobs.where(approved_at: range).includes(:job_approvals, :pr_review_comments).to_a
+    approved_jobs.select { |job| in_range?(job.approved_at, range) }
   end
 
   def approved_immediately_without_feedback(approved_jobs)
@@ -457,10 +430,7 @@ class RepositoryThroughputMetricContract
   end
 
   def approval_vote_count_in(range)
-    JobApproval.joins(:job)
-      .where(jobs: { repository_id: repository.id })
-      .where(approved_at: range)
-      .count
+    approval_votes.count { |approval| in_range?(approval.approved_at, range) }
   end
 
   def approval_latencies(approved_jobs)
@@ -542,17 +512,11 @@ class RepositoryThroughputMetricContract
   end
 
   def feedback_to_addressed_latencies(range)
-    comments = PrReviewComment.arel_table
-    handled_in_range = comments[:handled_at].gteq(range.begin).and(comments[:handled_at].lteq(range.end))
-    actioned_fallback_in_range = comments[:handled_at].eq(nil).and(
-      comments[:actioned_at].gteq(range.begin).and(comments[:actioned_at].lteq(range.end))
-    )
-
-    PrReviewComment.joins(:job)
-      .where(jobs: { repository_id: repository.id })
-      .where(handled_in_range.or(actioned_fallback_in_range))
-      .where(actionable: true)
-      .to_a
+    addressed_comments
+      .select do |comment|
+        in_range?(comment.handled_at, range) ||
+          (comment.handled_at.blank? && in_range?(comment.actioned_at, range))
+      end
       .filter_map do |comment|
         addressed_at = feedback_addressed_at(comment)
         next unless comment.comment_created_at && addressed_at
@@ -722,6 +686,105 @@ class RepositoryThroughputMetricContract
     ].compact.max || now
 
     (active_at - LAST_ACTIVE_WINDOW_DURATION)..active_at
+  end
+
+  def created_jobs
+    @created_jobs ||= repository.jobs.where(window_condition(:jobs, :created_at)).to_a
+  end
+
+  def pr_open_steps
+    @pr_open_steps ||= Step.joins(workflow: :job)
+      .where(jobs: { repository_id: repository.id })
+      .where(kind: "pr_open", state: "succeeded")
+      .where(window_condition(:steps, :finished_at))
+      .includes(workflow: :job)
+      .to_a
+      .select do |step|
+        step.workflow.job.pr_number.present? ||
+          step.workflow.job.external_pr_number.present? ||
+          step.workflow.job.fork_review_pr_number.present?
+      end
+  end
+
+  def landed_jobs
+    @landed_jobs ||= repository.jobs
+      .where(state: "closed", closure_reason: %w[ pr_merged external_pr_merged ])
+      .where(window_condition(:jobs, :finished_at))
+      .includes(:pr_review_comments)
+      .to_a
+  end
+
+  def finished_workflows
+    @finished_workflows ||= Workflow.joins(:job)
+      .where(jobs: { repository_id: repository.id })
+      .where(trigger_kind: LANDING_TRIGGER_KINDS + REBASE_TRIGGER_KINDS)
+      .where(window_condition(:workflows, :finished_at))
+      .includes(:steps, :job)
+      .to_a
+  end
+
+  def merge_trains
+    @merge_trains ||= MergeTrain
+      .where(repository_id: repository.id)
+      .where(window_condition(:merge_trains, :finished_at))
+      .where(state: %w[ succeeded failed cancelled ])
+      .includes(members: :job)
+      .to_a
+  end
+
+  def output_runs
+    @output_runs ||= Run.joins(step: { workflow: :job })
+      .where(jobs: { repository_id: repository.id })
+      .where(steps: { kind: OUTPUT_STEP_KINDS })
+      .where(state: "succeeded")
+      .where(window_condition(:runs, :finished_at))
+      .preload(:job)
+      .to_a
+  end
+
+  def actionable_comments
+    @actionable_comments ||= PrReviewComment.joins(:job)
+      .where(jobs: { repository_id: repository.id })
+      .where(actionable: true)
+      .where(window_condition(:pr_review_comments, :comment_created_at))
+      .includes(:job)
+      .to_a
+  end
+
+  def created_feedback_workflows
+    @created_feedback_workflows ||= Workflow.joins(:job)
+      .where(jobs: { repository_id: repository.id })
+      .where(trigger_kind: %w[ pr_comment chat_feedback ])
+      .where(window_condition(:workflows, :created_at))
+      .includes(:job)
+      .to_a
+  end
+
+  def approved_jobs
+    @approved_jobs ||= repository.jobs.where(window_condition(:jobs, :approved_at)).includes(:job_approvals, :pr_review_comments).to_a
+  end
+
+  def approval_votes
+    @approval_votes ||= JobApproval.joins(:job)
+      .where(jobs: { repository_id: repository.id })
+      .where(window_condition(:job_approvals, :approved_at))
+      .to_a
+  end
+
+  def addressed_comments
+    @addressed_comments ||= begin
+      comments = PrReviewComment.arel_table
+      handled_in_windows = window_condition(:pr_review_comments, :handled_at)
+      actioned_fallback_in_windows = comments[:handled_at].eq(nil).and(
+        window_condition(:pr_review_comments, :actioned_at)
+      )
+
+      PrReviewComment.joins(:job)
+        .where(jobs: { repository_id: repository.id })
+        .where(handled_in_windows.or(actioned_fallback_in_windows))
+        .where(actionable: true)
+        .to_a
+    end
   end
 
   def pr_opened_at_by_job_id
