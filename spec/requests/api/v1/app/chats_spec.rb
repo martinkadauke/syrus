@@ -266,6 +266,28 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body.to_s).not_to include("Foreign chat")
   end
 
+  it "uses a lightweight chat index serializer while preserving chat settings fields" do
+    sign_in_as(user)
+    first = ChatSession.create!(user: user, repository: repository, title: "Fast sidebar", last_message_at: Time.current)
+    ChatSession.create!(user: user, repository: repository, title: "Another sidebar chat", last_message_at: 1.minute.ago)
+
+    expect_any_instance_of(Api::V1::App::ChatsController).to receive(:available_chat_models_for).once.and_call_original
+    expect_any_instance_of(Api::V1::App::ChatsController).to receive(:chat_provider_options).once.and_call_original
+
+    get "/api/v1/app/chats"
+
+    expect(response).to have_http_status(:ok)
+    chat = parse_body.dig("groups", 0, "chats").find { |candidate| candidate.fetch("id") == first.id }
+    expect(chat).to include(
+      "title" => "Fast sidebar",
+      "effective_chat_provider" => "claude",
+      "pending_proposal_count" => 0,
+      "scratchpad_items_count" => 0,
+      "available_chat_models" => include(include("value" => "claude-opus-4-7")),
+      "chat_provider_options" => include(include("value" => "claude"))
+    )
+  end
+
   it "exposes the enabled admin supervisor chat separately above ordinary groups" do
     set_supervisor_feature(true)
     admin = Factories.user(admin: true)

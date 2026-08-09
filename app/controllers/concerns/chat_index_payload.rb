@@ -5,7 +5,7 @@
 # (General + one group per attached repository), including the keyset
 # pagination cursor over the "pinned, then last-activity" ordering. They are
 # pure controller helpers (reading `params` and `Current.user`, delegating to
-# the controller's own `chat_json` / `chat_unread?` / `render_error`), so they
+# the controller's own helpers), so they
 # mix straight back in with no behavior change. Kept private on include.
 module ChatIndexPayload
   private
@@ -33,30 +33,33 @@ module ChatIndexPayload
         .to_a
         .sort_by { |chat_session| [ chat_activity_at(chat_session), chat_session.id ] }
         .reverse
-        .map do |chat_session|
-          chat_json(chat_session).merge(
-            current: chat_session.id == current_chat_session.id,
-            last_message_at: chat_session.last_message_at&.iso8601,
-            unread: chat_unread?(chat_session),
-            created_at: chat_session.created_at.iso8601,
-            updated_at: chat_session.updated_at.iso8601
-          )
+        .then { |chat_sessions| [ chat_sessions, chat_index_context_for(chat_sessions) ] }
+        .then do |chat_sessions, context|
+          chat_sessions.map do |chat_session|
+            chat_index_json(chat_session, context: context).merge(
+              current: chat_session.id == current_chat_session.id,
+              last_message_at: chat_session.last_message_at&.iso8601,
+              unread: chat_unread?(chat_session),
+              created_at: chat_session.created_at.iso8601,
+              updated_at: chat_session.updated_at.iso8601
+            )
+          end
         end
     end
   end
 
   def recent_chats_index_json
     PerformanceLogging.phase("chat_index.groups") do
-      groups = []
+      group_specs = []
       general_chats, general_has_more = PerformanceLogging.phase("chat_index.general_group") { paginated_chat_index_group(chat_index_group_scope(nil)) }
       if general_chats.any?
-        groups << chat_index_group_json(
+        group_specs << {
           key: "general",
           label: "General",
           repository_id: nil,
           chats: general_chats,
           has_more: general_has_more
-        )
+        }
       end
 
       repositories = PerformanceLogging.phase("chat_index.repositories") { chat_index_repositories.to_a }
@@ -64,14 +67,19 @@ module ChatIndexPayload
         chats, has_more = PerformanceLogging.phase("chat_index.repository_group", repository_id: repository.id) { paginated_chat_index_group(chat_index_group_scope(repository.id)) }
         next if chats.blank?
 
-        groups << chat_index_group_json(
+        group_specs << {
           key: "repository-#{repository.id}",
           label: repository.slug,
           repository_id: repository.id,
           chats: chats,
           has_more: has_more
-        )
+        }
       end
+
+      context = PerformanceLogging.phase("chat_index.context", count: group_specs.sum { |group| group.fetch(:chats).size }) do
+        chat_index_context_for(group_specs.flat_map { |group| group.fetch(:chats) })
+      end
+      groups = group_specs.map { |group| chat_index_group_json(**group, context: context) }
 
       groups.sort_by { |group| group.delete(:active_at) || Time.at(0) }.reverse
     end
@@ -85,14 +93,15 @@ module ChatIndexPayload
     chat_index_json(chat_session).merge(supervisor_unread_summary(chat_session))
   end
 
-  def chat_index_group_json(key:, label:, repository_id:, chats:, has_more:)
+  def chat_index_group_json(key:, label:, repository_id:, chats:, has_more:, context: nil)
     PerformanceLogging.phase("chat_index.group.serialize", repository_id: repository_id, count: chats.size) do
+      context ||= PerformanceLogging.phase("chat_index.group.context", repository_id: repository_id, count: chats.size) { chat_index_context_for(chats) }
       {
         key: key,
         label: label,
         repository_id: repository_id,
         chats: PerformanceLogging.phase("chat_index.group.chats", repository_id: repository_id, count: chats.size) do
-          chats.map { |chat_session| chat_index_json(chat_session) }
+          chats.map { |chat_session| chat_index_json(chat_session, context: context) }
         end,
         has_more: has_more,
         active_at: PerformanceLogging.phase("chat_index.group.active_at", repository_id: repository_id, count: chats.size) do
@@ -102,14 +111,90 @@ module ChatIndexPayload
     end
   end
 
-  def chat_index_json(chat_session)
+  def chat_index_json(chat_session, context: nil)
     PerformanceLogging.phase("chat_index.chat.serialize", chat_id: chat_session.id) do
-      chat_json(chat_session).merge(
+      context ||= chat_index_context_for([ chat_session ])
+      effective_provider = chat_session.effective_chat_provider
+      repository = context.fetch(:repositories).fetch(chat_session.id, nil)
+
+      {
+        id: chat_session.id,
+        title: chat_session.title.presence || ChatSession.fallback_title_for(repository),
+        title_pending: chat_session.title.blank? && context.fetch(:title_pending_ids).include?(chat_session.id),
+        system_kind: chat_session.system_kind,
+        pinned: chat_session.pinned?,
+        pinned_context: chat_session.pinned_context,
+        chat_provider: chat_session.chat_provider,
+        effective_chat_provider: effective_provider,
+        effective_chat_provider_label: chat_provider_label(effective_provider),
+        provider_availability: context.fetch(:provider_availability).fetch(effective_provider, nil),
+        chat_provider_options: context.fetch(:chat_provider_options),
+        chat_model: chat_session.chat_model,
+        available_chat_models: context.fetch(:available_chat_models).fetch(effective_provider, []),
+        mode: chat_session.mode,
+        local_daemon_state: chat_session.local_daemon_state,
+        local_daemon_repo: chat_session.local_daemon_repo,
+        local_daemon_branch: chat_session.local_daemon_branch,
+        chat_path: chat_path(chat_session),
+        repository: repository ? repository_json(repository).merge(repository_path: repository_path(repository)) : nil,
+        turn_in_flight: chat_session.turn_in_flight?,
+        agent_busy: context.fetch(:agent_busy_ids).include?(chat_session.id),
+        stop_requested_at: chat_session.stop_requested_at&.iso8601,
+        suggested_next_step: chat_session.suggested_next_step,
+        cumulative_input_tokens: chat_session.cumulative_input_tokens.to_i,
+        cumulative_output_tokens: chat_session.cumulative_output_tokens.to_i,
+        cumulative_cost_usd: chat_session.cumulative_cost.to_f,
+        pending_proposal_count: context.fetch(:pending_proposal_counts).fetch(chat_session.id, 0),
+        scratchpad_items_count: context.fetch(:scratchpad_counts).fetch(chat_session.id, 0),
+        coding_checkout_uncommitted: chat_session.coding_checkout_uncommitted?,
+        coding_checkout_branch: chat_session.coding_checkout_branch,
+        chat_effort: chat_session.chat_effort,
         last_message_at: chat_session.last_message_at&.iso8601,
         unread: PerformanceLogging.phase("chat_index.chat.unread", chat_id: chat_session.id) { chat_unread?(chat_session) },
         created_at: chat_session.created_at.iso8601,
         updated_at: chat_session.updated_at.iso8601
-      )
+      }
+    end
+  end
+
+  def chat_index_context_for(chat_sessions)
+    chat_sessions = Array(chat_sessions)
+    ids = chat_sessions.map(&:id)
+    blank_title_ids = chat_sessions.select { |chat_session| chat_session.title.blank? }.map(&:id)
+    workdirs_by_id = chat_sessions.to_h { |chat_session| [ chat_session.id, chat_session.workspace_root.to_s ] }
+    busy_workdirs = if workdirs_by_id.empty?
+      []
+    else
+      SpawnedProcess.running.where(kind: "agent", workdir: workdirs_by_id.values).pluck(:workdir)
+    end
+    providers = chat_sessions.map(&:effective_chat_provider).compact.uniq
+
+    {
+      repositories: chat_sessions.to_h { |chat_session| [ chat_session.id, chat_session.repository ] },
+      title_pending_ids: blank_title_ids.empty? ? [] : ChatMessage.where(chat_session_id: blank_title_ids, role: "user").distinct.pluck(:chat_session_id),
+      agent_busy_ids: workdirs_by_id.select { |_id, workdir| busy_workdirs.include?(workdir) }.keys,
+      pending_proposal_counts: chat_index_pending_proposal_counts(ids),
+      scratchpad_counts: ids.empty? ? {} : ChatScratchpadItem.where(chat_session_id: ids).group(:chat_session_id).count,
+      provider_availability: providers.to_h { |provider| [ provider, ::App::ProviderAvailability.for_user(Current.user, provider) ] },
+      chat_provider_options: chat_provider_options(nil),
+      available_chat_models: providers.to_h do |provider|
+        representative = chat_sessions.find { |chat_session| chat_session.effective_chat_provider == provider }
+        [ provider, representative ? available_chat_models_for(representative) : [] ]
+      end
+    }
+  end
+
+  def chat_index_pending_proposal_counts(chat_session_ids)
+    return {} if chat_session_ids.empty?
+
+    proposal_counts = ChatProposal.where(chat_session_id: chat_session_ids, state: "proposed").group(:chat_session_id).count
+    pending_action_counts = ChatPendingAction.where(chat_session_id: chat_session_ids, state: "pending").group(:chat_session_id).count
+
+    chat_session_ids.to_h do |chat_session_id|
+      [
+        chat_session_id,
+        proposal_counts.fetch(chat_session_id, 0) + pending_action_counts.fetch(chat_session_id, 0)
+      ]
     end
   end
 
