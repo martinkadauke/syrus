@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_08_203000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_09_015717) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -819,6 +819,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_203000) do
     t.integer "sequence", null: false
     t.datetime "updated_at", null: false
     t.index ["kind", "run_id"], name: "idx_job_logs_kind_run_id"
+    t.index ["run_id", "kind", "chunk"], name: "idx_job_logs_run_kind_chunk_lookup"
     t.index ["run_id", "sequence"], name: "index_job_logs_on_run_id_and_sequence", unique: true
     t.index ["run_id"], name: "index_job_logs_on_run_id"
   end
@@ -1212,6 +1213,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_203000) do
     t.index ["job_id"], name: "index_pr_review_comments_on_job_id"
   end
 
+  create_table "preview_environments", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "error_message"
+    t.datetime "expires_at"
+    t.string "internal_host"
+    t.integer "job_id", null: false
+    t.datetime "last_activity_at"
+    t.integer "port"
+    t.string "state", default: "starting", null: false
+    t.datetime "updated_at", null: false
+    t.string "workspace_path"
+    t.index ["expires_at"], name: "index_preview_environments_on_expires_at"
+    t.index ["job_id"], name: "index_preview_environments_on_job_id"
+    t.index ["job_id"], name: "index_preview_environments_on_job_id_active", where: "state IN ('starting','seeding','running','stopping')"
+    t.index ["state"], name: "index_preview_environments_on_state"
+  end
+
   create_table "provider_availability_evidences", force: :cascade do |t|
     t.string "account_id", limit: 128
     t.integer "chat_message_id"
@@ -1239,23 +1257,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_203000) do
     t.index ["run_id"], name: "index_provider_availability_evidences_on_run_id"
     t.index ["user_id", "provider", "account_id", "model", "observed_at"], name: "idx_provider_evidence_scope_observed"
     t.index ["user_id"], name: "index_provider_availability_evidences_on_user_id"
-  end
-
-  create_table "preview_environments", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.text "error_message"
-    t.datetime "expires_at"
-    t.string "internal_host"
-    t.integer "job_id", null: false
-    t.datetime "last_activity_at"
-    t.integer "port"
-    t.string "state", default: "starting", null: false
-    t.datetime "updated_at", null: false
-    t.string "workspace_path"
-    t.index ["expires_at"], name: "index_preview_environments_on_expires_at"
-    t.index ["job_id"], name: "index_preview_environments_on_job_id"
-    t.index ["job_id"], name: "index_preview_environments_on_job_id_active", where: "state IN ('starting','seeding','running','stopping')"
-    t.index ["state"], name: "index_preview_environments_on_state"
   end
 
   create_table "provider_sessions", force: :cascade do |t|
@@ -2072,12 +2073,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_08_203000) do
   add_foreign_key "operational_log_events", "workflows"
   add_foreign_key "pr_review_comments", "jobs"
   add_foreign_key "pr_review_comments", "workflows", column: "handling_workflow_id"
+  add_foreign_key "preview_environments", "jobs"
   add_foreign_key "provider_availability_evidences", "chat_messages"
   add_foreign_key "provider_availability_evidences", "chat_sessions"
   add_foreign_key "provider_availability_evidences", "runs"
   add_foreign_key "provider_availability_evidences", "users"
   add_foreign_key "provider_availability_evidences", "users", column: "repaired_by_user_id"
-  add_foreign_key "preview_environments", "jobs"
   add_foreign_key "provider_sessions", "runs"
   add_foreign_key "repositories", "installations"
   add_foreign_key "repositories", "repositories", column: "upstream_repository_id"
