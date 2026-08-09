@@ -24,10 +24,7 @@ module Mcp::Tools
         page = normalize_page(page)
         total_messages = chat_session.messages.count
         total_pages = [ (total_messages.to_f / ChatSession::MESSAGE_PAGE_SIZE).ceil, 1 ].max
-        messages = chat_session.messages
-                               .order(:created_at, :id)
-                               .offset((page - 1) * ChatSession::MESSAGE_PAGE_SIZE)
-                               .limit(ChatSession::MESSAGE_PAGE_SIZE)
+        messages = page_messages(chat_session, page)
 
         Mcp::Tools.success(
           messages: messages.map { |message| message_payload(message) },
@@ -41,6 +38,28 @@ module Mcp::Tools
 
       def normalize_page(value)
         [ value.to_i, 1 ].max
+      end
+
+      def page_messages(chat_session, page)
+        ids = message_id_scope(chat_session)
+          .order(:created_at, :id)
+          .offset((page - 1) * ChatSession::MESSAGE_PAGE_SIZE)
+          .limit(ChatSession::MESSAGE_PAGE_SIZE)
+          .pluck(:id)
+        messages_by_id = ChatMessage.where(id: ids).index_by(&:id)
+
+        ids.filter_map { |id| messages_by_id[id] }
+      end
+
+      def message_id_scope(chat_session)
+        scope = ChatMessage.where(chat_session_id: chat_session.id)
+        return scope unless mysql_adapter?
+
+        scope.from(Arel.sql("#{ChatMessage.quoted_table_name} FORCE INDEX (idx_chat_messages_session_created_id)"))
+      end
+
+      def mysql_adapter?
+        ActiveRecord::Base.connection.adapter_name.downcase.include?("mysql")
       end
 
       def message_payload(message)

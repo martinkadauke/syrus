@@ -40,17 +40,11 @@ module Api
         def show
           chat = ChatSession.includes(
             :user,
-            messages: [ :bookmarks, :proposal ],
             chat_attachments: :attachable
           ).find(params[:id])
 
-          messages_scope = chat.messages.includes(:bookmarks, :proposal).order(created_at: :asc, id: :asc)
-          messages_scope = messages_scope.where("chat_messages.id < ?", before_id) if before_id
-
           per = per_param
-          messages = messages_scope.reorder(created_at: :desc, id: :desc).limit(per + 1).to_a
-          has_more_older = messages.size > per
-          messages = messages.first(per).reverse
+          messages, has_more_older = paginated_messages(chat, before_id: before_id, per: per)
 
           render json: serialize_chat(chat).merge(
             messages_count: chat.messages.count,
@@ -91,6 +85,29 @@ module Api
           Time.iso8601(params[:since])
         rescue ArgumentError, TypeError
           1.year.ago
+        end
+
+        def paginated_messages(chat, before_id:, per:)
+          scope = admin_chat_message_id_scope(chat)
+          scope = scope.where("chat_messages.id < ?", before_id) if before_id
+
+          ids = scope.reorder(id: :desc).limit(per + 1).pluck(:id)
+          has_more_older = ids.size > per
+          ids = ids.first(per)
+          messages_by_id = ChatMessage.includes(:bookmarks, :proposal).where(id: ids).index_by(&:id)
+
+          [ ids.reverse.filter_map { |id| messages_by_id[id] }, has_more_older ]
+        end
+
+        def admin_chat_message_id_scope(chat)
+          scope = ChatMessage.where(chat_session_id: chat.id)
+          return scope unless mysql_adapter?
+
+          scope.from(Arel.sql("#{ChatMessage.quoted_table_name} FORCE INDEX (index_chat_messages_on_session_id_and_id)"))
+        end
+
+        def mysql_adapter?
+          ActiveRecord::Base.connection.adapter_name.downcase.include?("mysql")
         end
 
         def serialize_compact(chat)
