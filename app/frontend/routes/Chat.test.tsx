@@ -1710,6 +1710,7 @@ describe("chat proposal cards", () => {
 
     await screen.findByRole("button", { name: "Confirm Epic and Jobs" })
     const footer = screen.getByTestId("proposal-action-footer")
+    await within(footer).findByText("Implement")
     expect(footer).toHaveClass("flex-nowrap", "overflow-hidden")
     expect(footer).not.toHaveClass("flex-wrap")
     expect(within(footer).getByText("Backlog")).toBeInTheDocument()
