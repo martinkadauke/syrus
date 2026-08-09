@@ -276,6 +276,13 @@ class McpToolRegistry
         AgentRole::WORKFLOW_RECONCILIATION_FEEDBACK
       ]
 
+      artifact_roles = [
+        AgentRole::WORKFLOW_IMPLEMENT,
+        AgentRole::WORKFLOW_SUMMARY_TEST_PLAN,
+        AgentRole::WORKFLOW_REBASE_CONFLICT,
+        AgentRole::WORKFLOW_MANUAL
+      ]
+
       metadata_roles = [
         AgentRole::WORKFLOW_SUMMARY_TEST_PLAN,
         AgentRole::WORKFLOW_MANUAL
@@ -296,6 +303,7 @@ class McpToolRegistry
         workflow(Mcp::Tools::ReportMainConcernTool, required_roles: workflow_roles, mutation: true),
         workflow(Mcp::Tools::SubmitSummaryTool, capability: :submit_summary, required_roles: summary_roles, mutation: true),
         workflow(Mcp::Tools::SubmitTestPlanTool, capability: :submit_test_plan, required_roles: summary_roles, mutation: true),
+        workflow(SyrusMcp::SubmitArtifactTool, capability: :submit_artifact, required_roles: artifact_roles, mutation: true),
         workflow(Mcp::Tools::SubmitJobMetadataTool, capability: :submit_job_metadata, required_roles: metadata_roles, mutation: true),
         workflow(Mcp::Tools::SubmitAdversarialReviewTool, capability: :submit_adversarial_review, required_roles: [
           AgentRole::WORKFLOW_ADVERSARIAL_REVIEWER,
