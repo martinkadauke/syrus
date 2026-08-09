@@ -595,8 +595,8 @@ module App
       @job_runtime_workflow_counts_by_job_id = PerformanceLogging.phase("dashboard_jobs.preload.workflow_counts", count: job_ids.size) do
         job_ids.empty? ? {} : Workflow.where(job_id: job_ids).group(:job_id).count
       end
-      @job_runtime_latest_runs_by_job_id = PerformanceLogging.phase("dashboard_jobs.preload.latest_runs", count: job_ids.size) { latest_runs_by_job_id(job_ids) }
-      @job_runtime_latest_workflows_by_job_id = PerformanceLogging.phase("dashboard_jobs.preload.latest_workflows", count: job_ids.size) { latest_workflows_by_job_id(job_ids) }
+      @job_runtime_latest_runs_by_job_id = PerformanceLogging.phase("dashboard_jobs.preload.latest_runs", count: job_ids.size) { latest_runs_for_jobs(jobs) }
+      @job_runtime_latest_workflows_by_job_id = PerformanceLogging.phase("dashboard_jobs.preload.latest_workflows", count: job_ids.size) { latest_workflows_for_jobs(jobs) }
       run_ids = @job_runtime_latest_runs_by_job_id.values.map(&:id)
       @job_runtime_run_diagnostics_by_run_id = PerformanceLogging.phase("dashboard_jobs.preload.run_diagnostics", count: run_ids.size) do
         run_ids.empty? ? {} : RunDiagnostic.where(run_id: run_ids).index_by(&:run_id)
@@ -623,6 +623,11 @@ module App
       latest_ids.empty? ? {} : Run.where(id: latest_ids).index_by(&:job_id)
     end
 
+    def latest_runs_for_jobs(jobs)
+      latest_ids = jobs.filter_map(&:latest_run_id)
+      latest_ids.empty? ? {} : Run.where(id: latest_ids).index_by(&:job_id)
+    end
+
     def latest_workflows_by_job_id(job_ids)
       return {} if job_ids.empty?
 
@@ -630,6 +635,11 @@ module App
       latest_ids = Workflow.where(job_id: job_ids).group(:job_id).maximum(:id)
       selected_ids = latest_ids.merge(latest_active_ids).values
       selected_ids.empty? ? {} : Workflow.where(id: selected_ids).index_by(&:job_id)
+    end
+
+    def latest_workflows_for_jobs(jobs)
+      latest_ids = jobs.filter_map(&:latest_workflow_id)
+      latest_ids.empty? ? {} : Workflow.where(id: latest_ids).index_by(&:job_id)
     end
 
     def total_pages(total)

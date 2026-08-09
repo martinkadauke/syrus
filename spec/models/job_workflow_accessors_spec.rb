@@ -99,6 +99,29 @@ RSpec.describe JobWorkflowAccessors do
     end
   end
 
+  # --- latest_run_id ---------------------------------------------------------
+
+  describe "#latest_run_id" do
+    it "delegates to runs when the virtual attribute is absent" do
+      workflow = create_workflow(state: "running", finished_at: nil)
+      step = workflow.steps.create!(kind: "prepare", position: 1, state: "running")
+      older = step.runs.create!(job: job, user: job.user, trigger_kind: workflow.trigger_kind, state: "succeeded")
+      newer = step.runs.create!(job: job, user: job.user, trigger_kind: workflow.trigger_kind, state: "running")
+
+      expect(job.latest_run_id).to eq(newer.id)
+      expect(job.latest_run_id).not_to eq(older.id)
+    end
+
+    it "reads the virtual attribute column when present" do
+      result = Job.where(id: job.id)
+        .select("jobs.*, 123 AS latest_run_id")
+        .first
+
+      expect(result).to have_attribute(:latest_run_id)
+      expect(result.latest_run_id).to eq(123)
+    end
+  end
+
   # --- latest_workflow_state -------------------------------------------------
 
   describe "#latest_workflow_state" do

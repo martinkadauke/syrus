@@ -161,13 +161,15 @@ class Job < ApplicationRecord
     latest_workflow_state = Job.latest_workflow_snapshot_sql("state")
     latest_workflow_trigger_kind = Job.latest_workflow_snapshot_sql("trigger_kind")
     latest_workflow_created_at = Job.latest_workflow_snapshot_sql("created_at")
+    latest_run_id = Job.latest_run_snapshot_sql("id")
 
     select(
       "jobs.*",
       "#{latest_workflow_id} AS latest_workflow_id",
       "COALESCE(#{latest_workflow_state}, 'queued') AS latest_workflow_state",
       "#{latest_workflow_trigger_kind} AS latest_workflow_trigger_kind",
-      "#{latest_workflow_created_at} AS latest_workflow_created_at"
+      "#{latest_workflow_created_at} AS latest_workflow_created_at",
+      "#{latest_run_id} AS latest_run_id"
     )
   }
   scope :without_active_workflows, -> {
@@ -193,6 +195,20 @@ class Job < ApplicationRecord
         FROM workflows
         WHERE workflows.job_id = jobs.id
         ORDER BY (workflows.finished_at IS NULL) DESC, workflows.finished_at DESC, workflows.id DESC
+        LIMIT 1
+      )
+    SQL
+  end
+
+  def self.latest_run_snapshot_sql(column)
+    raise ArgumentError, "unknown run snapshot column" unless %w[id].include?(column.to_s)
+
+    <<~SQL.squish
+      (
+        SELECT runs.#{column}
+        FROM runs
+        WHERE runs.job_id = jobs.id
+        ORDER BY runs.id DESC
         LIMIT 1
       )
     SQL

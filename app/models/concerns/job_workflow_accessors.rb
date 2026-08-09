@@ -40,4 +40,10 @@ module JobWorkflowAccessors
     end
     value.is_a?(String) ? Time.zone.parse(value) : value
   end
+
+  def latest_run_id
+    return self[:latest_run_id] if has_attribute?(:latest_run_id)
+
+    runs.maximum(:id)
+  end
 end
