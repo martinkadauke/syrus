@@ -60,6 +60,7 @@ module SyrusDev
       {
         slow_requests: grouped_slow_requests(events),
         slow_phases: grouped_slow_phases(events),
+        browser_traces: grouped_browser_traces(events),
         sql_fingerprints: grouped_sql_fingerprints(events)
       }
     end
@@ -100,6 +101,30 @@ module SyrusDev
           max_duration_ms: durations.max&.round(1),
           last_seen_at: rows.map { |event| event["occurred_at"] }.compact.max,
           recent_metadata: rows.first["metadata"]
+        }
+      end.sort_by { |row| [ -row[:total_duration_ms].to_f, -row[:count] ] }
+    end
+
+    def grouped_browser_traces(events)
+      grouped = events.select { |event| event["event"] == PerformanceLogging::BROWSER_TRACE_EVENT }
+        .group_by { |event| [ event["name"], event["path"] ] }
+
+      grouped.map do |(name, path), rows|
+        durations = rows.map { |event| event["duration_ms"].to_f }
+        api_requests = rows.flat_map { |event| Array(event["api_requests"]) }
+        api_durations = api_requests.map { |request| request["duration_ms"].to_f }
+        {
+          name: name,
+          path: path,
+          count: rows.size,
+          total_duration_ms: durations.sum.round(1),
+          average_duration_ms: average(durations),
+          max_duration_ms: durations.max&.round(1),
+          average_api_duration_ms: average(api_durations),
+          max_api_duration_ms: api_durations.max&.round(1),
+          recent_api_request_ids: api_requests.filter_map { |request| request["request_id"] }.first(6),
+          recent_metadata: rows.first["metadata"],
+          last_seen_at: rows.map { |event| event["occurred_at"] }.compact.max
         }
       end.sort_by { |row| [ -row[:total_duration_ms].to_f, -row[:count] ] }
     end

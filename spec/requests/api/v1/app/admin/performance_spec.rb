@@ -32,6 +32,18 @@ RSpec.describe "API: /api/v1/app/admin/performance", type: :request do
       "occurred_at" => "2026-08-01T11:00:00Z",
       "app_revision" => "old-sha"
     )
+    PerformanceLogging::Store.append(
+      "event" => PerformanceLogging::BROWSER_TRACE_EVENT,
+      "name" => "dashboard.route",
+      "path" => "/dashboard/jobs?smart_folder_id=7",
+      "duration_ms" => 1500.0,
+      "metadata" => { "subject" => "job", "rows_count" => "0" },
+      "api_requests" => [
+        { "name" => "dashboard.rows", "request_id" => "rows-request", "duration_ms" => 1200.0, "status" => 200 }
+      ],
+      "occurred_at" => "2026-08-01T12:00:01Z",
+      "app_revision" => "new-sha"
+    )
   end
 
   after do
@@ -65,13 +77,22 @@ RSpec.describe "API: /api/v1/app/admin/performance", type: :request do
     expect(body["enabled"]).to eq(true)
     expect(body["current_revision"]).to eq("new-sha")
     expect(body["revision_scope"]).to eq("current")
-    expect(body["events"].first).to include("event" => "syrus.performance.slow_phase", "phase" => "dashboard_payload")
+    expect(body["events"]).to include(include("event" => "syrus.performance.slow_phase", "phase" => "dashboard_payload"))
     expect(body["events"].to_s).not_to include("stale_dashboard_payload")
     expect(body.dig("summaries", "slow_phases").first).to include(
       "phase" => "dashboard_payload",
       "count" => 1,
       "max_duration_ms" => 700.0,
       "recent_metadata" => { "view" => "jobs" }
+    )
+    expect(body.dig("summaries", "browser_traces").first).to include(
+      "name" => "dashboard.route",
+      "path" => "/dashboard/jobs?smart_folder_id=7",
+      "count" => 1,
+      "max_duration_ms" => 1500.0,
+      "max_api_duration_ms" => 1200.0,
+      "recent_api_request_ids" => [ "rows-request" ],
+      "recent_metadata" => { "subject" => "job", "rows_count" => "0" }
     )
   end
 
@@ -81,7 +102,7 @@ RSpec.describe "API: /api/v1/app/admin/performance", type: :request do
     get "/api/v1/app/admin/performance", params: { revision_scope: "all" }
 
     expect(response).to have_http_status(:ok)
-    expect(parse_body["events"].map { |event| event["app_revision"] }).to contain_exactly("new-sha", "old-sha")
+    expect(parse_body["events"].map { |event| event["app_revision"] }).to contain_exactly("new-sha", "new-sha", "old-sha")
   end
 
   it "404s when the Syrus Dev plugin is disabled" do

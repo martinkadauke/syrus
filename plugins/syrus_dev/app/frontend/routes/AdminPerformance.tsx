@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { useState, type ReactNode } from "react"
-import { fetchAdminPerformance, type AdminPerformancePayload, type PerformanceEvent, type SlowPhaseSummary, type SlowRequestSummary, type SqlFingerprintSummary } from "../api/adminPerformance"
+import { fetchAdminPerformance, type AdminPerformancePayload, type BrowserTraceSummary, type PerformanceEvent, type SlowPhaseSummary, type SlowRequestSummary, type SqlFingerprintSummary } from "../api/adminPerformance"
 import { useT } from "@app/hooks/useT"
 import { usePageTitle } from "@app/hooks/usePageTitle"
 import { errorMessage } from "@app/lib/errorMessage"
@@ -64,6 +64,7 @@ function PerformanceView({ payload }: { payload: AdminPerformancePayload }) {
 
       <SlowRequestsTable rows={payload.summaries.slow_requests} />
       <SlowPhasesTable rows={payload.summaries.slow_phases} />
+      <BrowserTracesTable rows={payload.summaries.browser_traces ?? []} />
       <SqlFingerprintsTable rows={payload.summaries.sql_fingerprints} />
       <EventsTable rows={payload.events} />
     </div>
@@ -146,6 +147,47 @@ function SlowPhasesTable({ rows }: { rows: SlowPhaseSummary[] }) {
   )
 }
 
+function BrowserTracesTable({ rows }: { rows: BrowserTraceSummary[] }) {
+  const { t } = useT("syrus_dev")
+  return (
+    <TableSection empty={t("performance.no_browser_traces")} rowCount={rows.length} title={t("performance.browser_traces")}>
+      <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+        <thead className="bg-gray-50 text-left text-xs font-medium uppercase text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+          <tr>
+            <th className="px-4 py-2">{t("performance.col_trace")}</th>
+            <th className="px-4 py-2 text-right">{t("performance.col_count")}</th>
+            <th className="px-4 py-2 text-right">{t("performance.col_total")}</th>
+            <th className="px-4 py-2 text-right">{t("performance.col_avg")}</th>
+            <th className="px-4 py-2 text-right">{t("performance.col_max")}</th>
+            <th className="px-4 py-2 text-right">{t("performance.col_api")}</th>
+            <th className="px-4 py-2">{t("performance.col_request_ids")}</th>
+            <th className="px-4 py-2">{t("performance.col_last_seen")}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          {rows.map((row) => (
+            <tr key={`${row.name}-${row.path}`}>
+              <td className="max-w-xl px-4 py-2">
+                <div className="font-mono text-xs text-gray-900 dark:text-gray-100">{row.name}</div>
+                <div className="mt-1 truncate font-mono text-xs text-gray-500 dark:text-gray-400" title={row.path ?? undefined}>{row.path ?? "-"}</div>
+              </td>
+              <NumberCell value={row.count} />
+              <NumberCell value={formatMs(row.total_duration_ms)} />
+              <NumberCell value={formatMs(row.average_duration_ms)} />
+              <NumberCell value={formatMs(row.max_duration_ms)} />
+              <NumberCell value={`${formatMs(row.average_api_duration_ms)} / ${formatMs(row.max_api_duration_ms)}`} />
+              <td className="max-w-md px-4 py-2 font-mono text-xs text-gray-600 dark:text-gray-300">
+                <div className="truncate" title={row.recent_api_request_ids.join(", ")}>{row.recent_api_request_ids.join(", ") || "-"}</div>
+              </td>
+              <td className="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300">{formatDate(row.last_seen_at)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </TableSection>
+  )
+}
+
 function SqlFingerprintsTable({ rows }: { rows: SqlFingerprintSummary[] }) {
   const { t } = useT("syrus_dev")
   return (
@@ -203,6 +245,7 @@ function EventsTable({ rows }: { rows: PerformanceEvent[] }) {
               <td className="max-w-4xl px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
                 <div className="font-mono">{row.phase || row.path || row.name || row.fingerprint || "-"}</div>
                 {row.sql_count != null ? <div className="mt-1">{t("performance.sql_context", { count: row.sql_count, duration: formatMs(row.sql_duration_ms) })}</div> : null}
+                {row.api_requests?.length ? <div className="mt-1">{t("performance.browser_api_context", { count: row.api_requests.length, ids: row.api_requests.map((request) => request.request_id).filter(Boolean).join(", ") || "-" })}</div> : null}
               </td>
             </tr>
           ))}

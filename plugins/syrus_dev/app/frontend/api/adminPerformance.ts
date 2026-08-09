@@ -39,6 +39,20 @@ export type SlowPhaseSummary = {
   recent_metadata?: Record<string, unknown> | null
 }
 
+export type BrowserTraceSummary = {
+  name: string
+  path: string | null
+  count: number
+  total_duration_ms: number
+  average_duration_ms: number | null
+  max_duration_ms: number | null
+  average_api_duration_ms: number | null
+  max_api_duration_ms: number | null
+  recent_api_request_ids: string[]
+  last_seen_at: string | null
+  recent_metadata?: Record<string, unknown> | null
+}
+
 export type SqlFingerprintSummary = {
   fingerprint: string
   sample_sql?: string | null
@@ -67,6 +81,15 @@ export type PerformanceEvent = {
   slow_sql_count?: number | null
   status?: number | null
   metadata?: Record<string, unknown> | null
+  trace_id?: string | null
+  visibility_state?: string | null
+  api_requests?: Array<{
+    name?: string | null
+    path?: string | null
+    request_id?: string | null
+    duration_ms?: number | null
+    status?: number | null
+  }> | null
 }
 
 export type AdminPerformancePayload = {
@@ -78,6 +101,7 @@ export type AdminPerformancePayload = {
   summaries: {
     slow_requests: SlowRequestSummary[]
     slow_phases: SlowPhaseSummary[]
+    browser_traces: BrowserTraceSummary[]
     sql_fingerprints: SqlFingerprintSummary[]
   }
   events: PerformanceEvent[]

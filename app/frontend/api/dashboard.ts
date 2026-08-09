@@ -1,4 +1,5 @@
-import { getJson, patchJson, postJson } from "./client"
+import { getJson, getJsonWithMeta, patchJson, postJson } from "./client"
+import type { JsonResponseMeta } from "./client"
 import type { JobRetryState, LandingQueueBlockerJob, LandingQueueDependencyEdge } from "./jobs"
 import type { BlockedReason } from "../lib/translateBlockedReason"
 import type { ProviderAvailability } from "./providerAvailability"
@@ -504,8 +505,21 @@ export function fetchDashboardChrome(search = "", options: { signal?: AbortSigna
   return getJson<DashboardChromePayload>(`/api/v1/app/dashboard${dashboardSectionSearch(search, "chrome")}`, options)
 }
 
+export function fetchDashboardChromeWithMeta(search = "", options: { signal?: AbortSignal } = {}) {
+  return getJsonWithMeta<DashboardChromePayload>(`/api/v1/app/dashboard${dashboardSectionSearch(search, "chrome")}`, options)
+}
+
 export function fetchDashboardRows(search = "", options: { signal?: AbortSignal } = {}) {
   return getJson<DashboardRowsPayload>(`/api/v1/app/dashboard${dashboardSectionSearch(search, "rows")}`, options)
+}
+
+export function fetchDashboardRowsWithMeta(search = "", options: { signal?: AbortSignal } = {}) {
+  return getJsonWithMeta<DashboardRowsPayload>(`/api/v1/app/dashboard${dashboardSectionSearch(search, "rows")}`, options)
+}
+
+export type DashboardTimedPayload<T> = {
+  data: T
+  meta: JsonResponseMeta
 }
 
 export function mergeDashboardPayload(chrome: DashboardChromePayload, rows: DashboardRowsPayload, options: { rowsCurrentForSearch?: boolean } = {}): DashboardPayload {

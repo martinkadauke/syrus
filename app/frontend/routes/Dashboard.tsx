@@ -5,7 +5,7 @@ import { EpicsTable, SimpleFeaturesTable, WorkflowsTable } from "./dashboard/Epi
 import { dashboardEmptyState, dashboardLinkFromSearch, dashboardVisibleColumns, epicTableColumns, pageLink, sortValue, sortableColumnFor, subjectLabel, uniqueValue, withRoutePrefix } from "./dashboard/helpers"
 import type { DashboardSortState } from "./dashboard/helpers"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { useT } from "../hooks/useT"
 import { usePageTitle } from "../hooks/usePageTitle"
@@ -20,9 +20,11 @@ import { FilterBar } from "../components/FilterBar"
 import { SyrusTour } from "../components/SyrusTour"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { useTour } from "../hooks/useTour"
-import { dashboardApiSearch, dashboardChromeSearch, fetchDashboardChrome, fetchDashboardRows, fetchEpicsGraph, fetchJobsGraph, mergeDashboardPayload, recordDashboardFilterUsage, requestDashboardMainBranchRepair, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardEpicItem, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { dashboardApiSearch, dashboardChromeSearch, fetchDashboardChromeWithMeta, fetchDashboardRowsWithMeta, fetchEpicsGraph, fetchJobsGraph, mergeDashboardPayload, recordDashboardFilterUsage, requestDashboardMainBranchRepair, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardEpicItem, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import type { JsonResponseMeta } from "../api/client"
 import { TopoDepGraph } from "../components/TopoDepGraph"
 import { errorMessage } from "../lib/errorMessage"
+import { apiRequestTrace, browserTraceId, performanceLoggingEnabled, recordBrowserTrace } from "../lib/performanceTrace"
 
 export function DashboardRoute() {
   const { t } = useT("dashboard")
@@ -30,14 +32,32 @@ export function DashboardRoute() {
   const location = useLocation()
   const search = dashboardApiSearch(location.pathname, location.search)
   const chromeSearch = dashboardChromeSearch(location.pathname, location.search)
+  const traceKey = `${location.pathname}?${search}`
+  const activeTrace = useRef<{ key: string; traceId: string; startedAt: number } | null>(null)
+  const reportedTraceKey = useRef<string | null>(null)
+  const chromeMeta = useRef<JsonResponseMeta | null>(null)
+  const rowsMeta = useRef<JsonResponseMeta | null>(null)
+  if (activeTrace.current?.key !== traceKey) {
+    activeTrace.current = { key: traceKey, traceId: browserTraceId("dashboard"), startedAt: performance.now() }
+    chromeMeta.current = null
+    rowsMeta.current = null
+  }
   const dashboardChrome = useQuery({
     queryKey: ["dashboard", "chrome", chromeSearch],
-    queryFn: ({ signal }) => fetchDashboardChrome(chromeSearch, { signal }),
+    queryFn: async ({ signal }) => {
+      const response = await fetchDashboardChromeWithMeta(chromeSearch, { signal })
+      chromeMeta.current = response.meta
+      return response.data
+    },
     placeholderData: (previousData) => previousData
   })
   const dashboardRows = useQuery({
     queryKey: ["dashboard", "rows", search],
-    queryFn: ({ signal }) => fetchDashboardRows(search, { signal }),
+    queryFn: async ({ signal }) => {
+      const response = await fetchDashboardRowsWithMeta(search, { signal })
+      rowsMeta.current = response.meta
+      return response.data
+    },
     placeholderData: (previousData) => previousData
   })
   const payload = useMemo(() => {
@@ -45,6 +65,22 @@ export function DashboardRoute() {
 
     return mergeDashboardPayload(dashboardChrome.data, dashboardRows.data, { rowsCurrentForSearch: !dashboardRows.isPlaceholderData })
   }, [dashboardChrome.data, dashboardRows.data, dashboardRows.isPlaceholderData])
+  useEffect(() => {
+    if (!payload || payload.rows_current_for_search === false) return
+    if (!performanceLoggingEnabled()) return
+    const trace = activeTrace.current
+    if (!trace || trace.key !== traceKey || reportedTraceKey.current === traceKey) return
+
+    reportedTraceKey.current = traceKey
+    recordDashboardBrowserTrace({
+      traceId: trace.traceId,
+      tracePath: dashboardTracePath(location.pathname, location.search),
+      startedAt: trace.startedAt,
+      payload,
+      chromeMeta: chromeMeta.current,
+      rowsMeta: rowsMeta.current
+    })
+  }, [dashboardChrome.data, dashboardRows.data, payload, traceKey])
 
   if (!payload && (dashboardChrome.isPending || dashboardRows.isPending)) return <main aria-label={t("title")} className="p-6 text-sm text-gray-600 dark:text-gray-300">{t("loading")}</main>
   if (dashboardChrome.isError) return <DashboardError error={dashboardChrome.error} />
@@ -52,6 +88,53 @@ export function DashboardRoute() {
   if (!payload) return <main aria-label={t("title")} className="p-6 text-sm text-gray-600 dark:text-gray-300">{t("loading")}</main>
 
   return <DashboardView pathname={location.pathname} search={location.search} payload={payload} />
+}
+
+function recordDashboardBrowserTrace({ chromeMeta, payload, rowsMeta, startedAt, traceId, tracePath }: { chromeMeta: JsonResponseMeta | null; payload: DashboardPayload; rowsMeta: JsonResponseMeta | null; startedAt: number; traceId: string; tracePath: string }) {
+  recordBrowserTrace({
+    trace_id: traceId,
+    name: "dashboard.route",
+    path: tracePath,
+    duration_ms: Math.max(0, performance.now() - startedAt),
+    visibility_state: document.visibilityState || "unknown",
+    metadata: {
+      subject: payload.subject,
+      view: payload.view,
+      page: payload.page,
+      rows_count: payload.items?.length ?? 0,
+      total: payload.total,
+      total_estimated: payload.total_estimated === true,
+      smart_folder_id: payload.active_smart_folder_id
+    },
+    api_requests: [
+      apiRequestTrace("dashboard.chrome", sanitizedDashboardRequestMeta(chromeMeta)),
+      apiRequestTrace("dashboard.rows", sanitizedDashboardRequestMeta(rowsMeta))
+    ].filter((request): request is NonNullable<typeof request> => request != null)
+  })
+}
+
+function dashboardTracePath(pathname: string, rawSearch: string): string {
+  const params = sanitizedDashboardSearchParams(rawSearch)
+  const query = params.toString()
+  return query ? `${pathname}?${query}` : pathname
+}
+
+function sanitizedDashboardRequestMeta(meta: JsonResponseMeta | null): JsonResponseMeta | null {
+  if (!meta) return null
+  const url = new URL(meta.path, window.location.origin)
+  const query = sanitizedDashboardSearchParams(url.search)
+  query.set("section", url.searchParams.get("section") || "rows")
+  return { ...meta, path: `${url.pathname}?${query.toString()}` }
+}
+
+function sanitizedDashboardSearchParams(rawSearch: string): URLSearchParams {
+  const source = new URLSearchParams(rawSearch.startsWith("?") ? rawSearch.slice(1) : rawSearch)
+  const params = new URLSearchParams()
+  for (const key of ["subject", "view", "smart_folder_id", "page", "scope", "ownership_scope"]) {
+    const value = source.get(key)
+    if (value != null) params.set(key, value)
+  }
+  return params
 }
 
 function DashboardView({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {

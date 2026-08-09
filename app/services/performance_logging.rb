@@ -3,6 +3,7 @@ module PerformanceLogging
   SLOW_REQUEST_EVENT = "syrus.performance.slow_request"
   SLOW_SQL_EVENT = "syrus.performance.slow_sql"
   SLOW_PHASE_EVENT = "syrus.performance.slow_phase"
+  BROWSER_TRACE_EVENT = "syrus.performance.browser_trace"
 
   DEFAULT_SLOW_REQUEST_MS = 1_000.0
   DEFAULT_SLOW_SQL_MS = 250.0
@@ -188,6 +189,25 @@ module PerformanceLogging
     ) { yield }
   end
 
+  def record_browser_trace(payload)
+    return unless enabled?
+
+    attrs = payload.to_h
+    duration_ms = rounded_duration(attrs[:duration_ms] || attrs["duration_ms"])
+    emit(
+      base_event(BROWSER_TRACE_EVENT).merge(
+        request_context,
+        "duration_ms" => duration_ms,
+        "trace_id" => safe_string(attrs[:trace_id] || attrs["trace_id"], 100),
+        "name" => safe_string(attrs[:name] || attrs["name"], 200),
+        "path" => safe_string(attrs[:path] || attrs["path"], 500),
+        "visibility_state" => safe_string(attrs[:visibility_state] || attrs["visibility_state"], 50),
+        "api_requests" => safe_api_requests(attrs[:api_requests] || attrs["api_requests"]),
+        "metadata" => safe_metadata(attrs[:metadata] || attrs["metadata"] || {})
+      ).compact
+    )
+  end
+
   def slow_request_threshold_ms
     threshold_from_env("SYRUS_PERFORMANCE_SLOW_REQUEST_MS", DEFAULT_SLOW_REQUEST_MS)
   end
@@ -246,7 +266,7 @@ module PerformanceLogging
     ])
 
     path = payload[:path].to_s
-    path.start_with?("/api/v1/admin/performance", "/api/v1/app/admin/performance")
+    path.start_with?("/api/v1/admin/performance", "/api/v1/app/admin/performance", "/api/v1/app/performance_events")
   end
 
   def emit(event)
@@ -366,6 +386,19 @@ module PerformanceLogging
   def safe_metadata(metadata)
     metadata.to_h.to_h do |key, value|
       [ safe_string(key, 100), safe_string(value, 500) ]
+    end
+  end
+
+  def safe_api_requests(requests)
+    Array(requests).first(10).filter_map do |entry|
+      values = entry.to_h
+      {
+        "name" => safe_string(values[:name] || values["name"], 100),
+        "path" => safe_string(values[:path] || values["path"], 500),
+        "request_id" => safe_string(values[:request_id] || values["request_id"], 100),
+        "duration_ms" => rounded_duration(values[:duration_ms] || values["duration_ms"]),
+        "status" => Integer(values[:status] || values["status"], exception: false)
+      }.compact_blank
     end
   end
 

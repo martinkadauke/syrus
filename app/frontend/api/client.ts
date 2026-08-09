@@ -43,6 +43,41 @@ export async function getJson<T>(path: string, options: { signal?: AbortSignal }
   return response.json() as Promise<T>
 }
 
+export type JsonResponseMeta = {
+  path: string
+  requestId: string | null
+  status: number
+  durationMs: number
+}
+
+export async function getJsonWithMeta<T>(path: string, options: { signal?: AbortSignal } = {}): Promise<{ data: T; meta: JsonResponseMeta }> {
+  const startedAt = performanceNow()
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json"
+    },
+    signal: options.signal
+  })
+  const meta = responseMeta(path, response, startedAt)
+
+  if (response.status === 401) {
+    window.location.assign("/session/new")
+  }
+
+  if (!response.ok) {
+    const payload = await readErrorPayload(response)
+    throw new ApiError(payload.error?.message || `Request failed with ${response.status}`, {
+      status: response.status,
+      code: payload.error?.code
+    })
+  }
+
+  if (response.status === 204) return { data: undefined as T, meta }
+
+  return { data: await response.json() as T, meta }
+}
+
 export async function postJson<T>(path: string, body?: unknown): Promise<T> {
   return writeJson<T>(path, "POST", body)
 }
@@ -132,4 +167,17 @@ async function readErrorPayload(response: Response): Promise<ApiErrorPayload> {
   } catch (_error) {
     return {}
   }
+}
+
+function responseMeta(path: string, response: Response, startedAt: number): JsonResponseMeta {
+  return {
+    path,
+    requestId: response.headers.get("X-Request-Id") || response.headers.get("X-Request-ID"),
+    status: response.status,
+    durationMs: Math.max(0, performanceNow() - startedAt)
+  }
+}
+
+function performanceNow(): number {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now()
 }

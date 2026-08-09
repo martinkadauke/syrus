@@ -621,12 +621,17 @@ declared flags by category, shows the slug and description for each flag,
 and hides the admin navigation item entirely when no flags are declared.
 
 The `performance_logging` operations flag records structured slow-request,
-slow-SQL, and slow application-phase events for production debugging. Slow
+slow-SQL, slow application-phase, and selected browser route-load events for production debugging. Slow
 request events include request/user context, SQL counters, and top SQL
 fingerprints for that request; phase events cover expensive dashboard, chat,
-repository, job detail, bootstrap, spending, and admin payload builders. The
+repository, job detail, bootstrap, spending, and admin payload builders.
+Browser traces currently cover dashboard loads and include only structural
+timing data: route path, browser-observed duration until current rows render,
+document visibility state, row counts, and backend request IDs/durations/statuses
+for dashboard API calls. They do not include row content, titles, prompts, or
+free-form filter text; route paths are sanitized before logging. The
 admin performance endpoint returns recent raw events plus grouped summaries for
-slow routes, phases, and SQL fingerprints. Events are stamped with the running
+slow routes, phases, browser traces, and SQL fingerprints. Events are stamped with the running
 app revision, and the admin view defaults to the current revision so stale
 pre-deploy timings do not hide whether a new deploy helped; admins can switch
 to all revisions when investigating rolling-deploy overlap. The in-app

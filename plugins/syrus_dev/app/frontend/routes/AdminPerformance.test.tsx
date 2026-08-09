@@ -55,6 +55,8 @@ describe("AdminPerformance", () => {
 
     expect(screen.getByText("GET /api/v1/app/chats/126")).toBeInTheDocument()
     expect(screen.getAllByText("chat_payload.recent_chats").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("dashboard.route").length).toBeGreaterThan(0)
+    expect(screen.getByText("frontend-request-1")).toBeInTheDocument()
     expect(screen.getByText("SELECT `jobs`.* FROM `jobs` WHERE `jobs`.`state` = ?")).toBeInTheDocument()
     expect(screen.getByText("request")).toBeInTheDocument()
     expect(screen.getByText("246 SQL · 629ms")).toBeInTheDocument()
@@ -119,6 +121,21 @@ function performancePayload() {
           max_duration_ms: 620,
           last_seen_at: "2026-08-01T14:32:46Z",
           recent_metadata: { chat_id: 126 }
+        }
+      ],
+      browser_traces: [
+        {
+          name: "dashboard.route",
+          path: "/dashboard/jobs?smart_folder_id=7",
+          count: 1,
+          total_duration_ms: 1500,
+          average_duration_ms: 1500,
+          max_duration_ms: 1500,
+          average_api_duration_ms: 1200,
+          max_api_duration_ms: 1200,
+          recent_api_request_ids: [ "frontend-request-1" ],
+          last_seen_at: "2026-08-01T14:32:47Z",
+          recent_metadata: { subject: "job", rows_count: "0" }
         }
       ],
       sql_fingerprints: [
