@@ -54,7 +54,8 @@ function PluginCard({ plugin }: { plugin: AdminPlugin }) {
       queryClient.setQueryData(["admin", "plugins"], payload)
     }
   })
-  const disableBlocked = plugin.enabled && plugin.disable_blockers.length > 0
+  const disableBlockers = plugin.disable_blockers || []
+  const disableBlocked = plugin.enabled && disableBlockers.length > 0
 
   return (
     <article className="rounded border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
@@ -74,7 +75,7 @@ function PluginCard({ plugin }: { plugin: AdminPlugin }) {
           </div>
           {disableBlocked ? (
             <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-700 dark:text-amber-300">
-              {plugin.disable_blockers.map((blocker) => <li key={`${blocker.kind}-${blocker.label}`}>{blocker.label}: {blocker.count}</li>)}
+              {disableBlockers.map((blocker) => <li key={`${blocker.kind}-${blocker.label}`}>{blocker.label}: {blocker.count}</li>)}
             </ul>
           ) : null}
           {toggle.isError ? <p className="mt-2 text-sm text-red-700 dark:text-red-300">{errorMessage(toggle.error, t("plugins.error_toggle"))}</p> : null}

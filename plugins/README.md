@@ -46,7 +46,9 @@ gem "my_plugin", path: "plugins/my_plugin"
 `input_source` and `source_control_provider` are deliberately separate. A
 source plugin can poll for new work without owning PR operations, and a
 source-control provider can own branch/PR/merge operations without being a poll
-source. The bundled `github_source` currently provides both.
+source. The bundled `github_source` currently provides both and is marked
+non-disableable until the remaining core GitHub behavior moves behind plugin
+boundaries.
 
 Admin page providers return page metadata:
 

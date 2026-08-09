@@ -54,7 +54,7 @@ RSpec.configure do |config|
         version:         SyrusGithubSource::VERSION,
         description:     "Ingests GitHub issues and provides GitHub PR operations.",
         default_enabled: true,
-        disableable:     true,
+        disableable:     false,
         category:        "input_source",
         provides: {
           input_source:            InputSources::Github,

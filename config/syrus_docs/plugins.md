@@ -66,8 +66,9 @@ or installation-specific MCP tools should be contributed through plugin
 Bundled plugins:
 
 - `claude_agent` / `codex_agent` — default-enabled workflow and chat providers.
-- `github_source` — default-enabled GitHub issue/PR polling source and
-  source-control provider.
+- `github_source` — required GitHub issue/PR polling source and source-control
+  provider. It is installed as a plugin for source ownership, but is not
+  disableable yet because some GitHub behavior still lives in core.
 - `linear_source` — installed but disabled by default until configured.
 - `syrus_dev` — installed but disabled by default. It owns Syrus-development-only
   diagnostics such as Admin → Performance and the `read_performance_diagnostics`

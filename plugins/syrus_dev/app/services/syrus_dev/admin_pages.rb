@@ -16,7 +16,7 @@ module SyrusDev
         {
           id: "syrus_dev.operational_logs",
           label: "Operational Logs",
-          label_key: "admin:nav_operational_logs",
+          label_key: "syrus_dev:nav_operational_logs",
           path: "/admin/operational_logs",
           paths: [ "/admin/operational_logs" ],
           component: "syrus_dev/AdminOperationalLogs",

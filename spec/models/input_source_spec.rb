@@ -36,8 +36,8 @@ RSpec.describe InputSource do
 
   describe "#provider_enabled?" do
     it "returns false when the owning plugin is disabled" do
-      source = repository.github_input_source
-      PluginRecord.find_by!(name: "github_source").update!(enabled: false)
+      source = InputSources::Linear.create!(repository: repository, user: user)
+      PluginRecord.find_by!(name: "linear_source").update!(enabled: false)
 
       expect(source.provider_enabled?).to be(false)
     end

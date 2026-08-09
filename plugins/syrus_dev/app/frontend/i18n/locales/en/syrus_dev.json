@@ -1,6 +1,7 @@
 {
   "page_title_performance": "Performance — Admin",
   "nav_performance": "Performance",
+  "nav_operational_logs": "Logs",
   "section_label": "Admin",
   "performance": {
     "heading": "Performance",
