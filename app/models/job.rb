@@ -9,6 +9,7 @@ class Job < ApplicationRecord
   include JobDependencies
   include JobExecutionAccessors
   include JobLifecycle
+  include EnqueuesSearchIndex
 
   KINDS = %w[ issue cron direct main_grader agent_insight external_pr ].freeze
   MAIN_GRADER_CLOSURE_REASON = "main_grader".freeze
@@ -1059,7 +1060,7 @@ class Job < ApplicationRecord
   end
 
   def enqueue_search_index
-    IndexJobSearchJob.perform_later(id)
+    enqueue_search_index_job(IndexJobSearchJob, id)
   end
 
   # Auto-create the Job's first workflow when the Job reaches :queued

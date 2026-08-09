@@ -1,6 +1,7 @@
 class Epic < ApplicationRecord
   include AASM
   include AutoApproveModes
+  include EnqueuesSearchIndex
 
   # Raised by #start_implementing! when the Epic cannot move to
   # :in_progress (already running/finished, claimed by someone else,
@@ -657,7 +658,7 @@ class Epic < ApplicationRecord
   end
 
   def enqueue_search_index
-    IndexEpicSearchJob.perform_later(id)
+    enqueue_search_index_job(IndexEpicSearchJob, id)
   end
 
   def assign_owner!(new_owner)

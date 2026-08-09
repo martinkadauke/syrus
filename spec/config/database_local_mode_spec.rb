@@ -50,4 +50,16 @@ RSpec.describe "config/database.yml local SQLite mode" do
     expect(config.dig("test", "search", "adapter")).to eq("sqlite3")
     expect(config.dig("test", "search", "database_tasks")).to be(false)
   end
+
+  it "ships non-empty Solid Cache, Queue, and Cable schemas for local-mode db:prepare" do
+    cache_schema = Rails.root.join("db/cache_schema.rb").read
+    queue_schema = Rails.root.join("db/queue_schema.rb").read
+    cable_schema = Rails.root.join("db/cable_schema.rb").read
+
+    expect(cache_schema).to include('create_table "solid_cache_entries"')
+    expect(cache_schema).to include('name: "index_solid_cache_entries_on_key_hash", unique: true')
+    expect(queue_schema).to include('create_table "solid_queue_jobs"')
+    expect(queue_schema).to include('create_table "solid_queue_ready_executions"')
+    expect(cable_schema).to include('create_table "solid_cable_messages"')
+  end
 end

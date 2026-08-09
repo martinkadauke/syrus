@@ -1,4 +1,6 @@
 class ChatMessage < ApplicationRecord
+  include EnqueuesSearchIndex
+
   ROLES = %w[ user assistant tool_use tool_result system ].freeze
   SPA_EVENT_TAIL_SIZE = 24
 
@@ -74,7 +76,7 @@ class ChatMessage < ApplicationRecord
   end
 
   def enqueue_search_index
-    IndexChatMessageJob.perform_later(id) if ChatMessageSearchIndex.indexable?(self)
+    enqueue_search_index_job(IndexChatMessageJob, id) if ChatMessageSearchIndex.indexable?(self)
   end
 
   # A stored next-step suggestion is only valid until the operator speaks

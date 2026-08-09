@@ -130,6 +130,20 @@ RSpec.describe Job do
         job.update!(issue_title: "Search me again")
       }.to have_enqueued_job(IndexJobSearchJob).with(job.id).on_queue("indexing")
     end
+
+    it "does not fail job creation when async search indexing cannot enqueue" do
+      repo = Factories.repository
+      error = SolidQueue::Job::EnqueueError.new(
+        ActiveRecord::StatementInvalid.new("Could not find table 'solid_queue_jobs'")
+      )
+
+      allow(IndexJobSearchJob).to receive(:perform_later).and_raise(error)
+      expect(Rails.logger).to receive(:warn).with(include("[SearchIndex] skipped IndexJobSearchJob"))
+
+      expect {
+        Factories.job_record(user: repo.user, repository: repo, issue_title: "Search me")
+      }.not_to raise_error
+    end
   end
 
   describe "epic title snapshot" do
