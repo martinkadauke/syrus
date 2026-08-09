@@ -155,22 +155,33 @@ module App
     end
 
     def average_cost_per_job(first_date, last_date)
-      rows = jobs_with_windowed_run_cost(first_date, last_date)
-             .group("jobs.id")
-             .sum("runs.cost_usd")
-      return 0.0 if rows.empty?
+      total, count = grouped_job_cost_total_and_count(jobs_with_windowed_run_cost(first_date, last_date))
+      return 0.0 if count.zero?
 
-      decimal_to_float(rows.values.sum.to_d / rows.size)
+      decimal_to_float(total.to_d / count)
     end
 
     def average_cost_per_merged_pr(first_date, last_date)
-      rows = jobs_with_windowed_run_cost(first_date, last_date)
-             .where(closure_reason: Epic::MERGED_JOB_CLOSURE_REASONS)
-             .group("jobs.id")
-             .sum("runs.cost_usd")
-      return 0.0 if rows.empty?
+      total, count = grouped_job_cost_total_and_count(
+        jobs_with_windowed_run_cost(first_date, last_date)
+          .where(closure_reason: Epic::MERGED_JOB_CLOSURE_REASONS)
+      )
+      return 0.0 if count.zero?
 
-      decimal_to_float(rows.values.sum.to_d / rows.size)
+      decimal_to_float(total.to_d / count)
+    end
+
+    def grouped_job_cost_total_and_count(relation)
+      grouped_sql = relation
+        .group("jobs.id")
+        .select("jobs.id, SUM(runs.cost_usd) AS job_cost")
+        .to_sql
+      row = ActiveRecord::Base.connection.select_one(<<~SQL.squish)
+        SELECT COALESCE(SUM(job_cost), 0) AS total_cost, COUNT(*) AS job_count
+        FROM (#{grouped_sql}) spending_job_costs
+      SQL
+
+      [ row.fetch("total_cost") || 0, row.fetch("job_count").to_i ]
     end
 
     def epic_breakdown
