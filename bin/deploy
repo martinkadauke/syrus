@@ -146,10 +146,26 @@ ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-15m}"
 
 rollout() {
   local label="$1" kubeconfig="$2" namespace="$3"
+  local targets=()
+  local dep
+
+  for dep in "${DEPLOYMENTS[@]}"; do
+    if KUBECONFIG="$kubeconfig" kubectl get -n "$namespace" "$dep" >/dev/null 2>&1; then
+      targets+=("$dep")
+    else
+      echo "→ ${label}: rollout target ${dep} not found in ${namespace} — skipping"
+    fi
+  done
+
+  if [ "${#targets[@]}" -eq 0 ]; then
+    echo "✗ ${label}: no rollout targets found in ${namespace}" >&2
+    exit 1
+  fi
+
   flux_suspend_with_watchdog "$kubeconfig" "$label"
   echo "→ ${label}: rollout restart in ${namespace}"
-  KUBECONFIG="$kubeconfig" kubectl rollout restart -n "$namespace" "${DEPLOYMENTS[@]}"
-  for dep in "${DEPLOYMENTS[@]}"; do
+  KUBECONFIG="$kubeconfig" kubectl rollout restart -n "$namespace" "${targets[@]}"
+  for dep in "${targets[@]}"; do
     KUBECONFIG="$kubeconfig" kubectl rollout status -n "$namespace" "$dep" --timeout="$ROLLOUT_TIMEOUT"
   done
   verify_sha "$label" "$kubeconfig" "$namespace"
