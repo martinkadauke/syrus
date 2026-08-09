@@ -59,15 +59,30 @@ module App
     end
 
     def totals_json
+      run_totals = run_cost_totals
+      chat_lifetime_usd = chat_lifetime_cost
+
       {
-        week_usd: decimal_to_float(runs_in_window(today.beginning_of_week, today).sum(:cost_usd)),
-        month_usd: decimal_to_float(runs_in_window(today.beginning_of_month, today).sum(:cost_usd)),
-        lifetime_usd: decimal_to_float(provider_scoped_runs.sum(:cost_usd) + provider_scoped_chat_sessions.sum(:cumulative_cost_usd)),
-        workflow_lifetime_usd: decimal_to_float(provider_scoped_runs.sum(:cost_usd)),
-        chat_lifetime_usd: decimal_to_float(provider_scoped_chat_sessions.sum(:cumulative_cost_usd)),
+        week_usd: decimal_to_float(run_totals.fetch(:week)),
+        month_usd: decimal_to_float(run_totals.fetch(:month)),
+        lifetime_usd: decimal_to_float(run_totals.fetch(:lifetime) + chat_lifetime_usd),
+        workflow_lifetime_usd: decimal_to_float(run_totals.fetch(:lifetime)),
+        chat_lifetime_usd: decimal_to_float(chat_lifetime_usd),
         average_job_30d_usd: average_cost_per_job(30.days.ago.to_date, today),
         average_merged_pr_30d_usd: average_cost_per_merged_pr(30.days.ago.to_date, today)
       }
+    end
+
+    def run_cost_totals
+      @run_cost_totals ||= {
+        week: runs_in_window(today.beginning_of_week, today).sum(:cost_usd),
+        month: runs_in_window(today.beginning_of_month, today).sum(:cost_usd),
+        lifetime: provider_scoped_runs.sum(:cost_usd)
+      }
+    end
+
+    def chat_lifetime_cost
+      @chat_lifetime_cost ||= provider_scoped_chat_sessions.sum(:cumulative_cost_usd)
     end
 
     def scoped_runs
