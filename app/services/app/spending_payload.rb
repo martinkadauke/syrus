@@ -74,11 +74,15 @@ module App
     end
 
     def run_cost_totals
-      @run_cost_totals ||= {
-        week: runs_in_window(today.beginning_of_week, today).sum(:cost_usd),
-        month: runs_in_window(today.beginning_of_month, today).sum(:cost_usd),
-        lifetime: provider_scoped_runs.sum(:cost_usd)
-      }
+      @run_cost_totals ||= begin
+        week, month, lifetime = provider_scoped_runs.pick(
+          Arel.sql(cost_sum_between_sql(today.beginning_of_week.beginning_of_day, today.end_of_day)),
+          Arel.sql(cost_sum_between_sql(today.beginning_of_month.beginning_of_day, today.end_of_day)),
+          Arel.sql("COALESCE(SUM(runs.cost_usd), 0)")
+        )
+
+        { week: week || 0, month: month || 0, lifetime: lifetime || 0 }
+      end
     end
 
     def chat_lifetime_cost
@@ -330,6 +334,13 @@ module App
       else
         "date(runs.created_at)"
       end
+    end
+
+    def cost_sum_between_sql(first_time, last_time)
+      connection = ActiveRecord::Base.connection
+      start_sql = connection.quote(first_time)
+      end_sql = connection.quote(last_time)
+      "COALESCE(SUM(CASE WHEN runs.created_at BETWEEN #{start_sql} AND #{end_sql} THEN runs.cost_usd ELSE 0 END), 0)"
     end
 
     def parse_date(value)
