@@ -3,7 +3,7 @@ module SyrusDev
     include Syrus::Plugin::AdminPage
 
     def self.admin_pages
-      [
+      pages = [
         {
           id: "syrus_dev.performance",
           label: "Performance",
@@ -23,6 +23,9 @@ module SyrusDev
           order: 45
         }
       ]
+
+      pages.reject! { |page| page[:id] == "syrus_dev.operational_logs" } unless OperationalLogging.enabled_for_instance?
+      pages
     end
   end
 end
