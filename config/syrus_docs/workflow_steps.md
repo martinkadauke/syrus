@@ -8,7 +8,7 @@ Each Syrus workflow is a chain of steps. Steps are either **agentic** (invoke th
 
 Non-agentic. Runs the commands from `.syrus.yml` `prepare:` (or auto-detected from lockfiles) in the cloned workspace. Explicit commands hard-fail on error; auto-detected commands soft-fail with a warning so a wrong guess doesn't block the first run. Per-timeout: 10 minutes per command.
 
-Present in: `initial`, `pr_comment`, `chat_feedback`, `ci_failure`, `retry`, `auto_merge`, `external_pr_merge`, `merge_train`, `coding_handoff`.
+Present in: `initial`, `pr_comment`, `chat_feedback`, `ci_failure`, `retry`, `auto_merge`, `landing_validation`, `external_pr_merge`, `merge_train`, `coding_handoff`.
 
 ## Agentic implementation steps
 
@@ -90,6 +90,10 @@ Non-agentic. Runs a single grader command (e.g., `bin/rspec`). Required graders 
 Syrus does not mutate grader commands for specific test frameworks. If a command needs multiple formatters, coverage toggles, parallelization, or CI-only filtering, put that policy in `.syrus.yml` or a repository wrapper script such as `bin/rspec-fast`.
 
 When a grader defines a `.syrus.yml` `fast:` command, Syrus uses that alternate command in pass/fail-only validation contexts: `main_branch_repair`, `auto_merge`, `merge_train`, and implementation/feedback/coding grade-loop iterations after the first. If `fast:` is absent, the normal `run:` command is used.
+
+Speculative `landing_validation` workflows also use the `fast:` command because
+they are pass/fail-only landing gates. Their `when_files_changed` selection is
+computed against the predicted post-merge base, not the current `origin/main`.
 
 When a grader defines a `.syrus.yml` `ci:` command, Syrus uses it in `ci_failure` workflows so CI-only checks can run when the workflow is specifically repairing a failed CI signal. If `ci:` is absent, `ci_failure` workflows fall back to `run:`, not `fast:`. `main_grader` workflows also prefer `ci:` when it is configured, because main-branch health should match the checks that can fail in GitHub CI; for graders without `ci:`, `main_grader` falls back to `fast:` and then `run:`.
 
@@ -175,6 +179,15 @@ Non-agentic / Agentic / Non-agentic. Same as the single-PR rebase chain but oper
 ### mergeability_preflight
 
 Non-agentic. Refreshes GitHub mergeability, runs a local rebase preflight when GitHub is still computing, dispatches rebase workflows for conflicts, and short-circuits if a prior landing validation is still valid.
+
+### speculative_landing_build
+
+Non-agentic. Used only by the feature-gated `landing_validation` infrastructure
+workflow. It verifies the current landing workflow's local workspace is still at
+the predicted base commit, verifies the candidate PR head when known, fetches the
+predicted base from the source workspace, and performs a local `git rebase`
+without pushing. Conflicts or stale identities fail only the speculative
+workflow; the Job remains approved for the normal landing queue path.
 
 ### auto_merge
 

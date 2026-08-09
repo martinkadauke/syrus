@@ -61,6 +61,25 @@ Supervisor agent turns receive the `chat:admin` role with a constrained Supervis
 
 Initial event sources are existing notifications (`NotificationService`) for job failures, implemented Jobs, merged PRs, PR feedback completion, upstream PR closure, Epic completion, and main-branch health changes, plus `submit_insight` when an Agent Insight suggestion becomes available. Callers should pass stable `dedupe_key` values for poll-driven events; the service suppresses duplicate scoped events for the same target chat to prevent repeated poll loops from flooding admins.
 
+## landing_validation_prefetch
+
+**Category:** Operations
+
+Enables speculative landing validation for the next eligible same-repository
+Job in the landing queue. After the current `auto_merge` workflow's landing
+graders pass, Syrus may dispatch an infrastructure `landing_validation`
+workflow for the next ordinary owned-branch PR. That workflow rebases the next
+PR onto the predicted post-merge tree, runs the same fast landing graders, and
+records a reusable landing-validation artifact.
+
+Actual publication remains serialized: speculative validation never pushes,
+never runs `landing_fix`, never calls the GitHub merge API, and never moves the
+Job into `landing`. If the previous Job fails to land, or if the later real base
+tree/grader configuration/changed-file selection differs, Syrus discards the
+speculative result and the normal `auto_merge` workflow reruns graders. The flag
+defaults to off because it spends grader capacity ahead of the queue and may
+produce wasted work when the front Job fails.
+
 ## performance_logging
 
 **Category:** Operations

@@ -164,16 +164,20 @@ module Steps
         head_sha: head_sha,
         tree_sha: current_tree_sha,
         base_sha: base_sha,
+        base_tree_sha: landing_base_tree_sha,
         base_ref: base_ref,
         grader_fingerprint: workflow.artifact(GraderConclusionCache::ARTIFACT_FINGERPRINT_KEY),
-        changed_files_fingerprint: workflow.artifact("grade_plan_changed_files_fingerprint")
+        changed_files_fingerprint: workflow.artifact("grade_plan_changed_files_fingerprint"),
+        validation_source: landing_validation_source
       )
+      LandingValidationPrefetcher.after_landing_graders_passed(workflow: workflow) if workflow.trigger_kind == "auto_merge"
     rescue StandardError => e
       Rails.logger.warn("[GraderCollect] landing validation capture failed for Workflow ##{workflow.id}: #{e.class}: #{e.message}")
       nil
     end
 
     def landing_base_sha
+      return workflow.artifact("predicted_base_sha").presence if workflow.trigger_kind == "landing_validation"
       return job.mergeability_base_sha.presence if workflow.trigger_kind == "auto_merge"
       return workflow.artifact("merge_train_base_sha").presence if workflow.trigger_kind == "merge_train"
 
@@ -181,6 +185,7 @@ module Steps
     end
 
     def landing_base_ref
+      return workflow.artifact("predicted_base_ref").presence if workflow.trigger_kind == "landing_validation"
       return job.mergeability_base_ref.presence if workflow.trigger_kind == "auto_merge"
       return merge_train_base_ref if workflow.trigger_kind == "merge_train"
 
@@ -192,6 +197,16 @@ module Steps
       return nil if id.blank?
 
       MergeTrain.find_by(id: id)&.base_branch.presence
+    end
+
+    def landing_base_tree_sha
+      return workflow.artifact("predicted_base_tree_sha").presence if workflow.trigger_kind == "landing_validation"
+
+      nil
+    end
+
+    def landing_validation_source
+      workflow.trigger_kind == "landing_validation" ? "speculative_landing" : "graders"
     end
 
     def current_head_sha

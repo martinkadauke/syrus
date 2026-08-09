@@ -126,6 +126,7 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
       "agent_insights" => false,
       "chat_speech_to_text" => false,
       "coding_mode" => false,
+      "landing_validation_prefetch" => false,
       "local_mode" => false,
       "operational_log_indexing" => false,
       "performance_logging" => false,

@@ -112,6 +112,8 @@ class Step
                 repair_semantics: :publication),
       Entry.new(kind: "mergeability_preflight", handler: "MergeabilityPreflight", label: "Mergeability preflight", style: "bg-sky-100 text-sky-700", agentic: false,
                 repair_semantics: :deterministic_idempotent),
+      Entry.new(kind: "speculative_landing_build", handler: "SpeculativeLandingBuild", label: "Build speculative landing", style: "bg-emerald-100 text-emerald-700", agentic: false,
+                repair_semantics: :deterministic_idempotent),
       Entry.new(kind: "grade",              handler: "Grade",              label: "Grade",                      style: "bg-violet-100 text-violet-700", agentic: false,
                 fail_policy: :loop_iteration,
                 repair_semantics: :deterministic_idempotent,

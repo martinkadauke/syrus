@@ -66,11 +66,17 @@ module Steps
     private
 
     def changed_files
-      GitRunner.new.run("diff", "--name-only", "#{default_branch_ref}...HEAD", chdir: workspace.path.to_s)
+      GitRunner.new.run("diff", "--name-only", "#{changed_files_base_ref}...HEAD", chdir: workspace.path.to_s)
         .split("\n").map(&:strip).reject(&:empty?)
     rescue GitRunner::GitError => e
       log("[grader_fanout] warning: could not determine changed files: #{e.message}")
       []
+    end
+
+    def changed_files_base_ref
+      return workflow.artifact("predicted_base_sha").presence if workflow.trigger_kind == "landing_validation"
+
+      default_branch_ref
     end
 
     def files_match?(grader, changed_files)

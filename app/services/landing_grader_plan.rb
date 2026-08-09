@@ -1,6 +1,7 @@
 class LandingGraderPlan
   FAST_TRIGGER_KINDS = %w[
     auto_merge
+    landing_validation
     main_branch_repair
     merge_train
   ].freeze

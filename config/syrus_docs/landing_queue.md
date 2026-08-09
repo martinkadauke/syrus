@@ -59,6 +59,31 @@ grader fanout is designed and enabled separately.
 
 If graders fail, `landing_fix` (an agentic repair step) attempts a fix, and graders re-run. This loop repeats up to `grade_max_iterations` times.
 
+### Speculative landing validation
+
+When the `landing_validation_prefetch` feature flag is enabled, a successful
+`auto_merge` grader loop can warm the next ordinary same-repository landing
+candidate before the current Job actually merges. Syrus dispatches an
+infrastructure `landing_validation` workflow for the next eligible owned-branch
+PR. The workflow:
+
+- Clones the next PR branch.
+- Fetches the current landing workflow's local `HEAD` as the predicted future base.
+- Rebases the candidate onto that predicted base without pushing.
+- Runs the same fast landing graders without `landing_fix`.
+- Records a `LandingValidationCache` artifact with the predicted base SHA and base tree SHA.
+
+The real `auto_merge` workflow later reuses that validation only if the candidate
+head/tree, base ref, base tree, grader fingerprint, and changed-file fingerprint
+still match. A different base commit SHA is allowed only when its Git tree SHA is
+identical to the predicted tree, which covers GitHub rebase-merge producing a
+different commit object for the same contents. If any identity differs, the
+normal serialized landing workflow reruns graders.
+
+Speculative validation is not an additional landing lane. It never pushes,
+merges, or repairs; a failed speculative workflow leaves the Job approved and
+the normal landing queue path intact.
+
 ### push and auto_merge
 
 After graders pass, Syrus pushes any repair commits and calls the GitHub merge API. The merge method (merge, squash, or rebase) is configured per-repository.
@@ -95,6 +120,7 @@ Stores the result of a successful required-grader run as a workflow artifact:
   "head_sha": "abc123",
   "tree_sha": "tree789",
   "base_sha": "def456",
+  "base_tree_sha": "basetree123",
   "base_ref": "main",
   "grader_fingerprint": "grade-plan-sha256",
   "validation_source": "graders",
@@ -108,7 +134,11 @@ Later `auto_merge` or `merge_train` retries can skip re-validation when:
 - `clean_rebase_carry_forward`: a trusted clean rebase re-stamped the validation for the new head/base.
 - `same_tree`: the commit SHA differs, but the Git tree SHA matches the validated tree.
 
-All reuse requires the base ref/base SHA and required grader fingerprint to remain unchanged when those values are recorded. Stale validations older than seven days are rejected. Audit logs explain whether landing graders were skipped or rerun, including changed base, changed grader configuration, stale validation, and cache-miss reasons.
+All reuse requires the base ref and required grader fingerprint to remain unchanged when those values are recorded. Non-speculative validations also require the base SHA to remain unchanged. Stale validations older than seven days are rejected. Audit logs explain whether landing graders were skipped or rerun, including changed base, changed grader configuration, stale validation, and cache-miss reasons.
+
+Speculative validations may also record `base_tree_sha`. For those artifacts,
+later reuse accepts a changed `base_sha` only when `base_tree_sha` still matches,
+then continues checking grader and changed-file fingerprints normally.
 
 ## Dependency gating
 

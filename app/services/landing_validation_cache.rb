@@ -8,7 +8,7 @@ class LandingValidationCache
     def reusable? = reusable
   end
 
-  def self.record!(workflow:, head_sha:, base_sha:, base_ref:, tree_sha: nil, grader_fingerprint: nil, changed_files_fingerprint: nil, validation_source: "graders")
+  def self.record!(workflow:, head_sha:, base_sha:, base_ref:, tree_sha: nil, base_tree_sha: nil, grader_fingerprint: nil, changed_files_fingerprint: nil, validation_source: "graders")
     workflow.set_artifact!(
       ARTIFACT_KEY,
       {
@@ -16,6 +16,7 @@ class LandingValidationCache
         "head_sha" => head_sha.to_s.presence,
         "tree_sha" => tree_sha.to_s.presence,
         "base_sha" => base_sha.to_s.presence,
+        "base_tree_sha" => base_tree_sha.to_s.presence,
         "base_ref" => base_ref.to_s.presence,
         "grader_fingerprint" => grader_fingerprint.to_s.presence,
         "changed_files_fingerprint" => changed_files_fingerprint.to_s.presence,
@@ -29,7 +30,7 @@ class LandingValidationCache
     Digest::SHA256.hexdigest(JSON.generate(Array(files).map(&:to_s).sort))
   end
 
-  def self.decision_for_pr(job:, pr:, tree_sha: nil, grader_fingerprint: nil, changed_files_fingerprint: nil)
+  def self.decision_for_pr(job:, pr:, tree_sha: nil, base_tree_sha: nil, grader_fingerprint: nil, changed_files_fingerprint: nil)
     head_sha = MergeabilityRecorder.head_sha(pr)
     base_sha = MergeabilityRecorder.base_sha(pr)
     base_ref = MergeabilityRecorder.base_ref(pr)
@@ -39,6 +40,7 @@ class LandingValidationCache
       head_sha: head_sha,
       tree_sha: tree_sha,
       base_sha: base_sha,
+      base_tree_sha: base_tree_sha,
       base_ref: base_ref,
       grader_fingerprint: grader_fingerprint,
       changed_files_fingerprint: changed_files_fingerprint
@@ -53,7 +55,7 @@ class LandingValidationCache
     reusable_for?(job: job, head_sha: head_sha).reusable?
   end
 
-  def self.reusable_for?(job:, head_sha:, tree_sha: nil, base_sha: nil, base_ref: nil, grader_fingerprint: nil, changed_files_fingerprint: nil)
+  def self.reusable_for?(job:, head_sha:, tree_sha: nil, base_sha: nil, base_tree_sha: nil, base_ref: nil, grader_fingerprint: nil, changed_files_fingerprint: nil)
     return miss("current head SHA is blank") if head_sha.blank?
 
     artifacts = validation_artifacts(job)
@@ -67,6 +69,7 @@ class LandingValidationCache
         stale = stale_reason(
           artifact,
           base_sha: base_sha,
+          base_tree_sha: base_tree_sha,
           base_ref: base_ref,
           grader_fingerprint: grader_fingerprint,
           changed_files_fingerprint: changed_files_fingerprint,
@@ -82,6 +85,7 @@ class LandingValidationCache
         stale = stale_reason(
           artifact,
           base_sha: base_sha,
+          base_tree_sha: base_tree_sha,
           base_ref: base_ref,
           grader_fingerprint: grader_fingerprint,
           changed_files_fingerprint: changed_files_fingerprint
@@ -151,7 +155,7 @@ class LandingValidationCache
   end
   private_class_method :validation_artifacts
 
-  def self.stale_reason(artifact, base_sha:, base_ref:, grader_fingerprint:, changed_files_fingerprint:, allow_missing_base_identity: false)
+  def self.stale_reason(artifact, base_sha:, base_tree_sha:, base_ref:, grader_fingerprint:, changed_files_fingerprint:, allow_missing_base_identity: false)
     return "cached validation is older than #{MAX_AGE.inspect}" if stale_checked_at?(artifact)
 
     if base_ref.present? && artifact["base_ref"].blank? && !allow_missing_base_identity
@@ -166,7 +170,8 @@ class LandingValidationCache
       return "cached validation is missing base SHA"
     end
 
-    if base_sha.present? && artifact["base_sha"].present? && artifact["base_sha"] != base_sha
+    if base_sha.present? && artifact["base_sha"].present? && artifact["base_sha"] != base_sha &&
+        !(base_tree_sha.present? && artifact["base_tree_sha"].present? && artifact["base_tree_sha"] == base_tree_sha)
       return "base SHA changed from #{short(artifact["base_sha"])} to #{short(base_sha)}"
     end
 

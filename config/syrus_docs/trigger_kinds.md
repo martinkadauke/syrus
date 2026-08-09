@@ -72,6 +72,19 @@ Structurally like `retry`; treated identically in most code paths.
 
 Validates mergeability, re-runs required graders on the exact PR branch with each grader's `fast` command when configured, then merges. Landing does not run `coverage_analyze` because fast grader variants are pass/fail gates and do not produce the full coverage flow. Transient GitHub errors defer the Job back to `approved` for retry. Does not run `implement` — only landing validation and merge.
 
+## landing_validation
+
+**When it fires:** The `landing_validation_prefetch` feature flag is enabled and
+an `auto_merge` workflow's required landing graders pass while another ordinary
+same-repository Job is next in the queue.
+
+**Step chain:** `speculative_landing_build → prepare → grader_fanout → grader_collect`
+
+Infrastructure-only speculative prevalidation. It rebases the next PR onto the
+predicted post-merge tree from the current landing workflow and runs fast landing
+graders so the later real `auto_merge` may skip duplicate grader work. It never
+pushes, repairs, or merges, and failed/cancelled workflows do not fail the Job.
+
 ## external_pr_merge
 
 **When it fires:** An `external_pr` Job is approved through the landing queue.

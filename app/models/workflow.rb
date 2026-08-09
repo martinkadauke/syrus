@@ -527,7 +527,7 @@ class Workflow < ApplicationRecord
   # workflow→Job state propagation (propagate_*_to_job!) and the
   # new-workflow auto-retry path must NOT touch the Job for them.
   LANDING_TRIGGER_KINDS = %w[ auto_merge merge_train ].freeze
-  INFRASTRUCTURE_TRIGGER_KINDS = %w[ main_grader agent_insight ].freeze
+  INFRASTRUCTURE_TRIGGER_KINDS = %w[ main_grader agent_insight landing_validation ].freeze
 
   # Trigger kinds whose workflow template dispatches to the `:runs` queue —
   # the agent-invoking workflows subject to the global agent-concurrency cap

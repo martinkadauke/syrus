@@ -1,0 +1,76 @@
+require "rails_helper"
+
+RSpec.describe LandingValidationPrefetcher do
+  let(:user) { Factories.user(github_token: "ghp_test") }
+  let(:repository) { Factories.repository(user: user, auto_merge_enabled: true) }
+  let(:source_job) { approved_job(issue_number: 1, approved_at: 2.minutes.ago, state: "landing") }
+  let(:candidate) { approved_job(issue_number: 2, approved_at: 1.minute.ago) }
+  let(:source_path) { Pathname.new(Dir.mktmpdir("landing-validation-source")) }
+  let(:workflow) do
+    Workflows::AutoMerge.instantiate(job: source_job).tap do |wf|
+      wf.update!(state: "running")
+    end
+  end
+
+  def approved_job(issue_number:, approved_at:, state: "approved")
+    Factories.job_record(
+      user: user,
+      repository: repository,
+      issue_number: issue_number,
+      pr_number: issue_number,
+      state: state,
+      approved_at: approved_at
+    )
+  end
+
+  def pr(head_sha, base_ref)
+    double("pr", head: double(sha: head_sha), base: double(sha: "base-sha", ref: base_ref))
+  end
+
+  before do
+    Feature.find_or_create_by!(slug: "landing_validation_prefetch") do |feature|
+      feature.category = "Operations"
+      feature.name = "Landing validation prefetch"
+      feature.enabled = false
+    end.update!(enabled: false)
+    candidate
+    allow(WorkflowWorkspace).to receive(:path_for).and_call_original
+    allow(WorkflowWorkspace).to receive(:path_for).with(workflow).and_return(source_path)
+    allow(GithubClient).to receive(:for).and_return(double("GithubClient", pull_request: pr("candidate-head", "main")))
+    allow(StepDispatcher).to receive(:start_workflow)
+  end
+
+  after do
+    FileUtils.rm_rf(source_path.to_s)
+  end
+
+  it "does not dispatch while the feature is disabled" do
+    expect {
+      described_class.after_landing_graders_passed(workflow: workflow)
+    }.not_to change { Workflow.where(trigger_kind: "landing_validation").count }
+  end
+
+  it "dispatches a landing_validation workflow for the next eligible job when enabled" do
+    Feature.find_by!(slug: "landing_validation_prefetch").update!(enabled: true)
+    git = instance_double(GitRunner)
+    allow(GitRunner).to receive(:new).and_return(git)
+    allow(git).to receive(:run).with("rev-parse", "HEAD", chdir: source_path.to_s).and_return("source-head\n")
+    allow(git).to receive(:run).with("rev-parse", "HEAD^{tree}", chdir: source_path.to_s).and_return("source-tree\n")
+
+    expect {
+      described_class.after_landing_graders_passed(workflow: workflow)
+    }.to change { Workflow.where(trigger_kind: "landing_validation", job: candidate).count }.by(1)
+
+    prefetch = Workflow.where(trigger_kind: "landing_validation", job: candidate).last
+    expect(prefetch.artifacts).to include(
+      "prefetch_source_workflow_id" => workflow.id,
+      "prefetch_source_job_id" => source_job.id,
+      "prefetch_source_head_sha" => "source-head",
+      "prefetch_source_tree_sha" => "source-tree",
+      "predicted_base_sha" => "source-head",
+      "predicted_base_tree_sha" => "source-tree",
+      "prefetch_candidate_head_sha" => "candidate-head"
+    )
+    expect(StepDispatcher).to have_received(:start_workflow).with(prefetch)
+  end
+end

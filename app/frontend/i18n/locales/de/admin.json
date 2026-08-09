@@ -175,6 +175,10 @@
       "agent_insights": {
         "name": "Agenten-Einblicke",
         "description": "Aktiviert Agenten-Einblick-Analysejobs, die aktuelle Workflow-Ausführungen untersuchen und Verbesserungsvorschläge aufzeigen."
+      },
+      "landing_validation_prefetch": {
+        "name": "Landing-Validierungs-Prefetch",
+        "description": "Führt spekulativ Landing-Grader für den nächsten geeigneten Job desselben Repositorys aus, nachdem die aktuellen Landing-Grader bestanden haben. Der eigentliche Merge bleibt serialisiert."
       }
     }
   },

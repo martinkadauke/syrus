@@ -136,6 +136,42 @@ RSpec.describe Steps::GraderFanout do
     expect(details["ci_variant"]).to be false
   end
 
+  it "uses the fast grader command for speculative landing validations" do
+    workflow.update!(trigger_kind: "landing_validation")
+    write_config(<<~YAML)
+      grade:
+        - name: rspec
+          run: bin/rspec
+          fast: COVERAGE=false bin/rspec
+    YAML
+
+    handler.call
+
+    details = workflow.steps.find_by!(kind: "grader").details
+    expect(details["command"]).to eq("COVERAGE=false bin/rspec")
+    expect(details["command_variant"]).to eq("fast")
+  end
+
+  it "computes changed files from the predicted base for speculative landing validations" do
+    workflow.update!(trigger_kind: "landing_validation")
+    workflow.set_artifact!("predicted_base_sha", "predicted-base")
+    write_config(<<~YAML)
+      grade:
+        - name: rspec
+          run: bin/rspec
+          when_files_changed:
+            - app/**/*.rb
+    YAML
+
+    expect(@git).to receive(:run)
+      .with("diff", "--name-only", "predicted-base...HEAD", chdir: @ws_path.to_s)
+      .and_return("app/models/job.rb\n")
+
+    handler.call
+
+    expect(workflow.steps.where(kind: "grader").count).to eq(1)
+  end
+
   it "uses the CI grader command for CI failure validations" do
     workflow.update!(trigger_kind: "ci_failure")
     write_config(<<~YAML)

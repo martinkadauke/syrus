@@ -175,6 +175,10 @@
       "agent_insights": {
         "name": "Agent Insights",
         "description": "Enables agent insight analysis jobs that inspect recent workflow runs and surface improvement suggestions."
+      },
+      "landing_validation_prefetch": {
+        "name": "Landing validation prefetch",
+        "description": "Speculatively runs landing graders for the next eligible same-repository Job after the current Job's landing graders pass. Actual merge remains serialized."
       }
     }
   },

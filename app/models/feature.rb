@@ -62,6 +62,10 @@ class Feature < ApplicationRecord
     enabled?(:admin_supervisor_chat)
   end
 
+  def self.landing_validation_prefetch_enabled?
+    enabled?(:landing_validation_prefetch)
+  end
+
   private
 
   def clear_request_enabled_cache

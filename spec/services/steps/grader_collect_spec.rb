@@ -143,6 +143,33 @@ RSpec.describe Steps::GraderCollect do
     )
   end
 
+  it "notifies the landing validation prefetcher after auto_merge graders pass" do
+    job.update!(state: "landing", mergeability_base_sha: "base123", mergeability_base_ref: "main")
+    workflow.update!(trigger_kind: "auto_merge")
+    allow(LandingValidationPrefetcher).to receive(:after_landing_graders_passed)
+
+    handler.call
+
+    expect(LandingValidationPrefetcher).to have_received(:after_landing_graders_passed).with(workflow: workflow)
+  end
+
+  it "records speculative landing base tree semantics on the validation artifact" do
+    workflow.update!(trigger_kind: "landing_validation")
+    workflow.set_artifact!("predicted_base_sha", "predicted-base")
+    workflow.set_artifact!("predicted_base_tree_sha", "predicted-tree")
+    workflow.set_artifact!("predicted_base_ref", "main")
+
+    handler.call
+
+    expect(workflow.reload.artifact(LandingValidationCache::ARTIFACT_KEY)).to include(
+      "head_sha" => "abc123",
+      "base_sha" => "predicted-base",
+      "base_tree_sha" => "predicted-tree",
+      "base_ref" => "main",
+      "validation_source" => "speculative_landing"
+    )
+  end
+
   it "records merge_train integration branch base semantics on the landing validation artifact" do
     epic = Factories.epic(user: job.user, repository: job.repository)
     train = MergeTrain.create!(epic: epic, repository: job.repository, base_branch: "master")

@@ -62,3 +62,10 @@ features:
     description: "Enables one durable pinned Supervisor chat per admin user."
     description_i18n_key: "features.slugs.admin_supervisor_chat.description"
     default: false
+  - slug: landing_validation_prefetch
+    category: "Operations"
+    name: "Landing validation prefetch"
+    name_i18n_key: "features.slugs.landing_validation_prefetch.name"
+    description: "Speculatively runs landing graders for the next eligible same-repository Job after the current Job's landing graders pass. Actual merge remains serialized."
+    description_i18n_key: "features.slugs.landing_validation_prefetch.description"
+    default: false

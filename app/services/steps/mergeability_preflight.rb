@@ -81,6 +81,7 @@ module Steps
         job: job,
         pr: pr,
         tree_sha: current_tree_sha(client, pr_repo, pr),
+        base_tree_sha: current_base_tree_sha(client, pr_repo, pr),
         grader_fingerprint: current_grader_fingerprint,
         changed_files_fingerprint: current_changed_files_fingerprint(pr)
       )
@@ -163,6 +164,13 @@ module Steps
       client.commit_tree_sha(pr_repo.slug, MergeabilityRecorder.head_sha(pr)).to_s.presence
     rescue StandardError => e
       log("auto_merge: could not read current tree SHA for landing validation cache: #{e.message}", kind: "system")
+      nil
+    end
+
+    def current_base_tree_sha(client, pr_repo, pr)
+      client.commit_tree_sha(pr_repo.slug, MergeabilityRecorder.base_sha(pr)).to_s.presence
+    rescue StandardError => e
+      log("auto_merge: could not read current base tree SHA for landing validation cache: #{e.message}", kind: "system")
       nil
     end
 

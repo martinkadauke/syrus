@@ -27,6 +27,7 @@ RSpec.describe LandingValidationCache do
           head_sha: "abc123",
           tree_sha: "tree123",
           base_sha: "def456",
+          base_tree_sha: "base-tree123",
           base_ref: "main",
           grader_fingerprint: "grade-fp",
           changed_files_fingerprint: changed_files_fingerprint
@@ -38,6 +39,7 @@ RSpec.describe LandingValidationCache do
           "head_sha" => "abc123",
           "tree_sha" => "tree123",
           "base_sha" => "def456",
+          "base_tree_sha" => "base-tree123",
           "base_ref" => "main",
           "grader_fingerprint" => "grade-fp",
           "changed_files_fingerprint" => changed_files_fingerprint,
@@ -194,6 +196,32 @@ RSpec.describe LandingValidationCache do
 
       expect(decision).not_to be_reusable
       expect(decision.reason).to include("base SHA changed")
+    end
+
+    it "accepts reuse when the base SHA changed but the base tree matches" do
+      job = make_job
+      make_workflow(job, artifacts: { "landing_validation" => {
+        "required_graders_passed" => true,
+        "head_sha" => "speculative-head",
+        "tree_sha" => "tree",
+        "base_sha" => "predicted-base",
+        "base_tree_sha" => "same-base-tree",
+        "base_ref" => "main",
+        "grader_fingerprint" => "fp"
+      } })
+
+      decision = described_class.reusable_for?(
+        job: job,
+        head_sha: "speculative-head",
+        tree_sha: "tree",
+        base_sha: "actual-base",
+        base_tree_sha: "same-base-tree",
+        base_ref: "main",
+        grader_fingerprint: "fp"
+      )
+
+      expect(decision).to be_reusable
+      expect(decision.reason).to eq("head/base/grader configuration match")
     end
 
     it "labels clean rebase carry-forward hits explicitly" do
