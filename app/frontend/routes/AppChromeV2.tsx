@@ -434,6 +434,8 @@ function AdminSubnav({ featureFlags, normalizedPath, prefix }: { featureFlags: R
   })
   const adminNavItems = [
     { label: t("admin:nav_overview"), to: "/admin", paths: ["/admin"] },
+    { label: t("admin:nav_resource_admission"), to: "/admin/resource_admission", paths: ["/admin/resource_admission"] },
+    { label: t("admin:nav_scoped_chat_events"), to: "/admin/scoped_chat_events", paths: ["/admin/scoped_chat_events"] },
     { label: t("admin:nav_queue"), to: "/admin/queue", paths: ["/admin/queue"] },
     { label: t("admin:nav_stuck"), to: "/admin/stuck", paths: ["/admin/stuck"] },
     { label: t("admin:nav_processes"), to: "/admin/processes", paths: ["/admin/processes"] },

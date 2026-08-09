@@ -20,8 +20,48 @@ const emptyResourceAdmission: ResourceAdmissionDiagnosticsPayload = {
 }
 
 export function AdminOverview() {
+  return <AdminOverviewPage />
+}
+
+export function AdminResourceAdmission() {
+  return (
+    <AdminOverviewPage
+      page="resource_admission"
+      titleKey="page_title_resource_admission"
+      headingKey="overview.resource_admission_section"
+      ariaKey="overview.aria_resource_admission"
+      renderContent={(data, prefix) => <ResourceAdmissionSection data={data.resource_admission ?? emptyResourceAdmission} prefix={prefix} />}
+    />
+  )
+}
+
+export function AdminScopedChatEvents() {
+  return (
+    <AdminOverviewPage
+      page="scoped_chat_events"
+      titleKey="page_title_scoped_chat_events"
+      headingKey="overview.chat_events_section"
+      ariaKey="overview.aria_chat_events"
+      renderContent={(data, prefix) => <ChatScopedEventsSection data={data.chat_scoped_events} prefix={prefix} />}
+    />
+  )
+}
+
+function AdminOverviewPage({
+  page = "overview",
+  titleKey = "title",
+  headingKey = "overview.heading",
+  ariaKey = "overview.aria_overview",
+  renderContent
+}: {
+  page?: "overview" | "resource_admission" | "scoped_chat_events"
+  titleKey?: string
+  headingKey?: string
+  ariaKey?: string
+  renderContent?: (data: AdminOverviewPayload, prefix: string) => ReactNode
+}) {
   const { t } = useT("admin")
-  usePageTitle(t("title"))
+  usePageTitle(t(titleKey))
   const location = useLocation()
   const prefix = routePrefix(location.pathname)
   const overview = useQuery({
@@ -42,49 +82,32 @@ export function AdminOverview() {
   }
 
   const data = overview.data
-  const resourceAdmission = data.resource_admission ?? emptyResourceAdmission
   const captureRate = data.agent_session_capture_rate.rate
   const overdueRecurring = data.recurring.overdue || []
   const dataRoot = data.data_root_disk_usage
   const workerHealthTone = aggregateWorkerHealthTone(data.workers, data.worker_health)
+  const content = renderContent?.(data, prefix)
 
   return (
-    <main aria-label={t("overview.aria_overview")} className="mx-auto max-w-6xl space-y-6 p-6">
+    <main aria-label={t(ariaKey)} className="mx-auto max-w-6xl space-y-6 p-6">
       <header className="border-b border-gray-200 dark:border-gray-700 pb-4">
         <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{t("section_label")}</p>
-        <h1 className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{t("overview.heading")}</h1>
+        <h1 className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{t(headingKey)}</h1>
       </header>
 
-      <section aria-label={t("overview.aria_metrics")} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric title={t("overview.active_runs")} value={data.active_runs.total} context={triggerContext(data.active_runs.by_trigger, t("overview.all_idle"))} href={withRoutePrefix("/admin/queue/active", prefix)} />
-        <Metric title={t("overview.queued_runs")} value={data.queued_runs.total} context={data.queued_runs.total > 0 ? t("overview.waiting_for_worker") : t("overview.queue_empty")} href={withRoutePrefix("/admin/queue/pending", prefix)} />
-        <Metric title={t("overview.workers")} value={data.workers.unreachable ? "?" : data.workers.total ?? 0} context={workersContext(data.workers, t, data.worker_health)} href={withRoutePrefix("/admin/queue/workers", prefix)} tone={workerHealthTone} />
-        <Metric title={t("overview.recurring_jobs")} value={overdueRecurring.length} context={overdueRecurring.length > 0 ? overdueRecurring.map((task) => task.key).join(", ") : t("overview.all_firing")} href={withRoutePrefix("/admin/queue/recurring", prefix)} tone={overdueRecurring.length > 0 ? "alarm" : "ok"} />
-        <Metric title={t("overview.failed_runs")} value={data.recent_failures_24h.total} context={triggerContext(data.recent_failures_24h.by_trigger, t("overview.no_failures"))} href={withRoutePrefix("/admin/queue/failed", prefix)} tone={data.recent_failures_24h.total > 0 ? "warn" : "ok"} />
-        <Metric title={t("overview.provider_circuits")} value={data.provider_circuits.length} context={data.provider_circuits.length > 0 ? data.provider_circuits.map((circuit) => circuit.provider).join(", ") : t("overview.all_closed")} tone={data.provider_circuits.length > 0 ? "alarm" : "ok"} />
-        <Metric title={t("overview.github_rate_limits")} value={data.github_rate_limits.length} context={data.github_rate_limits.length > 0 ? data.github_rate_limits.map((user) => user.email).join(", ") : t("overview.all_healthy")} tone={data.github_rate_limits.length > 0 ? "warn" : "ok"} />
-        <Metric title={t("overview.agent_session_capture")} value={captureRate == null ? "-" : `${Math.round(captureRate * 100)}%`} context={t("overview.capture_of", { captured: data.agent_session_capture_rate.captured, total: data.agent_session_capture_rate.total })} tone={captureRate == null || captureRate >= 0.95 ? "ok" : "warn"} />
-        <Metric title={t("overview.data_root_disk")} value={dataRoot ? `${dataRoot.used_percent}%` : "?"} context={dataRoot ? `${t("overview.disk_free", { free: formatBytes(dataRoot.available_bytes), path: dataRoot.path })}${dataRoot.hostname ? ` (${dataRoot.hostname})` : ""}` : t("overview.unavailable")} tone={dataRootTone(dataRoot?.level)} />
-        <Metric title={t("overview.stuck_things")} value={data.stuck_pagination.total} context={data.stuck_snapshot?.stale ? t("overview.stuck_snapshot_stale") : data.stuck_pagination.total > 0 ? t("overview.needs_attention") : t("overview.nothing_flagged")} href={withRoutePrefix("/admin/stuck", prefix)} tone={data.stuck_snapshot?.stale ? "idle" : data.stuck.some((item) => item.severity === "alarm") ? "alarm" : data.stuck_pagination.total > 0 ? "warn" : "ok"} />
-      </section>
-
-      <ResourceAdmissionSection data={resourceAdmission} prefix={prefix} />
-
-      {data.stuck.length > 0 ? (
-        <section aria-label={t("overview.aria_stuck")} className="overflow-hidden rounded border border-amber-200 dark:border-amber-800 bg-white dark:bg-gray-900">
-          <div className="bg-amber-50 dark:bg-amber-950/40 px-4 py-2 text-xs font-medium uppercase text-amber-700 dark:text-amber-300">{t("overview.stuck_section")}</div>
-          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-            {data.stuck.map((item) => (
-              <li className="flex items-center justify-between gap-3 px-4 py-3 text-sm" key={`${item.kind}-${item.run_id}-${item.workflow_id}`}>
-                <StuckDetail item={item} prefix={prefix} />
-                <span className="rounded bg-gray-100 dark:bg-gray-800 px-2 py-0.5 font-mono text-xs text-gray-600 dark:text-gray-300">{item.age_label}</span>
-              </li>
-            ))}
-          </ul>
+      {page === "overview" ? (
+        <section aria-label={t("overview.aria_metrics")} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Metric title={t("overview.active_runs")} value={data.active_runs.total} context={triggerContext(data.active_runs.by_trigger, t("overview.all_idle"))} href={withRoutePrefix("/admin/queue/active", prefix)} />
+          <Metric title={t("overview.queued_runs")} value={data.queued_runs.total} context={data.queued_runs.total > 0 ? t("overview.waiting_for_worker") : t("overview.queue_empty")} href={withRoutePrefix("/admin/queue/pending", prefix)} />
+          <Metric title={t("overview.workers")} value={data.workers.unreachable ? "?" : data.workers.total ?? 0} context={workersContext(data.workers, t, data.worker_health)} href={withRoutePrefix("/admin/queue/workers", prefix)} tone={workerHealthTone} />
+          <Metric title={t("overview.recurring_jobs")} value={overdueRecurring.length} context={overdueRecurring.length > 0 ? overdueRecurring.map((task) => task.key).join(", ") : t("overview.all_firing")} href={withRoutePrefix("/admin/queue/recurring", prefix)} tone={overdueRecurring.length > 0 ? "alarm" : "ok"} />
+          <Metric title={t("overview.failed_runs")} value={data.recent_failures_24h.total} context={triggerContext(data.recent_failures_24h.by_trigger, t("overview.no_failures"))} href={withRoutePrefix("/admin/queue/failed", prefix)} tone={data.recent_failures_24h.total > 0 ? "warn" : "ok"} />
+          <Metric title={t("overview.provider_circuits")} value={data.provider_circuits.length} context={data.provider_circuits.length > 0 ? data.provider_circuits.map((circuit) => circuit.provider).join(", ") : t("overview.all_closed")} tone={data.provider_circuits.length > 0 ? "alarm" : "ok"} />
+          <Metric title={t("overview.github_rate_limits")} value={data.github_rate_limits.length} context={data.github_rate_limits.length > 0 ? data.github_rate_limits.map((user) => user.email).join(", ") : t("overview.all_healthy")} tone={data.github_rate_limits.length > 0 ? "warn" : "ok"} />
+          <Metric title={t("overview.agent_session_capture")} value={captureRate == null ? "-" : `${Math.round(captureRate * 100)}%`} context={t("overview.capture_of", { captured: data.agent_session_capture_rate.captured, total: data.agent_session_capture_rate.total })} tone={captureRate == null || captureRate >= 0.95 ? "ok" : "warn"} />
+          <Metric title={t("overview.data_root_disk")} value={dataRoot ? `${dataRoot.used_percent}%` : "?"} context={dataRoot ? `${t("overview.disk_free", { free: formatBytes(dataRoot.available_bytes), path: dataRoot.path })}${dataRoot.hostname ? ` (${dataRoot.hostname})` : ""}` : t("overview.unavailable")} tone={dataRootTone(dataRoot?.level)} />
         </section>
-      ) : null}
-
-      <ChatScopedEventsSection data={data.chat_scoped_events} prefix={prefix} />
+      ) : content}
     </main>
   )
 }
@@ -213,17 +236,6 @@ function ResourceLink({ href, prefix = "", children }: { href?: string; prefix?:
   if (!href) return <span className="font-medium text-gray-900 dark:text-gray-100">{children}</span>
 
   return <Link className="font-medium text-blue-600 underline hover:no-underline dark:text-blue-300" to={withRoutePrefix(href, prefix)}>{children}</Link>
-}
-
-function StuckDetail({ item, prefix }: { item: AdminOverviewPayload["stuck"][number]; prefix: string }) {
-  const href = item.workflow_path || item.job_path
-  if (!href) return <span className="text-gray-800 dark:text-gray-100">{item.detail}</span>
-
-  return (
-    <Link className="text-blue-600 dark:text-blue-300 underline hover:no-underline" to={withRoutePrefix(href, prefix)}>
-      {item.detail}
-    </Link>
-  )
 }
 
 function Metric({

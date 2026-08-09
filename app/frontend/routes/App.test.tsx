@@ -2678,6 +2678,8 @@ describe("App", () => {
       expect(screen.getByRole("main", { name: "Admin overview" })).toBeInTheDocument()
       const adminNav = screen.getByRole("navigation", { name: "Admin" })
       expect(within(adminNav).getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/app-shell/admin")
+      expect(within(adminNav).getByRole("link", { name: "Resource Admission" })).toHaveAttribute("href", "/app-shell/admin/resource_admission")
+      expect(within(adminNav).getByRole("link", { name: "Scoped Chat Events" })).toHaveAttribute("href", "/app-shell/admin/scoped_chat_events")
       expect(within(adminNav).getByRole("link", { name: "Stuck" })).toHaveAttribute("href", "/app-shell/admin/stuck")
       expect(within(adminNav).getByRole("link", { name: "Users" })).toHaveAttribute("href", "/app-shell/admin/users")
       expect(within(adminNav).getByRole("link", { name: "Queue" })).toHaveAttribute("href", "/app-shell/admin/queue")
@@ -2688,20 +2690,120 @@ describe("App", () => {
       expect(within(adminNav).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/app-shell/settings/edit")
       expect(within(adminNav).getByRole("link", { name: "Invitations" })).toHaveAttribute("href", "/app-shell/invitations")
       expect(screen.getByRole("link", { name: /Active runs/ })).toHaveAttribute("href", "/app-shell/admin/queue/active")
-      expect(screen.getByRole("link", { name: /Stuck things/ })).toHaveAttribute("href", "/app-shell/admin/stuck")
-      expect(screen.getByRole("link", { name: "Run #4 silent for 10m" })).toHaveAttribute("href", "/app-shell/jobs/1?tab=workflows#workflow-2")
       expect(screen.getByText("Data root disk")).toBeInTheDocument()
       expect(screen.getByText("90%")).toBeInTheDocument()
-      expect(screen.getByRole("region", { name: "Scoped chat event evaluator decisions" })).toBeInTheDocument()
-      expect(screen.getByText("no_op: 1")).toBeInTheDocument()
-      expect(screen.getByText("respond: 1")).toBeInTheDocument()
-      expect(screen.getByText("JSON::ParserError: evaluator did not return JSON")).toBeInTheDocument()
-      expect(screen.getAllByRole("link", { name: "JOB-12" })[0]).toHaveAttribute("href", "/app-shell/jobs/12")
+      expect(screen.queryByRole("link", { name: /Stuck things/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole("link", { name: "Run #4 silent for 10m" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("region", { name: "Scoped chat event evaluator decisions" })).not.toBeInTheDocument()
+      expect(screen.queryByText("JSON::ParserError: evaluator did not return JSON")).not.toBeInTheDocument()
       expect(screen.getByRole("link", { name: /Workers/ })).toHaveClass("border-red-200")
       expect(screen.getByText("2")).toBeInTheDocument()
     } finally {
       script.remove()
     }
+  })
+
+  it("renders admin resource admission and scoped chat event subpages", async () => {
+    const payload = {
+      active_runs: { total: 0, by_trigger: {} },
+      queued_runs: { total: 0 },
+      recent_failures_24h: { total: 0, by_trigger: {} },
+      github_rate_limits: [],
+      github_api_blocked_users: [],
+      provider_circuits: [],
+      agent_session_capture_rate: { total: 0, captured: 0, rate: null },
+      data_root_disk_usage: null,
+      resource_admission: {
+        generated_at: "2026-06-05T12:00:00Z",
+        windows: { recent_hours: 24, delayed_hours: 6 },
+        active_consumers: [],
+        recent_top_consumers: [],
+        delayed_work: [
+          {
+            workflow_id: 12,
+            workflow_path: "/jobs/7?tab=workflows#workflow-12",
+            reason: "workflow_admission_budget",
+            action: "delay",
+            next_check_at: "2026-06-05T12:05:00Z",
+            estimated_remaining_cost: 2.5,
+            job: { id: 7, slug: "JOB-7", path: "/jobs/7" }
+          }
+        ],
+        low_confidence_profiles: [],
+        admission_overrides: []
+      },
+      chat_scoped_events: {
+        window_hours: 24,
+        total: 1,
+        by_state: { completed: 1 },
+        by_decision: { no_op: 0, respond: 1, act: 0 },
+        failures: [],
+        recent: [
+          {
+            id: 9,
+            source_kind: "workflow_failed",
+            summary: "Workflow failed",
+            severity: "critical",
+            delivery_state: "delivered",
+            evaluator_state: "completed",
+            decision: "respond",
+            reason: "operator should know",
+            created_at: "2026-06-05T11:01:00Z",
+            chat: { id: 4, title: "Supervisor", path: "/chats/4" },
+            repository: { id: 2, slug: "acme/widgets" },
+            job: { id: 12, slug: "JOB-12", path: "/jobs/12" }
+          }
+        ]
+      },
+      workers: { total: 0, stale: 0 },
+      worker_health: {
+        generated_at: "2026-06-05T12:00:00Z",
+        range: { since: "2026-06-04T12:00:00Z", until: "2026-06-05T12:00:00Z" },
+        current_sample_window_seconds: 900,
+        minute_bucket: { granularity_seconds: 60, window_minutes: 60, max_window_minutes: 1440 },
+        current: [],
+        hosts: []
+      },
+      recurring: { overdue: [] },
+      stuck_pagination: { page: 1, per_page: 50, total: 0, total_pages: 1, first_item: 0, last_item: 0, previous_path: null, next_path: null },
+      stuck: []
+    }
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats") {
+        return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const first = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/app-shell/admin/resource_admission"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Resource admission diagnostics" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Resource admission", level: 1 })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "JOB-7" })).toHaveAttribute("href", "/app-shell/jobs/7?tab=workflows#workflow-12")
+
+    first.unmount()
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/app-shell/admin/scoped_chat_events"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Scoped chat event evaluator decisions" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Scoped chat events", level: 1 })).toBeInTheDocument()
+    expect(screen.getByText("respond: 1")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "JOB-12" })).toHaveAttribute("href", "/app-shell/jobs/12")
   })
 
   it("renders the migrated /admin route from the same admin overview component", async () => {
@@ -13308,14 +13410,11 @@ describe("App", () => {
     expect(await screen.findByText("Read")).toBeInTheDocument()
     expect(screen.getAllByText(/app\/models\/chat\.rb/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/spec\/rails_helper\.rb/).length).toBeGreaterThan(0)
-
-    // Tool result bodies are deferred until the ToolGroup is expanded.
-    const readDetails = screen.getByText("Read").closest("details")
-    if (readDetails) {
-      readDetails.open = true
-      fireEvent(readDetails, new Event("toggle"))
-    }
-
+    const railsHelperDetails = screen.getAllByText(/spec\/rails_helper\.rb/)[0]?.closest("details")
+    expect(railsHelperDetails).not.toBeNull()
+    if (!railsHelperDetails) return
+    railsHelperDetails.open = true
+    fireEvent(railsHelperDetails, new Event("toggle"))
     expect(screen.getByText("# RSpec config")).toHaveClass("text-gray-400")
     expect(screen.getAllByText("do")[0]).toHaveClass("font-semibold", "text-blue-700")
     expect(screen.getByText(":rspec")).toHaveClass("text-violet-700")
@@ -13325,13 +13424,11 @@ describe("App", () => {
     expect(screen.getAllByText(/bin\/rspec spec\/models\/job_spec\.rb/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/rg perform app\/jobs/).length).toBeGreaterThan(0)
     expect(screen.getByText("9 paths")).toBeInTheDocument()
-
-    const globDetails = screen.getByText("Glob").closest("details")
-    if (globDetails) {
-      globDetails.open = true
-      fireEvent(globDetails, new Event("toggle"))
-    }
-
+    const globDetails = screen.getByText("9 paths").closest("details")
+    expect(globDetails).not.toBeNull()
+    if (!globDetails) return
+    globDetails.open = true
+    fireEvent(globDetails, new Event("toggle"))
     expect(screen.getByText(/spec\/services\/chat_workspace_spec\.rb/)).toBeInTheDocument()
     expect(screen.queryByText(/\/syrus-home\/\.syrus\/chat-workspaces/)).not.toBeInTheDocument()
     expect(screen.queryByText(/\/syrus-home\/\.syrus\/workflows/)).not.toBeInTheDocument()

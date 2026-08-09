@@ -16,7 +16,7 @@ import { AppChromeV2 } from "./AppChromeV2"
 import { AdminGithubAppConfirm, AdminGithubAppRegister } from "./AdminGithubApp"
 import { AdminInvitations } from "./AdminInvitations"
 import { AdminInstallations } from "./AdminInstallations"
-import { AdminOverview } from "./AdminOverview"
+import { AdminOverview, AdminResourceAdmission, AdminScopedChatEvents } from "./AdminOverview"
 import { AdminPlugins } from "./AdminPlugins"
 import { AdminQueueRoute } from "./AdminQueue"
 import { AdminProcessDetail, AdminProcessesIndex } from "./AdminProcesses"
@@ -78,6 +78,8 @@ const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/notifications", element: <NotificationsRoute /> },
   { path: "/setup", element: <SetupRedirect /> },
   { path: "/admin", element: <AdminOverview /> },
+  { path: "/admin/resource_admission", element: <AdminResourceAdmission /> },
+  { path: "/admin/scoped_chat_events", element: <AdminScopedChatEvents /> },
   { path: "/admin/queue", element: <AdminQueueRoute /> },
   { path: "/admin/queue/:tab", element: <AdminQueueRoute /> },
   { path: "/admin/stuck", element: <AdminStuck /> },

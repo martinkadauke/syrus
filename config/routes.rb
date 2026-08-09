@@ -511,6 +511,8 @@ Rails.application.routes.draw do
   get "jobs/:id/source", to: "spa#show", as: :source_job, constraints: { id: /[a-zA-Z0-9_-]+/ }
   get "jobs/:id", to: "spa#show", as: :job, constraints: { id: /[a-zA-Z0-9_-]+/ }
   get "admin", to: "spa#show", as: :admin_root
+  get "admin/resource_admission", to: "spa#show", as: :admin_resource_admission
+  get "admin/scoped_chat_events", to: "spa#show", as: :admin_scoped_chat_events
   get "admin/queue", to: "spa#show", as: :admin_queue_root
   get "admin/queue/:tab", to: "spa#show", as: :admin_queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
   get "admin/stuck", to: "spa#show", as: :admin_stuck
