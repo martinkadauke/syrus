@@ -53,6 +53,8 @@ export function AdminOperationalLogs() {
   )
 }
 
+export default AdminOperationalLogs
+
 function OperationalLogFilters({ onNavigate, search }: { onNavigate: (params: URLSearchParams) => void; search: string }) {
   const { t } = useT("admin")
   const params = useMemo(() => new URLSearchParams(search), [search])
