@@ -61,6 +61,13 @@ RSpec.configure do |config|
         default_enabled: false,
         disableable:     true,
         category:        "input_source",
+        routes: [
+          {
+            verb: "GET",
+            path: "/api/v1/app/linear/teams",
+            controller: "api/v1/app/linear#teams"
+          }
+        ],
         provides: { input_source: InputSources::Linear }
       )
     end

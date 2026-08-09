@@ -6,6 +6,13 @@ RSpec.describe SyrusLinearSource::Engine do
 
     expect(manifest).to be_present
     expect(manifest.default_enabled?).to be(false)
+    expect(manifest.metadata[:routes]).to include(
+      hash_including(
+        verb: "GET",
+        path: "/api/v1/app/linear/teams",
+        controller: "api/v1/app/linear#teams"
+      )
+    )
     expect(Syrus::PluginRegistry.providers_for(:input_source)).not_to include(InputSources::Linear)
   end
 
