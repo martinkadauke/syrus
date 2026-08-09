@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_09_124500) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_09_133000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -203,6 +203,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_124500) do
     t.index ["chat_session_id", "created_at"], name: "index_chat_messages_on_chat_session_id_and_created_at"
     t.index ["chat_session_id", "id"], name: "index_chat_messages_on_session_id_and_id"
     t.index ["chat_session_id", "role", "created_at", "id"], name: "idx_chat_messages_session_role_created_id"
+    t.index ["chat_session_id", "role", "tool_name", "created_at", "id"], name: "idx_chat_messages_session_role_tool_created_id"
     t.index ["chat_session_id", "role"], name: "idx_chat_messages_session_role"
     t.index ["chat_session_id"], name: "index_chat_messages_on_chat_session_id"
     t.index ["pending_action_id"], name: "index_chat_messages_on_pending_action_id"
@@ -1149,6 +1150,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_124500) do
     t.datetime "read_at"
     t.integer "user_id", null: false
     t.index ["job_id"], name: "index_notifications_on_job_id"
+    t.index ["user_id", "read_at"], name: "idx_notifications_user_read_at"
     t.index ["user_id"], name: "index_notifications_on_user_id"
   end
 
@@ -1639,6 +1641,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_09_124500) do
     t.index ["kind"], name: "index_spawned_processes_on_kind"
     t.index ["run_id", "finished_at", "started_at", "id"], name: "idx_spawned_processes_run_active_started"
     t.index ["run_id"], name: "index_spawned_processes_on_run_id"
+    t.index ["started_at", "hostname"], name: "idx_spawned_processes_started_hostname"
     t.index ["workflow_id"], name: "index_spawned_processes_on_workflow_id"
   end
 

@@ -347,7 +347,8 @@ class AgentEnvironmentSnapshot
     chat_session.messages
                 .where(role: "tool_result", tool_name: "read_epic")
                 .order(:created_at, :id)
-                .filter_map { |message| read_epic_result_id(message.content) }
+                .pluck(:content)
+                .filter_map { |content| read_epic_result_id(content) }
   end
 
   def read_epic_result_id(content)

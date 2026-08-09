@@ -48,7 +48,7 @@ module ChatSerialization
         has_more_older: has_more_older,
         pending_proposal_count: PerformanceLogging.phase("chat_payload.pending_proposal_count", chat_id: chat_session.id) { chat_session.proposals.where(state: "proposed").count },
         messages: PerformanceLogging.phase("chat_payload.messages_json", chat_id: chat_session.id, message_count: messages.size) { messages_json(messages, repository: repository) },
-        bookmarks: PerformanceLogging.phase("chat_payload.bookmarks", chat_id: chat_session.id) { chat_session.bookmarks.includes(:chat_message).map { |bookmark| bookmark_json(bookmark) } },
+        bookmarks: PerformanceLogging.phase("chat_payload.bookmarks", chat_id: chat_session.id) { bookmarks_json(chat_session) },
         recent_chats: [],
         pending_actions: PerformanceLogging.phase("chat_payload.pending_actions", chat_id: chat_session.id) { pending_actions_json(chat_session) },
         agent_questions: PerformanceLogging.phase("chat_payload.agent_questions", chat_id: chat_session.id) { chat_session.agent_questions_payload },
@@ -131,6 +131,44 @@ module ChatSerialization
       chat_message_id: bookmark.chat_message_id,
       anchor_message_id: bookmark.anchor_message_id
     }
+  end
+
+  def bookmarks_json(chat_session)
+    rows = ChatBookmark
+      .joins(:chat_message)
+      .where(chat_messages: { chat_session_id: chat_session.id })
+      .order("chat_messages.created_at ASC", "chat_messages.id ASC", "chat_bookmarks.id ASC")
+      .pluck(
+        "chat_bookmarks.id",
+        "chat_bookmarks.label",
+        "chat_bookmarks.chat_message_id",
+        "chat_messages.role"
+      )
+
+    rows.map do |id, label, chat_message_id, role|
+      {
+        id: id,
+        label: label,
+        chat_message_id: chat_message_id,
+        anchor_message_id: bookmark_anchor_message_id(chat_session.id, chat_message_id, role)
+      }
+    end
+  end
+
+  def bookmark_anchor_message_id(chat_session_id, chat_message_id, role)
+    return chat_message_id if role.in?(%w[user assistant])
+
+    ChatMessage
+      .where(chat_session_id: chat_session_id, role: %w[user assistant])
+      .where("id > ?", chat_message_id)
+      .order(:created_at, :id)
+      .pick(:id) ||
+      ChatMessage
+        .where(chat_session_id: chat_session_id, role: %w[user assistant])
+        .where("id < ?", chat_message_id)
+        .order(created_at: :desc, id: :desc)
+        .pick(:id) ||
+      chat_message_id
   end
 
   def hidden_chat_json(chat_session)
