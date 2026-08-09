@@ -162,13 +162,18 @@ count; the overview embeds the first page from the cached snapshot plus
 rendering every row or blocking on reconciliation.
 
 The admin Reconciler Activity page (`/admin/reconciler_activity`) is the
-operator activity log for what the reconciler did and why. Every reconciler call
-records a `run_started` row, issue rows for detected inconsistencies, repair-plan
-rows explaining the planned action, repair-execution rows for applied/skipped/
-failed executor outcomes, and a `run_finished` or `run_failed` summary. The app
-API endpoint is `/api/v1/app/admin/reconciler_activity`; the token admin API
-endpoint is `/api/v1/admin/reconciler_activity`. Both are paginated newest-first
-and accept `event_type`, `job_id`, `workflow_id`, and `run_id` filters.
+operator activity log for what the reconciler did and why. Read-only inspections
+used by admin stuck surfaces do not create activity rows. Repairing reconciler
+runs record `run_started`, detailed issue/plan/execution rows for applied or
+failed repair executions, and a `run_finished` or `run_failed` summary. Skipped
+executions are aggregated in the summary counts instead of expanded every
+minute, so recurring passes do not flood the log with unchanged
+operator-review/waiting items. The app API endpoint is
+`/api/v1/app/admin/reconciler_activity`; the token admin API endpoint is
+`/api/v1/admin/reconciler_activity`. Both are paginated newest-first and accept
+`event_type`, `job_id`, `workflow_id`, and `run_id` filters.
+`WorkEngineReconcilerActivityPruneJob` keeps the activity table bounded to the
+last 7 days.
 
 - `auto_repairable` when the plan is safe for automatic execution
 - `waiting` when the plan is blocked by queue capacity, dependency or stack

@@ -102,6 +102,10 @@ default: &default
     class: RunDiagnosticPruneJob
     queue: cleanup
     schedule: every day at 3:10am
+  prune_work_engine_reconciler_activity:
+    class: WorkEngineReconcilerActivityPruneJob
+    queue: cleanup
+    schedule: every day at 3:12am
   prune_old_notifications:
     class: PruneOldNotificationsJob
     queue: cleanup

@@ -1,10 +1,7 @@
 require "rails_helper"
 
 RSpec.describe WorkEngine::ReconcilerActivity do
-  it "records issues, plans, executions, and a summary for a reconciler result" do
-    job = Factories.job
-    workflow = job.workflows.first
-    run = job.initial_run
+  def reconciler_result(job:, workflow:, run:, execution_status: "applied")
     issue = WorkEngine::Reconciler::Issue.new(
       kind: "queued_run_without_queue_claim",
       severity: "error",
@@ -15,7 +12,7 @@ RSpec.describe WorkEngine::ReconcilerActivity do
       explanation: "Run is queued but no active SolidQueue RunJob references it."
     )
     snapshot = instance_double(WorkEngine::Reconciler::Snapshot, as_json: {})
-    result = WorkEngine::Reconciler::Result.new(
+    WorkEngine::Reconciler::Result.new(
       "spec",
       Time.current,
       snapshot,
@@ -38,11 +35,18 @@ RSpec.describe WorkEngine::ReconcilerActivity do
           action: "reenqueue_run",
           target_type: "Run",
           target_id: run.id,
-          status: "applied",
-          message: "re-enqueued Run ##{run.id}"
+          status: execution_status,
+          message: execution_status == "skipped" ? "retry already pending" : "re-enqueued Run ##{run.id}"
         )
       ]
     )
+  end
+
+  it "records actionable issues, plans, executions, and a summary for a repairing reconciler result" do
+    job = Factories.job
+    workflow = job.workflows.first
+    run = job.initial_run
+    result = reconciler_result(job: job, workflow: workflow, run: run)
 
     described_class.record_result!(
       source: "spec",
@@ -58,12 +62,43 @@ RSpec.describe WorkEngine::ReconcilerActivity do
       job_id: job.id,
       workflow_id: workflow.id,
       run_id: run.id,
-      issue_kind: issue.kind,
+      issue_kind: "queued_run_without_queue_claim",
       repair_action: "reenqueue_run"
     )
     expect(WorkEngineReconcilerActivityEvent.find_by!(event_type: "run_finished").details).to include(
       "issues_count" => 1,
       "repair_executions_count" => 1
     )
+  end
+
+  it "does not record detailed activity for skipped repair executions" do
+    job = Factories.job
+    result = reconciler_result(
+      job: job,
+      workflow: job.workflows.first,
+      run: job.initial_run,
+      execution_status: "skipped"
+    )
+
+    described_class.record_result!(
+      source: "spec",
+      execute_repairs: true,
+      result: result
+    )
+
+    expect(WorkEngineReconcilerActivityEvent.order(:id).pluck(:event_type)).to eq(%w[run_finished])
+    expect(WorkEngineReconcilerActivityEvent.first.details).to include(
+      "repair_statuses" => { "skipped" => 1 }
+    )
+  end
+
+  it "does not record read-only reconciler inspections as activity" do
+    job = Factories.job
+    result = reconciler_result(job: job, workflow: job.workflows.first, run: job.initial_run)
+
+    described_class.record_run_started!(source: "spec", execute_repairs: false)
+    described_class.record_result!(source: "spec", execute_repairs: false, result: result)
+
+    expect(WorkEngineReconcilerActivityEvent.count).to eq(0)
   end
 end

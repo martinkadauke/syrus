@@ -1,4 +1,6 @@
 class WorkEngineReconcilerActivityEvent < ApplicationRecord
+  RETAIN_AFTER = 7.days
+
   EVENT_TYPES = %w[run_started issues_detected repair_planned repair_executed run_finished run_failed].freeze
   SEVERITIES = %w[info warn error alarm].freeze
 
@@ -19,6 +21,7 @@ class WorkEngineReconcilerActivityEvent < ApplicationRecord
   before_destroy { raise ActiveRecord::ReadOnlyRecord, "WorkEngineReconcilerActivityEvent is append-only" unless destroyed_by_association }
 
   scope :recent_first, -> { order(occurred_at: :desc, id: :desc) }
+  scope :prunable, -> { where("occurred_at < ?", RETAIN_AFTER.ago) }
 
   def self.record!(event_type:, source:, message:, severity: "info", occurred_at: Time.current, job_id: nil, workflow_id: nil, step_id: nil, run_id: nil, issue_kind: nil, repair_action: nil, repair_status: nil, details: {})
     create!(

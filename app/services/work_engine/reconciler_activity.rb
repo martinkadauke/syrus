@@ -24,6 +24,8 @@ module WorkEngine
     end
 
     def record_run_started!
+      return unless execute_repairs
+
       WorkEngineReconcilerActivityEvent.record!(
         event_type: "run_started",
         source: source,
@@ -39,9 +41,16 @@ module WorkEngine
     def record_result!
       return unless result
 
-      result.issues.each { |issue| record_issue!(issue) }
-      result.repair_plans.each { |plan| record_plan!(plan) }
-      result.repair_executions.each { |execution| record_execution!(execution) }
+      if execute_repairs
+        actionable_activity.each do |issue, plan, execution|
+          record_issue!(issue)
+          record_plan!(plan)
+          record_execution!(execution)
+        end
+      end
+
+      return unless execute_repairs
+
       WorkEngineReconcilerActivityEvent.record!(
         event_type: "run_finished",
         source: source,
@@ -81,7 +90,17 @@ module WorkEngine
 
     attr_reader :source, :job_id, :workflow_id, :run_id, :now, :execute_repairs, :result, :error
 
+    def actionable_activity
+      result.repair_executions.each_with_index.filter_map do |execution, index|
+        next if execution.status == "skipped"
+
+        [ result.issues[index], result.repair_plans[index], execution ]
+      end
+    end
+
     def record_issue!(issue)
+      return unless issue
+
       ids = normalized_ids(issue.affected_ids)
       WorkEngineReconcilerActivityEvent.record!(
         event_type: "issues_detected",
@@ -106,6 +125,8 @@ module WorkEngine
     end
 
     def record_plan!(plan)
+      return unless plan
+
       ids = normalized_ids(plan.affected_ids)
       WorkEngineReconcilerActivityEvent.record!(
         event_type: "repair_planned",
