@@ -67,6 +67,6 @@ export function fetchPasskeyAuthenticationOptions() {
   return getJson<CredentialRequestOptionsJSON>("/api/v1/app/passkeys/authentication_options")
 }
 
-export function authenticateWithPasskey(credential: PublicKeyCredentialWithAssertionJSON) {
-  return postJson<AuthRedirectPayload>("/api/v1/app/passkeys/authenticate", { credential })
+export function authenticateWithPasskey(credential: PublicKeyCredentialWithAssertionJSON, challenge: string) {
+  return postJson<AuthRedirectPayload>("/api/v1/app/passkeys/authenticate", { credential, challenge })
 }

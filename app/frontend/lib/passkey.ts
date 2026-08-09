@@ -19,10 +19,10 @@ export async function registerNewPasskey(
 
 export async function signInWithPasskey(
   fetchOptions: () => Promise<CredentialRequestOptionsJSON>,
-  submitAssertion: (cred: PublicKeyCredentialWithAssertionJSON) => Promise<{ redirect_to: string }>
+  submitAssertion: (cred: PublicKeyCredentialWithAssertionJSON, challenge: string) => Promise<{ redirect_to: string }>
 ): Promise<string> {
   const options = await fetchOptions()
   const credential = await get(options)
-  const { redirect_to } = await submitAssertion(credential)
+  const { redirect_to } = await submitAssertion(credential, options.challenge)
   return redirect_to
 }
