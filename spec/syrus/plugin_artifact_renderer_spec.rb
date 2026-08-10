@@ -10,8 +10,8 @@ RSpec.describe "SyrusRails artifact renderers" do
       expect(described_class.renderer_type).to eq(:erd_diagram)
     end
 
-    it "extends Syrus::Plugin::ArtifactRenderer" do
-      expect(described_class.singleton_class.ancestors).to include(Syrus::Plugin::ArtifactRenderer)
+    it "includes Syrus::Plugin::ArtifactRenderer" do
+      expect(described_class.ancestors).to include(Syrus::Plugin::ArtifactRenderer)
     end
   end
 
@@ -24,19 +24,19 @@ RSpec.describe "SyrusRails artifact renderers" do
       expect(described_class.renderer_type).to eq(:migration_diff)
     end
 
-    it "extends Syrus::Plugin::ArtifactRenderer" do
-      expect(described_class.singleton_class.ancestors).to include(Syrus::Plugin::ArtifactRenderer)
+    it "includes Syrus::Plugin::ArtifactRenderer" do
+      expect(described_class.ancestors).to include(Syrus::Plugin::ArtifactRenderer)
     end
   end
 
   describe Syrus::Plugin::ArtifactRenderer do
     it "raises NotImplementedError on artifact_type when not overridden" do
-      klass = Class.new { extend Syrus::Plugin::ArtifactRenderer }
+      klass = Class.new { include Syrus::Plugin::ArtifactRenderer }
       expect { klass.artifact_type }.to raise_error(NotImplementedError)
     end
 
     it "raises NotImplementedError on renderer_type when not overridden" do
-      klass = Class.new { extend Syrus::Plugin::ArtifactRenderer }
+      klass = Class.new { include Syrus::Plugin::ArtifactRenderer }
       expect { klass.renderer_type }.to raise_error(NotImplementedError)
     end
   end
