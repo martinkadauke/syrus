@@ -776,6 +776,23 @@ module WorkEngine
         end
       end
 
+      class QueuedJobAfterCancelledWorkflow < Base
+        def plan
+          automatic_plan(
+            "retry_job_after_cancelled_workflow",
+            primary_job,
+            "The Job is queued with no active work after an implementation Workflow was cancelled without a deliberate terminal marker, so start a fresh retry Workflow.",
+            execution_steps: [ "RetryWorkflowEnqueuer.call" ],
+            preconditions: {
+              job_state: "queued",
+              active_workflows: false,
+              latest_workflow_state: "cancelled",
+              deliberate_cancellation: false
+            }
+          )
+        end
+      end
+
       class UnambiguousJobStateDrift < Base
         def plan
           automatic_plan(

@@ -51,6 +51,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       stale_auto_retry_after_branch_divergence_recovery
       epic_workflow_conflict
       queued_job_after_epic_workflow_conflict
+      queued_job_after_cancelled_workflow
       stale_branch_diverged_workflow
       recovered_branch_diverged_failed_job
       closed_job_with_active_workflow
@@ -778,6 +779,31 @@ RSpec.describe "Work engine reconciler chaos simulation" do
       )
     end
 
+    def queued_job_after_cancelled_workflow
+      job, workflow, step, run = graph
+      workflow.update!(artifacts: { "main_broken" => true })
+      workflow.update_columns(state: "cancelled", started_at: 20.minutes.ago, finished_at: 10.minutes.ago)
+      step.update_columns(state: "cancelled", started_at: 20.minutes.ago, finished_at: 10.minutes.ago)
+      run.update_columns(
+        state: "cancelled",
+        agent_outcome: "success",
+        started_at: 20.minutes.ago,
+        finished_at: 10.minutes.ago
+      )
+      job.update_columns(state: "queued")
+      trace << "job=#{job.id}:queued_after_uncategorized_cancel workflow=#{workflow.id}"
+
+      expectation(
+        "queued job after uncategorized cancelled workflow",
+        target: { job_id: job.id },
+        expected_issue: :queued_job_after_cancelled_workflow,
+        expected_action: :retry_job_after_cancelled_workflow,
+        required_plans: [ [ :retry_job_after_cancelled_workflow, job ] ],
+        forbidden_issues: %i[epic_workflow_conflict queued_job_after_epic_workflow_conflict unambiguous_job_state_drift],
+        forbidden_actions: %i[cancel_epic_workflow_conflict retry_job_after_epic_workflow_conflict reconcile_job_state]
+      )
+    end
+
     def stale_auto_retry_workflow_with_queued_run
       job, source, step, run = graph
       fail_run!(source, step, run)
@@ -1408,6 +1434,7 @@ RSpec.describe "Work engine reconciler chaos simulation" do
     assert_chaos_case!(simulation.send(:stale_branch_diverged_workflow))
     assert_chaos_case!(simulation.send(:recovered_branch_diverged_failed_job))
     assert_chaos_case!(simulation.send(:queued_job_after_epic_workflow_conflict))
+    assert_chaos_case!(simulation.send(:queued_job_after_cancelled_workflow))
     assert_chaos_case!(simulation.send(:running_step_with_failed_terminal_run))
     assert_chaos_case!(simulation.send(:running_step_with_succeeded_terminal_run))
     assert_chaos_case!(simulation.send(:running_workflow_with_failed_step))

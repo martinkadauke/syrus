@@ -700,6 +700,83 @@ module WorkEngine
         end
       end
 
+      class RetryJobAfterCancelledWorkflow < Base
+        RECOVERY_TRIGGER_KINDS = %w[
+          initial
+          retry
+          replay
+          manual
+          resume
+          pr_comment
+          chat_feedback
+          ci_failure
+          coding_handoff
+          local_mode_handoff
+        ].freeze
+        DELIBERATE_REASONS = %w[
+          job_closed
+          operator_cancelled
+          operator_stale_work_repair
+          external_pr_closed
+          external_pr_merged
+          no_changes
+        ].freeze
+
+        def perform
+          job = target_job
+          return skipped("Job no longer exists") unless job
+          return skipped("Job is #{job.state}, not queued") unless job.queued?
+          return skipped("Job has active work") if job.any_active_run? || job.workflows.active.exists?
+
+          latest = job.latest_workflow
+          return skipped("Latest Workflow is not cancelled") unless latest&.cancelled?
+          return skipped("Latest Workflow trigger_kind is not recoverable") unless RECOVERY_TRIGGER_KINDS.include?(latest.trigger_kind)
+          return skipped("Latest Workflow was cancelled by an Epic-wide workflow lock") if cancelled_workflow_reason(latest) == EpicWorkflowLock::BLOCK_REASON
+          return skipped("Latest Workflow cancellation appears deliberate") if deliberate_cancelled_workflow?(latest)
+          return skipped("Epic-wide workflow is still active") if active_epic_wide_workflow_for_job?(job)
+          return skipped("Dependencies are still unsatisfied") if job.unsatisfied_dependencies.any?
+
+          result = RetryWorkflowEnqueuer.call(
+            job: job,
+            artifacts: {
+              "retry_reason" => "cancelled_workflow_recovered",
+              "cancelled_workflow_id" => latest.id,
+              "cancelled_trigger_kind" => latest.trigger_kind
+            },
+            provider_validation: :none,
+            automatic: true
+          )
+          return skipped(result.error) unless result.success?
+
+          success("started retry Workflow ##{result.workflow.id} for Job ##{job.id} after cancelled Workflow ##{latest.id}")
+        end
+
+        private
+
+        def deliberate_cancelled_workflow?(workflow)
+          reason = cancelled_workflow_reason(workflow).to_s
+          return true if DELIBERATE_REASONS.include?(reason)
+          return true if reason.start_with?("operator_")
+          return true if workflow.artifact("retry_cancelled_reason").present?
+
+          false
+        end
+
+        def cancelled_workflow_reason(workflow)
+          workflow.artifact("start_cancelled_reason").presence || workflow.artifact("cancelled_reason")
+        end
+
+        def active_epic_wide_workflow_for_job?(job)
+          return false unless job.epic_id
+
+          Workflow
+            .active
+            .epic_wide
+            .where(job_id: job.epic.jobs.select(:id))
+            .exists?
+        end
+      end
+
       class CloseCompletedMainGraderJob < Base
         def perform
           job = target_job

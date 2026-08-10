@@ -13,6 +13,26 @@ module WorkEngine
       no_changes_produced
       semantic_failure
     ].freeze
+    QUEUED_CANCELLED_WORKFLOW_RECOVERY_TRIGGER_KINDS = %w[
+      initial
+      retry
+      replay
+      manual
+      resume
+      pr_comment
+      chat_feedback
+      ci_failure
+      coding_handoff
+      local_mode_handoff
+    ].freeze
+    DELIBERATE_CANCELLED_WORKFLOW_REASONS = %w[
+      job_closed
+      operator_cancelled
+      operator_stale_work_repair
+      external_pr_closed
+      external_pr_merged
+      no_changes
+    ].freeze
 
     Issue = Data.define(
       :kind,
@@ -156,6 +176,7 @@ module WorkEngine
       issues.concat(classify_job_workflow_drift)
       issues.concat(classify_jobs_without_active_workflows)
       issues.concat(classify_queued_jobs_cancelled_by_epic_workflow_conflict)
+      issues.concat(classify_queued_jobs_cancelled_without_active_workflow)
       issues.concat(classify_approved_jobs_with_landing_start_blockers)
       issues.concat(classify_unambiguous_job_state_drift)
       issues.concat(classify_completed_main_grader_jobs)
@@ -718,7 +739,7 @@ module WorkEngine
 
         latest = job.latest_workflow
         next unless latest&.cancelled?
-        next unless latest.artifact("cancelled_reason") == EpicWorkflowLock::BLOCK_REASON
+        next unless cancelled_workflow_reason(latest) == EpicWorkflowLock::BLOCK_REASON
         next if active_epic_wide_workflow_for_job?(job)
         next if job.unsatisfied_dependencies.any?
 
@@ -733,10 +754,40 @@ module WorkEngine
             latest_workflow_id: latest.id,
             latest_workflow_state: latest.state,
             latest_workflow_trigger_kind: latest.trigger_kind,
-            cancelled_reason: latest.artifact("cancelled_reason"),
-            cancelled_details: latest.artifact("cancelled_details")
+            cancelled_reason: cancelled_workflow_reason(latest),
+            cancelled_details: cancelled_workflow_details(latest)
           },
           explanation: "Job ##{job.id} is queued with no active Workflow after its latest Workflow was cancelled for an Epic-wide workflow lock."
+        )
+      end
+    end
+
+    def classify_queued_jobs_cancelled_without_active_workflow
+      jobs.filter_map do |job|
+        next unless job.queued?
+        next if job.workflows.active.exists?
+        next if job.any_active_run?
+
+        latest = job.latest_workflow
+        next unless recoverable_cancelled_workflow_for_queued_job?(job, latest)
+
+        issue(
+          kind: :queued_job_after_cancelled_workflow,
+          severity: :warning,
+          affected_ids: ids_for(job).merge(workflow_ids: [ latest.id ]),
+          safe_to_auto_repair: true,
+          recommended_repair_action: "retry_job_after_cancelled_workflow",
+          evidence: {
+            job_state: job.state,
+            latest_workflow_id: latest.id,
+            latest_workflow_state: latest.state,
+            latest_workflow_trigger_kind: latest.trigger_kind,
+            cancelled_reason: cancelled_workflow_reason(latest),
+            retry_cancelled_reason: latest.artifact("retry_cancelled_reason"),
+            start_cancelled_reason: latest.artifact("start_cancelled_reason"),
+            main_broken: latest.artifact("main_broken")
+          },
+          explanation: "Job ##{job.id} is queued with no active Workflow after its latest Workflow was cancelled without a terminal or deliberate cancellation marker."
         )
       end
     end
@@ -1484,6 +1535,34 @@ module WorkEngine
         .epic_wide
         .where(job_id: job.epic.jobs.select(:id))
         .exists?
+    end
+
+    def recoverable_cancelled_workflow_for_queued_job?(job, workflow)
+      return false unless workflow&.cancelled?
+      return false unless QUEUED_CANCELLED_WORKFLOW_RECOVERY_TRIGGER_KINDS.include?(workflow.trigger_kind)
+      return false if cancelled_workflow_reason(workflow) == EpicWorkflowLock::BLOCK_REASON
+      return false if deliberate_cancelled_workflow?(workflow)
+      return false if active_epic_wide_workflow_for_job?(job)
+      return false if job.unsatisfied_dependencies.any?
+
+      true
+    end
+
+    def deliberate_cancelled_workflow?(workflow)
+      reason = cancelled_workflow_reason(workflow).to_s
+      return true if DELIBERATE_CANCELLED_WORKFLOW_REASONS.include?(reason)
+      return true if reason.start_with?("operator_")
+      return true if workflow.artifact("retry_cancelled_reason").present?
+
+      false
+    end
+
+    def cancelled_workflow_reason(workflow)
+      workflow.artifact("start_cancelled_reason").presence || workflow.artifact("cancelled_reason")
+    end
+
+    def cancelled_workflow_details(workflow)
+      workflow.artifact("start_cancelled_details").presence || workflow.artifact("cancelled_details")
     end
 
     def seconds_since(timestamp)
