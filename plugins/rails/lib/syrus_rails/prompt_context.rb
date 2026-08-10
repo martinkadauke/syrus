@@ -1,7 +1,5 @@
 module SyrusRails
   class PromptContext
-    include Syrus::Plugin::PromptInjector
-
     PROMPT = <<~TEXT.freeze
       This repository uses Ruby on Rails. You have access to Rails-specific tools:
       - read_schema: parse db/schema.rb into structured JSON

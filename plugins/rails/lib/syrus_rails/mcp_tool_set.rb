@@ -3,8 +3,6 @@ require "mcp"
 
 module SyrusRails
   class McpToolSet
-    include Syrus::Plugin::McpToolSet
-
     TOOL_DEFS = [
       {
         name:         "read_schema",

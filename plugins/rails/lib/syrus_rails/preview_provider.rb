@@ -1,7 +1,5 @@
 module SyrusRails
   class PreviewProvider
-    include Syrus::Plugin::PreviewProvider
-
     def detect?(repo_path)
       File.exist?(File.join(repo_path, "Gemfile")) &&
         File.exist?(File.join(repo_path, "config", "application.rb")) &&

@@ -664,7 +664,7 @@ export type PreviewActionPayload = {
 export type TypedArtifact = {
   type: string
   title: string
-  payload: Record<string, unknown>
+  payload: SchemaErdPayload | MigrationDiffPayload | Record<string, unknown>
   created_at: string
   renderer_type: "erd_diagram" | "migration_diff" | "data_table" | "before_after_diff" | null
 }
@@ -864,14 +864,6 @@ export type MigrationDiffPayload = {
   before: { table_name: string; columns: MigrationDiffColumn[] }
   after: { table_name: string; columns: MigrationDiffColumn[] }
   changes: MigrationDiffChange[]
-}
-
-export type TypedArtifact = {
-  type: string
-  title: string
-  payload: SchemaErdPayload | MigrationDiffPayload | Record<string, unknown>
-  renderer_type?: string
-  created_at: string
 }
 
 export type CoverageArtifact = {
