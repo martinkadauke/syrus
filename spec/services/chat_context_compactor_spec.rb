@@ -94,4 +94,30 @@ RSpec.describe ChatContextCompactor do
     expect(messages.first.content.first["text"]).to include("Prior durable chat context summary")
     expect(messages.drop(1).map(&:id)).to eq(session.messages.order(:id).last(40).map(&:id))
   end
+
+  it "compacts only messages after the previous checkpoint" do
+    enable_compaction!
+    session = chat
+    add_messages(session, 130)
+    first = described_class.maybe_compact!(session)
+
+    add_messages(session, 10)
+    second = described_class.maybe_compact!(session)
+
+    expect(second.compacted_through_message_id).to be > first.compacted_through_message_id
+    expect(second.source_message_count).to eq(100)
+    expect(second.summary).to include("Compacted 10 older messages")
+    expect(second.summary).to include("Previous checkpoint: through ChatMessage ##{first.compacted_through_message_id}")
+  end
+
+  it "forces the chat message cursor index on MySQL" do
+    session = chat
+    compactor = described_class.new(session)
+
+    allow(ActiveRecord::Base.connection).to receive(:adapter_name).and_return("Mysql2")
+
+    expect(compactor.send(:messages_scope).to_sql).to include(
+      "FORCE INDEX (index_chat_messages_on_session_id_and_id)"
+    )
+  end
 end

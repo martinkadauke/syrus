@@ -176,7 +176,7 @@ class ChatTurnJob < ApplicationJob
   end
 
   def resume_session_id_for(_provider)
-    @chat.provider_session&.session_id
+    @chat.provider_session_metadata&.session_id
   end
 
   def refresh_attached_repository_checkouts!(workspace_path)
@@ -665,8 +665,9 @@ class ChatTurnJob < ApplicationJob
       transcript_jsonl: capture.transcript_jsonl
     }
 
-    session = if @chat.provider_session
-      @chat.provider_session.tap { |existing| existing.update!(attrs) }
+    session = if (existing = @chat.provider_session_metadata)
+      ProviderSession.where(id: existing.id).update_all(attrs.merge(updated_at: Time.current))
+      ProviderSession.metadata_only.find(existing.id)
     else
       @chat.create_provider_session!(attrs)
     end

@@ -44,18 +44,22 @@ class ChatContextCompactor
     message_count = messages_scope.count
     return if message_count < MIN_MESSAGES
 
-    cutoff = cutoff_message(message_count)
-    return unless cutoff
+    cutoff_id = cutoff_message_id(message_count)
+    return unless cutoff_id
 
     latest = latest_checkpoint
-    return latest if latest&.compacted_through_message_id.to_i >= cutoff.id
+    return latest if latest&.compacted_through_message_id.to_i >= cutoff_id
 
-    compacted = messages_scope.where("id <= ?", cutoff.id).order(:id).to_a
+    compacted = messages_scope
+                  .where("id > ?", latest&.compacted_through_message_id.to_i || 0)
+                  .where("id <= ?", cutoff_id)
+                  .order(:id)
+                  .to_a
     return if compacted.empty?
 
     @chat_session.context_checkpoints.create!(
-      compacted_through_message_id: cutoff.id,
-      source_message_count: compacted.size,
+      compacted_through_message_id: cutoff_id,
+      source_message_count: latest&.source_message_count.to_i + compacted.size,
       summary_version: SUMMARY_VERSION,
       summary: build_summary(compacted, previous: latest)
     )
@@ -77,18 +81,25 @@ class ChatContextCompactor
   private
 
   def messages_scope
-    @chat_session.messages
+    scope = ChatMessage.where(chat_session_id: @chat_session.id)
+    return scope unless mysql_adapter?
+
+    scope.from(Arel.sql("#{ChatMessage.quoted_table_name} FORCE INDEX (index_chat_messages_on_session_id_and_id)"))
   end
 
   def latest_checkpoint
     @chat_session.context_checkpoints.latest_first.first
   end
 
-  def cutoff_message(message_count)
+  def mysql_adapter?
+    ActiveRecord::Base.connection.adapter_name.downcase.include?("mysql")
+  end
+
+  def cutoff_message_id(message_count)
     offset = message_count - KEEP_RECENT_MESSAGES - 1
     return if offset.negative?
 
-    messages_scope.order(:id).offset(offset).limit(1).first
+    messages_scope.reselect(:id).order(:id).offset(offset).limit(1).pick(:id)
   end
 
   def messages_for_full_replay

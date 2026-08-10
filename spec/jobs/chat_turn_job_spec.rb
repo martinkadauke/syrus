@@ -965,6 +965,29 @@ RSpec.describe ChatTurnJob do
     )
   end
 
+  it "does not load the full provider session transcript just to resume a chat" do
+    chat.create_provider_session!(
+      provider: "claude",
+      session_id: "chat-session-1",
+      transcript_jsonl: "old transcript " * 1_000
+    )
+    ChatTurnJob.agent_runner = ->(**_) {
+      result_fixture(session_id: "chat-session-2", transcript_jsonl: "new")
+    }
+    selects = []
+    callback = lambda do |_name, _started, _finished, _unique_id, payload|
+      sql = payload[:sql].to_s
+      selects << sql if sql.match?(/\ASELECT .*provider_sessions/i)
+    end
+
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      described_class.perform_now(chat.id, user_message.id)
+    end
+
+    expect(selects).not_to include(match(/SELECT\s+["`]provider_sessions["`]\.\*/i))
+    expect(selects).to include(match(/SELECT\s+["`]provider_sessions["`]\.["`]id["`]/i))
+  end
+
   it "includes compact persisted chat history when resuming a Claude session" do
     chat.messages.create!(role: "user", content: { text: "Earlier: focus on billing exports." })
     chat.messages.create!(role: "assistant", content: { text: "I found the CSV exporter and suggested adding filters." })
