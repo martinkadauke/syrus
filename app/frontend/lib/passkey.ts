@@ -23,6 +23,6 @@ export async function signInWithPasskey(
 ): Promise<string> {
   const options = await fetchOptions()
   const credential = await get(options)
-  const { redirect_to } = await submitAssertion(credential, options.challenge)
+  const { redirect_to } = await submitAssertion(credential, options.publicKey!.challenge)
   return redirect_to
 }
