@@ -40,6 +40,51 @@ runtime availability depends on the repository context that invokes the sidecar.
 Test result parsers and coverage analyzers are listed as registered parser
 classes.
 
+## `:preview_provider`
+
+Preview providers tell Syrus how to start, seed, and health-check a preview
+application for a repository. The provider is selected at runtime by
+`Syrus::PreviewProviderResolver.for(repo_path)`, which calls `detect?` on each
+registered provider in order and returns the first match.
+
+Include `Syrus::Plugin::PreviewProvider` and implement the interface methods:
+
+| Method | Signature | Description |
+|---|---|---|
+| `detect?` | `(repo_path) → bool` | True if this provider handles the repo |
+| `start_command` | `(port:) → String` | Shell command to start the server |
+| `seed_command` | `() → String \| nil` | Command to seed the database (nil = skip) |
+| `health_check_path` | `() → String` | URL path polled to determine readiness |
+| `log_paths` | `() → Array<String>` | Log paths (relative to repo root) to tail |
+
+Register an instance using the direct form:
+
+```ruby
+Syrus::PluginRegistry.register(:preview_provider, MyPlugin::PreviewProvider.new)
+```
+
+Or via a gem manifest:
+
+```ruby
+Syrus::PluginRegistry.register(
+  name: "my-plugin", version: "1.0.0",
+  provides: { preview_provider: MyPlugin::PreviewProvider }
+)
+```
+
+Select a provider programmatically:
+
+```ruby
+provider = Syrus::PreviewProviderResolver.for(repo_path)
+# => SyrusRails::PreviewProvider instance, or nil if nothing matches
+```
+
+**SQLite requirement:** the preview host launches the Rails server in a
+long-lived child process. For the preview database to work without a companion
+Postgres container, the repo's `config/database.yml` must use
+`adapter: sqlite3` for the `development` environment. Postgres preview
+environments are not yet supported.
+
 ## `prompt_injector`
 
 Injects additional text into the implementing agent's system prompt. Use this to instruct the agent to call `submit_artifact` when it touches specific files, or to add any other repository-specific guidance that should appear in every implement run.
@@ -125,6 +170,14 @@ Built-in workflow MCP tools are core app functionality, not a plugin. Optional
 or installation-specific MCP tools should be contributed through plugin
 `mcp_tool_set` providers.
 
+## Adding a plugin
+
+1. Create a gem directory under `plugins/<name>/`.
+2. Define your provider class, `include Syrus::Plugin::<InterfaceModule>`, and implement the interface methods.
+3. Implement a `register!` class method (or engine initializer) that calls `Syrus::PluginRegistry.register(...)`.
+4. Add a spec under `spec/plugins/<name>/` covering `detect?`, primary methods, and the registry integration.
+5. Load the plugin by calling `YourPlugin.register!` from a Rails initializer or at Syrus boot.
+
 Bundled plugins:
 
 - `claude_agent` / `codex_agent` — default-enabled workflow and chat providers.
@@ -136,3 +189,8 @@ Bundled plugins:
   diagnostics such as Admin → Performance and the `read_performance_diagnostics`
   / `read_syrus_logs` workflow MCP tools. Enable it only on instances where
   agents or operators should inspect Syrus's own production behavior.
+- `syrus_rails` — installed but disabled by default. Provides Rails-specific
+  extension points: `:preview_provider` (starts a Rails server for preview
+  hosting), `:mcp_tool_set`, `:test_result_parser` (RSpec output), and
+  `:coverage_analyzer` (SimpleCov). Enable by calling `SyrusRails.register!`
+  from an initializer.

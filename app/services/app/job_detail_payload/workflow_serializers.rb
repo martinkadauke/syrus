@@ -30,7 +30,7 @@ module App
             agent_provider: workflow.agent_provider,
             state: workflow.state,
             failure_count: workflow.failure_count,
-            artifacts: workflow_artifacts_json(workflow),
+            artifacts: enrich_artifacts(workflow.artifacts),
             cleaned_up_at: iso8601(workflow.cleaned_up_at),
             retry_available: workflow_retry_available?(workflow),
             started_at: iso8601(workflow.started_at),
@@ -401,6 +401,40 @@ module App
           transcript_bytes: session.transcript_jsonl&.bytesize,
           transcript_lines: session.transcript_jsonl&.count("\n")
         }
+      end
+
+      ARTIFACTS_EXCLUDED_KEYS = %w[iterations].freeze
+      COVERAGE_EXCLUDED_KEYS = %w[diff_annotations pr_comment_body].freeze
+
+      # Returns a filtered, enriched artifacts hash for the detail UI.
+      # Strips large/internal keys (iterations, coverage diff_annotations, etc.),
+      # then injects renderer_type into typed_artifact entries.
+      def enrich_artifacts(artifacts)
+        return artifacts unless artifacts.is_a?(Hash)
+
+        filtered = artifacts.except(*ARTIFACTS_EXCLUDED_KEYS)
+
+        if filtered["coverage"].is_a?(Hash)
+          filtered = filtered.merge("coverage" => filtered["coverage"].except(*COVERAGE_EXCLUDED_KEYS))
+        end
+
+        typed = filtered["typed_artifacts"]
+        return filtered unless typed.is_a?(Array)
+
+        enriched = typed.filter_map do |entry|
+          next unless entry.is_a?(Hash)
+          renderer_type = artifact_renderer_map[entry["type"]]
+          renderer_type ? entry.merge("renderer_type" => renderer_type) : entry
+        end
+
+        filtered.merge("typed_artifacts" => enriched)
+      end
+
+      def artifact_renderer_map
+        @artifact_renderer_map ||= Syrus::PluginRegistry.providers_for(:artifact_renderer)
+          .each_with_object({}) do |renderer, map|
+            map[renderer.artifact_type] = renderer.renderer_type.to_s
+          end
       end
 
       def app_grade_log_path(run, workflow:)

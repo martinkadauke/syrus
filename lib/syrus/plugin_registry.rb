@@ -5,30 +5,30 @@ module Syrus
       chat_provider
       mcp_tool_set
       input_source
+      prompt_injector
       test_result_parser
       coverage_analyzer
       preview_provider
       admin_page
       chat_mcp_tool_set
       source_control_provider
-      prompt_injector
       artifact_renderer
     ].freeze
 
     # Lambdas defer constant resolution until call time (autoload-friendly).
     INTERFACE_FOR = {
-      agent_provider:     -> { Syrus::Plugin::AgentProvider },
-      chat_provider:      -> { Syrus::Plugin::ChatProvider },
-      mcp_tool_set:       -> { Syrus::Plugin::McpToolSet },
-      input_source:       -> { Syrus::Plugin::InputSource },
-      test_result_parser: -> { Syrus::Plugin::TestResultParser },
-      coverage_analyzer:  -> { Syrus::Plugin::CoverageAnalyzer },
-      preview_provider:   -> { Syrus::Plugin::PreviewProvider },
-      admin_page:         -> { Syrus::Plugin::AdminPage },
-      chat_mcp_tool_set:  -> { Syrus::Plugin::ChatMcpToolSet },
+      agent_provider:          -> { Syrus::Plugin::AgentProvider },
+      chat_provider:           -> { Syrus::Plugin::ChatProvider },
+      mcp_tool_set:            -> { Syrus::Plugin::McpToolSet },
+      input_source:            -> { Syrus::Plugin::InputSource },
+      prompt_injector:         -> { Syrus::Plugin::PromptInjector },
+      test_result_parser:      -> { Syrus::Plugin::TestResultParser },
+      coverage_analyzer:       -> { Syrus::Plugin::CoverageAnalyzer },
+      preview_provider:        -> { Syrus::Plugin::PreviewProvider },
+      admin_page:              -> { Syrus::Plugin::AdminPage },
+      chat_mcp_tool_set:       -> { Syrus::Plugin::ChatMcpToolSet },
       source_control_provider: -> { Syrus::Plugin::SourceControlProvider },
-      prompt_injector:    -> { Syrus::Plugin::PromptInjector },
-      artifact_renderer:  -> { Syrus::Plugin::ArtifactRenderer }
+      artifact_renderer:       -> { Syrus::Plugin::ArtifactRenderer }
     }.freeze
 
     RegistrationError = Class.new(StandardError)
@@ -47,7 +47,7 @@ module Syrus
       # point (e.g. :prompt_injector) without a full gem manifest:
       #   register(:prompt_injector, provider_instance)
       def register(*args, name: nil, version: nil, provides: {}, display_name: nil, description: nil, homepage: nil, icon_url: nil, default_enabled: true, disableable: true, category: nil, **metadata)
-        if args.length == 2 && args[0].is_a?(Symbol)
+        if args.length == 2 && (args[0].is_a?(Symbol) || args[0].is_a?(String))
           register_direct(args[0], args[1])
           return
         end
@@ -98,26 +98,31 @@ module Syrus
       # Falls back to all registered plugins when the plugin_records table
       # doesn't exist yet.
       def providers_for(extension_point)
-        manifest_providers = performance_phase("plugin_registry.providers_for", extension_point: extension_point) do
-          plugins = performance_phase("plugin_registry.providers_for.snapshot", extension_point: extension_point) do
+        ep = extension_point.to_sym
+        unless EXTENSION_POINTS.include?(ep)
+          raise ArgumentError, "Unknown extension point: #{extension_point.inspect}. Valid: #{EXTENSION_POINTS.inspect}"
+        end
+
+        manifest_providers = performance_phase("plugin_registry.providers_for", extension_point: ep) do
+          plugins = performance_phase("plugin_registry.providers_for.snapshot", extension_point: ep) do
             @mutex.synchronize { @plugins.dup }
           end
 
           begin
-            records = performance_phase("plugin_registry.providers_for.records", extension_point: extension_point, plugin_count: plugins.size) do
+            records = performance_phase("plugin_registry.providers_for.records", extension_point: ep, plugin_count: plugins.size) do
               records_for(plugins)
             end
-            performance_phase("plugin_registry.providers_for.filter", extension_point: extension_point, plugin_count: plugins.size) do
+            performance_phase("plugin_registry.providers_for.filter", extension_point: ep, plugin_count: plugins.size) do
               plugins
                 .select { |m| plugin_enabled?(m, records[m.name]) }
-                .flat_map { |m| Array(m.provides[extension_point]) }
+                .flat_map { |m| Array(m.provides[ep]) }
             end
           rescue ActiveRecord::ActiveRecordError
-            plugins.flat_map { |m| Array(m.provides[extension_point]) }
+            plugins.flat_map { |m| Array(m.provides[ep]) }
           end
         end
 
-        direct = @mutex.synchronize { @direct_providers[extension_point].dup }
+        direct = @mutex.synchronize { @direct_providers[ep].dup }
         manifest_providers + direct
       end
 
@@ -215,10 +220,11 @@ module Syrus
       end
 
       def register_direct(extension_point, provider)
-        unless EXTENSION_POINTS.include?(extension_point)
+        ep = extension_point.to_sym
+        unless EXTENSION_POINTS.include?(ep)
           raise ArgumentError, "Unknown extension point: #{extension_point.inspect}. Valid: #{EXTENSION_POINTS.inspect}"
         end
-        @mutex.synchronize { @direct_providers[extension_point] << provider }
+        @mutex.synchronize { @direct_providers[ep] << provider }
       end
 
       def validate_provides!(provides)
