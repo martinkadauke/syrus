@@ -1,4 +1,8 @@
 module SyrusMcp
+  def self.run_from_context(server_context)
+    Mcp::Tools.run_from_context(server_context)
+  end
+
   # Built-in workflow sidecar tools. Plugin MCP tool sets are additive; these
   # core tools are required for normal Syrus workflows and are not runtime
   # disableable.

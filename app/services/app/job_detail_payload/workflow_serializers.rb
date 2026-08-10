@@ -403,21 +403,31 @@ module App
         }
       end
 
-      # Returns the artifacts hash with renderer_type injected into each
-      # typed_artifact entry based on the plugin registry. Entries whose
-      # artifact_type has no registered renderer pass through unmodified.
+      ARTIFACTS_EXCLUDED_KEYS = %w[iterations].freeze
+      COVERAGE_EXCLUDED_KEYS = %w[diff_annotations pr_comment_body].freeze
+
+      # Returns a filtered, enriched artifacts hash for the detail UI.
+      # Strips large/internal keys (iterations, coverage diff_annotations, etc.),
+      # then injects renderer_type into typed_artifact entries.
       def enrich_artifacts(artifacts)
         return artifacts unless artifacts.is_a?(Hash)
 
-        typed = artifacts["typed_artifacts"]
-        return artifacts unless typed.is_a?(Array)
+        filtered = artifacts.except(*ARTIFACTS_EXCLUDED_KEYS)
 
-        enriched = typed.map do |entry|
+        if filtered["coverage"].is_a?(Hash)
+          filtered = filtered.merge("coverage" => filtered["coverage"].except(*COVERAGE_EXCLUDED_KEYS))
+        end
+
+        typed = filtered["typed_artifacts"]
+        return filtered unless typed.is_a?(Array)
+
+        enriched = typed.filter_map do |entry|
+          next unless entry.is_a?(Hash)
           renderer_type = artifact_renderer_map[entry["type"]]
           renderer_type ? entry.merge("renderer_type" => renderer_type) : entry
         end
 
-        artifacts.merge("typed_artifacts" => enriched)
+        filtered.merge("typed_artifacts" => enriched)
       end
 
       def artifact_renderer_map
