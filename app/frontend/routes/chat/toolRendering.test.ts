@@ -17,4 +17,13 @@ describe("tool result rendering", () => {
     expect(body).not.toContain("line 450")
     expect(body).toContain("100 lines")
   })
+
+  it("caps pathological single-line tool results before markdown or highlighting can render them", () => {
+    const body = fullResultBody("a".repeat(45_000))
+
+    expect(body).toContain("Tool result preview truncated")
+    expect(body).toContain("Full content remains in the chat transcript")
+    expect(body.split("\n")[0].length).toBeLessThanOrEqual(2_000)
+    expect(body.length).toBeLessThan(3_000)
+  })
 })

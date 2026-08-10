@@ -141,6 +141,16 @@ describe("Markdown", () => {
     expect(pre?.querySelector("code")?.textContent).toBe("const x = 1")
   })
 
+  it("falls back to safe plain rendering for pathological single-line markdown", () => {
+    const { container } = render(<Markdown text={`\`\`\`json\n${"a".repeat(45_000)}\n\`\`\``} />)
+
+    const pre = container.querySelector("pre")
+    expect(pre).toBeInTheDocument()
+    expect(pre?.querySelector("code")).toBeNull()
+    expect(pre?.textContent).toContain("Markdown preview truncated")
+    expect(pre?.textContent?.split("\n")[1].length).toBeLessThanOrEqual(2_000)
+  })
+
   it("renders plain text without applying markdown semantics", () => {
     const text = "1. keep this literal\n**not bold** and `not code`\n- not a list item"
     const { container } = render(<PlainText text={text} />)

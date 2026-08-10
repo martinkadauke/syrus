@@ -11,6 +11,7 @@ const COUNTED_RESULT_TOOLS = new Set(["Read", "Glob", "Grep"])
 const RESULT_SUMMARY_LINE_THRESHOLD = 8
 const TOOL_RESULT_PREVIEW_CHARS = 20_000
 const TOOL_RESULT_PREVIEW_LINES = 400
+export const TOOL_RESULT_PREVIEW_LINE_CHARS = 2_000
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === "[object Object]"
@@ -129,11 +130,16 @@ function fullResultBodyUnbounded(content: unknown): string {
 export function toolResultPreview(body: string): string {
   const normalized = shortenWorkspacePaths(body)
   const lines = normalized.split(/\r?\n/)
-  let preview = normalized
+  const lineCapped = lines.map((line) => line.length > TOOL_RESULT_PREVIEW_LINE_CHARS ? line.slice(0, TOOL_RESULT_PREVIEW_LINE_CHARS) : line)
+  let preview = lineCapped.join("\n")
   let truncated = false
 
   if (lines.length > TOOL_RESULT_PREVIEW_LINES) {
-    preview = lines.slice(0, TOOL_RESULT_PREVIEW_LINES).join("\n")
+    preview = lineCapped.slice(0, TOOL_RESULT_PREVIEW_LINES).join("\n")
+    truncated = true
+  }
+
+  if (lineCapped.some((line, index) => line.length < lines[index].length)) {
     truncated = true
   }
 

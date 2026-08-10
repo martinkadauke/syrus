@@ -12,6 +12,7 @@ import { highlightCode, inferToolResultLanguage } from "../../lib/syntaxHighligh
 import { useT } from "../../hooks/useT"
 import { errorMessage } from "../../lib/errorMessage"
 import { type ChatQueryKey } from "./constants"
+import { TOOL_RESULT_PREVIEW_LINE_CHARS } from "./toolRendering"
 import { appendSearch, primaryButton, secondaryButton, withRoutePrefix } from "./utils"
 import { PendingActionCard, ProposalCard } from "./ProposalCards"
 import type { ChatMessageImageAttachment } from "./messageDisplay"
@@ -460,9 +461,13 @@ function HighlightedToolResult({ code, detail, error, tool }: { code: string; de
   const language = inferToolResultLanguage(detail, tool)
   const className = `mt-1 whitespace-pre-wrap break-words font-mono text-gray-600 dark:text-gray-400 ${error ? "text-red-600 dark:text-red-300" : ""}`
 
-  if (!language || error) return <pre className={className}>{code}</pre>
+  if (!language || error || hasLongLine(code)) return <pre className={className}>{code}</pre>
 
   return <pre className={className}>{highlightCode(code, language)}</pre>
+}
+
+function hasLongLine(value: string) {
+  return value.split(/\r?\n/).some((line) => line.length >= TOOL_RESULT_PREVIEW_LINE_CHARS)
 }
 
 function StructuredTool({ tool, fallback }: { tool?: ChatStructuredTool; fallback: string }) {

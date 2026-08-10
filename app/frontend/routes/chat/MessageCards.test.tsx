@@ -14,6 +14,14 @@ vi.mock("../../api/chats", async (importOriginal) => {
   }
 })
 
+vi.mock("../../lib/syntaxHighlight", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/syntaxHighlight")>()
+  return {
+    ...actual,
+    highlightCode: vi.fn((code: string) => <span data-testid="highlighted-code">{code}</span>)
+  }
+})
+
 function makePayload(): ChatPayload {
   return {
     chat: {
@@ -190,5 +198,33 @@ describe("tool result rendering", () => {
     fireEvent(details, new Event("toggle"))
 
     expect(screen.getByText("very large hidden body")).toBeInTheDocument()
+  })
+
+  it("does not syntax-highlight pathological single-line tool results when expanded", () => {
+    const item: ChatToolGroupItem = {
+      type: "tool_group",
+      tool: "Read",
+      calls: [
+        {
+          message_id: 1,
+          detail: "app/models/job.rb",
+          progress_label: "Reading",
+          result_body: "a".repeat(2_000),
+          result_error: false,
+          result_summary: "summary"
+        }
+      ]
+    }
+
+    render(<ToolGroup item={item} />)
+    const details = screen.getByText("Read").closest("details")
+    expect(details).not.toBeNull()
+    if (!details) return
+
+    details.open = true
+    fireEvent(details, new Event("toggle"))
+
+    expect(screen.queryByTestId("highlighted-code")).not.toBeInTheDocument()
+    expect(screen.getByText("a".repeat(2_000))).toBeInTheDocument()
   })
 })
