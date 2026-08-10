@@ -80,6 +80,7 @@ and keeps the older Epic-wide workflow running.
 If the train fails at any phase:
 - All member Jobs revert from `landing` back to `approved`.
 - A 30-minute retry cooldown prevents the landing queue from immediately re-attempting an unrepaired integration conflict.
+- Transient landing-start blockers, such as dependency readiness or admission pressure, do not use that failed-train cooldown. Once the blocker clears, the approved Epic children re-enter the landing queue and Syrus can dispatch a fresh train automatically.
 - After the cooldown, `LandingQueueProcessor` can assemble a new train.
 
 Operators can also manually retry the train from the Epic detail page.

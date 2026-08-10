@@ -208,6 +208,20 @@ RSpec.describe MergeTrainDispatcher do
     expect(described_class.try_dispatch!(epic)).to be_present
   end
 
+  it "re-dispatches immediately after a transient landing-start blocker failure" do
+    approved_child(1)
+    MergeTrain.create!(
+      epic: epic,
+      repository: repository,
+      base_branch: "master",
+      state: "failed",
+      failure_reason: "landing start blocked: dependency failed",
+      finished_at: 5.minutes.ago
+    )
+
+    expect(described_class.try_dispatch!(epic)).to be_present
+  end
+
   it "re-dispatches once the cooldown has elapsed" do
     approved_child(1)
     MergeTrain.create!(epic: epic, repository: repository, base_branch: "master",

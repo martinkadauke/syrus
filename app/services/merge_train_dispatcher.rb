@@ -101,9 +101,10 @@ class MergeTrainDispatcher
     MergeTrain
       .where(epic_id: @epic.id, state: "failed")
       .where(
-        "failure_reason IS NULL OR (failure_reason NOT LIKE ? AND failure_reason NOT LIKE ?)",
+        "failure_reason IS NULL OR (failure_reason NOT LIKE ? AND failure_reason NOT LIKE ? AND failure_reason NOT LIKE ?)",
         "merge_train: base moved%",
-        "merge_train: missing built base SHA%"
+        "merge_train: missing built base SHA%",
+        "#{LandingQueueReentry::START_BLOCKER_PREFIX}%"
       )
       .where("finished_at > ?", RETRY_COOLDOWN.ago)
       .order(finished_at: :desc)
