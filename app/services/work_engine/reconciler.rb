@@ -155,6 +155,7 @@ module WorkEngine
       issues.concat(classify_stale_auto_retry_workflows)
       issues.concat(classify_job_workflow_drift)
       issues.concat(classify_jobs_without_active_workflows)
+      issues.concat(classify_queued_jobs_cancelled_by_epic_workflow_conflict)
       issues.concat(classify_approved_jobs_with_landing_start_blockers)
       issues.concat(classify_unambiguous_job_state_drift)
       issues.concat(classify_completed_main_grader_jobs)
@@ -705,6 +706,37 @@ module WorkEngine
             updated_at: job.updated_at&.iso8601
           },
           explanation: "Job ##{job.id} is #{job.state}, but has no active Workflow."
+        )
+      end
+    end
+
+    def classify_queued_jobs_cancelled_by_epic_workflow_conflict
+      jobs.filter_map do |job|
+        next unless job.queued?
+        next if job.workflows.active.exists?
+        next if job.any_active_run?
+
+        latest = job.latest_workflow
+        next unless latest&.cancelled?
+        next unless latest.artifact("cancelled_reason") == EpicWorkflowLock::BLOCK_REASON
+        next if active_epic_wide_workflow_for_job?(job)
+        next if job.unsatisfied_dependencies.any?
+
+        issue(
+          kind: :queued_job_after_epic_workflow_conflict,
+          severity: :warning,
+          affected_ids: ids_for(job).merge(workflow_ids: [ latest.id ]),
+          safe_to_auto_repair: true,
+          recommended_repair_action: "retry_job_after_epic_workflow_conflict",
+          evidence: {
+            job_state: job.state,
+            latest_workflow_id: latest.id,
+            latest_workflow_state: latest.state,
+            latest_workflow_trigger_kind: latest.trigger_kind,
+            cancelled_reason: latest.artifact("cancelled_reason"),
+            cancelled_details: latest.artifact("cancelled_details")
+          },
+          explanation: "Job ##{job.id} is queued with no active Workflow after its latest Workflow was cancelled for an Epic-wide workflow lock."
         )
       end
     end
@@ -1442,6 +1474,16 @@ module WorkEngine
 
     def repositories
       @repositories ||= jobs.map(&:repository).compact.uniq
+    end
+
+    def active_epic_wide_workflow_for_job?(job)
+      return false unless job.epic_id
+
+      Workflow
+        .active
+        .epic_wide
+        .where(job_id: job.epic.jobs.select(:id))
+        .exists?
     end
 
     def seconds_since(timestamp)

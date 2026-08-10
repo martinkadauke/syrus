@@ -285,6 +285,50 @@ RSpec.describe WorkEngine::Reconciler do
     expect(conflict_run.reload).to be_cancelled
   end
 
+  it "retries a queued Job whose latest workflow was cancelled by a cleared Epic-wide workflow conflict" do
+    epic = Factories.epic(user: job.user, repository: job.repository)
+    child = Factories.job(user: job.user, repository: job.repository, issue_number: 205, agent_provider: "claude")
+    child.update!(epic: epic)
+    cancelled = child.latest_workflow
+    first_step = cancelled.first_step
+    first_run = first_step.runs.first
+
+    cancelled.update!(
+      artifacts: {
+        "cancelled_reason" => EpicWorkflowLock::BLOCK_REASON,
+        "cancelled_details" => {
+          "keeper_workflow_id" => 123_456,
+          "keeper_trigger_kind" => "stack_rebase"
+        }
+      }
+    )
+    cancelled.update_columns(state: "cancelled", started_at: 30.minutes.ago, finished_at: 20.minutes.ago)
+    first_step.update_columns(state: "cancelled", started_at: 30.minutes.ago, finished_at: 20.minutes.ago)
+    first_run.update_columns(state: "cancelled", started_at: 30.minutes.ago, finished_at: 20.minutes.ago)
+    child.update_columns(state: "queued")
+
+    expect {
+      result = reconcile_and_execute(job_id: child.id)
+
+      expect(kind(result, :queued_job_after_epic_workflow_conflict)).to have_attributes(
+        recommended_repair_action: "retry_job_after_epic_workflow_conflict",
+        safe_to_auto_repair: true
+      )
+      expect(plan(result, :retry_job_after_epic_workflow_conflict)).to have_attributes(
+        target_type: "Job",
+        target_id: child.id,
+        auto_executable: true
+      )
+      expect(result.repair_executions.map(&:message)).to include(a_string_matching(/started retry Workflow #\d+ for Job ##{child.id}/))
+    }.to change { child.workflows.where(trigger_kind: "retry").count }.by(1)
+
+    retry_workflow = child.reload.latest_workflow
+    expect(retry_workflow.trigger_kind).to eq("retry")
+    expect(retry_workflow.artifact("retry_reason")).to eq("epic_workflow_conflict_recovered")
+    expect(retry_workflow.artifact("cancelled_workflow_id")).to eq(cancelled.id)
+    expect(retry_workflow.state).to be_in(%w[queued running])
+  end
+
   it "keeps the older Epic-wide workflow and cancels a later Epic-wide workflow" do
     epic = Factories.epic(user: job.user, repository: job.repository)
     first_job = Factories.job_record(user: job.user, repository: job.repository, epic: epic, issue_number: 203)

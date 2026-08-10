@@ -659,6 +659,47 @@ module WorkEngine
         end
       end
 
+      class RetryJobAfterEpicWorkflowConflict < Base
+        def perform
+          job = target_job
+          return skipped("Job no longer exists") unless job
+          return skipped("Job is #{job.state}, not queued") unless job.queued?
+          return skipped("Job has active work") if job.any_active_run? || job.workflows.active.exists?
+
+          latest = job.latest_workflow
+          return skipped("Latest Workflow is not cancelled") unless latest&.cancelled?
+          return skipped("Latest Workflow was not cancelled by an Epic-wide workflow lock") unless latest.artifact("cancelled_reason") == EpicWorkflowLock::BLOCK_REASON
+          return skipped("Epic-wide workflow is still active") if active_epic_wide_workflow_for_job?(job)
+          return skipped("Dependencies are still unsatisfied") if job.unsatisfied_dependencies.any?
+
+          result = RetryWorkflowEnqueuer.call(
+            job: job,
+            artifacts: {
+              "retry_reason" => "epic_workflow_conflict_recovered",
+              "cancelled_workflow_id" => latest.id,
+              "cancelled_trigger_kind" => latest.trigger_kind
+            },
+            provider_validation: :none,
+            automatic: true
+          )
+          return skipped(result.error) unless result.success?
+
+          success("started retry Workflow ##{result.workflow.id} for Job ##{job.id} after Epic-wide workflow conflict cleared")
+        end
+
+        private
+
+        def active_epic_wide_workflow_for_job?(job)
+          return false unless job.epic_id
+
+          Workflow
+            .active
+            .epic_wide
+            .where(job_id: job.epic.jobs.select(:id))
+            .exists?
+        end
+      end
+
       class CloseCompletedMainGraderJob < Base
         def perform
           job = target_job

@@ -759,6 +759,23 @@ module WorkEngine
         end
       end
 
+      class QueuedJobAfterEpicWorkflowConflict < Base
+        def plan
+          automatic_plan(
+            "retry_job_after_epic_workflow_conflict",
+            primary_job,
+            "The Epic-wide workflow that preempted this Job is gone, so start a fresh retry workflow instead of leaving the Job queued with no active work.",
+            execution_steps: [ "RetryWorkflowEnqueuer.call" ],
+            preconditions: {
+              job_state: "queued",
+              latest_workflow_state: "cancelled",
+              cancelled_reason: EpicWorkflowLock::BLOCK_REASON,
+              active_epic_wide_workflow: false
+            }
+          )
+        end
+      end
+
       class UnambiguousJobStateDrift < Base
         def plan
           automatic_plan(
