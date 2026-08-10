@@ -1,4 +1,7 @@
 require "syrus_rails/version"
+require "syrus_rails/schema_parser"
+require "syrus_rails/migration_parser"
+require "syrus_rails/route_parser"
 require "syrus_rails/mcp_tool_set"
 require "syrus_rails/schema_erd_renderer"
 require "syrus_rails/migration_diff_renderer"
