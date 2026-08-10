@@ -19,20 +19,27 @@ class ChatBookmark < ApplicationRecord
     return message.id if message.bookmarkable?
 
     session = message.chat_session
-    session.messages
+    renderable_message_scope(session)
       .where(role: %w[user assistant])
       .where("id > ?", message.id)
-      .order(:created_at, :id)
+      .order(:id)
       .pick(:id) ||
-      session.messages
+      renderable_message_scope(session)
         .where(role: %w[user assistant])
         .where("id < ?", message.id)
-        .order(created_at: :desc, id: :desc)
+        .order(id: :desc)
         .pick(:id) ||
       message.id
   end
 
   private
+
+  def renderable_message_scope(session)
+    scope = session.messages
+    return scope unless ActiveRecord::Base.connection.adapter_name.downcase.include?("mysql")
+
+    scope.from(Arel.sql("#{ChatMessage.quoted_table_name} FORCE INDEX (index_chat_messages_on_session_id_and_id)"))
+  end
 
   def broadcast_app_event
     chat = chat_message.chat_session

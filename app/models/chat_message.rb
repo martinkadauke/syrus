@@ -48,7 +48,7 @@ class ChatMessage < ApplicationRecord
     chat = chat_session
     tail = chat.messages
                .includes(:pending_action, proposal: [ :repository, :job, :epic, :target_epic, dependencies: [], child_proposals: [ :repository, dependencies: [] ] ])
-               .order(created_at: :desc, id: :desc)
+               .order(id: :desc)
                .limit(SPA_EVENT_TAIL_SIZE)
                .to_a
                .reverse

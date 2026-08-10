@@ -142,13 +142,14 @@ module ChatSerialization
         "chat_bookmarks.chat_message_id",
         "chat_messages.role"
       )
+    anchor_resolver = bookmark_anchor_resolver(chat_session.id, rows)
 
     rows.map do |id, label, chat_message_id, role|
       {
         id: id,
         label: label,
         chat_message_id: chat_message_id,
-        anchor_message_id: bookmark_anchor_message_id(chat_session.id, chat_message_id, role)
+        anchor_message_id: anchor_resolver.call(chat_message_id, role)
       }
     end
   end
@@ -168,20 +169,35 @@ module ChatSerialization
     scope.from(Arel.sql("#{Whiteboard.quoted_table_name} FORCE INDEX (index_whiteboards_on_chat_session_id)"))
   end
 
-  def bookmark_anchor_message_id(chat_session_id, chat_message_id, role)
-    return chat_message_id if role.in?(%w[user assistant])
+  def bookmark_anchor_resolver(chat_session_id, rows)
+    return ->(chat_message_id, _role) { chat_message_id } if rows.empty?
 
-    ChatMessage
-      .where(chat_session_id: chat_session_id, role: %w[user assistant])
-      .where("id > ?", chat_message_id)
-      .order(:created_at, :id)
-      .pick(:id) ||
-      ChatMessage
-        .where(chat_session_id: chat_session_id, role: %w[user assistant])
-        .where("id < ?", chat_message_id)
-        .order(created_at: :desc, id: :desc)
-        .pick(:id) ||
-      chat_message_id
+    renderable_ids = bookmark_anchor_message_scope(chat_session_id)
+      .where(role: %w[user assistant])
+      .order(:id)
+      .pluck(:id)
+
+    lambda do |chat_message_id, role|
+      next chat_message_id if role.in?(%w[user assistant])
+
+      next_id = renderable_ids.bsearch { |id| id > chat_message_id }
+      next_id || previous_renderable_id(renderable_ids, chat_message_id) || chat_message_id
+    end
+  end
+
+  def previous_renderable_id(renderable_ids, chat_message_id)
+    index = renderable_ids.bsearch_index { |id| id >= chat_message_id }
+    return renderable_ids.last unless index
+    return if index.zero?
+
+    renderable_ids[index - 1]
+  end
+
+  def bookmark_anchor_message_scope(chat_session_id)
+    scope = ChatMessage.where(chat_session_id: chat_session_id)
+    return scope unless ActiveRecord::Base.connection.adapter_name.downcase.include?("mysql")
+
+    scope.from(Arel.sql("#{ChatMessage.quoted_table_name} FORCE INDEX (index_chat_messages_on_session_id_and_id)"))
   end
 
   def hidden_chat_json(chat_session)

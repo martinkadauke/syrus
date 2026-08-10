@@ -2541,6 +2541,27 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     )
   end
 
+  it "resolves non-rendered bookmark anchors without per-bookmark sorted chat-message scans" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+    chat.messages.create!(role: "assistant", content: { "text" => "First rendered message." })
+    tool_a = chat.messages.create!(role: "tool_use", tool_name: "set_bookmark", content: { "name" => "set_bookmark" })
+    second = chat.messages.create!(role: "assistant", content: { "text" => "Second rendered message." })
+    tool_b = chat.messages.create!(role: "tool_use", tool_name: "set_bookmark", content: { "name" => "set_bookmark" })
+    tool_a.bookmarks.create!(label: "First tool", kind: "topic")
+    tool_b.bookmarks.create!(label: "Second tool", kind: "topic")
+
+    queries = capture_sql { get "/api/v1/app/chats/#{chat.id}" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["bookmarks"]).to contain_exactly(
+      include("label" => "First tool", "chat_message_id" => tool_a.id, "anchor_message_id" => second.id),
+      include("label" => "Second tool", "chat_message_id" => tool_b.id, "anchor_message_id" => second.id)
+    )
+    expect(queries.grep(/chat_messages.*id > .*ORDER BY.*created_at/i)).to be_empty
+    expect(queries.grep(/chat_messages.*id < .*ORDER BY.*created_at/i)).to be_empty
+  end
+
   it "does not embed chat navigation in the chat detail payload" do
     sign_in_as(user)
     current_chat = ChatSession.create!(
@@ -4365,6 +4386,17 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     message = chat_session.messages.create!(role: role, content: { "text" => text })
     ChatMessageSearchIndex.insert(message)
     message
+  end
+
+  def capture_sql
+    queries = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _started, _finished, _id, payload|
+      queries << payload[:sql] unless payload[:name].to_s.match?(/\ASCHEMA|TRANSACTION\z/)
+    end
+    yield
+    queries
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
   end
 
   def prepare_search_tables
