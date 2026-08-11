@@ -28,6 +28,8 @@ RSpec.describe "production configuration" do
     expect(production_config).to include('app_host = ENV.fetch("SYRUS_APP_HOST")')
     expect(production_config).to include("default_allowed_hosts = app_host")
     expect(production_config).to include('ENV.fetch("SYRUS_ALLOWED_HOSTS", default_allowed_hosts)')
+    expect(production_config).to include('preview_base_domain = ENV["SYRUS_PREVIEW_BASE_DOMAIN"].presence')
+    expect(production_config).to include('config.hosts << /\Apreview-\d+\.#{Regexp.escape(preview_base_domain)}\z/')
     expect(production_config).to include('env_boolean.call("SYRUS_ASSUME_SSL", "true")')
     expect(production_config).to include('env_boolean.call("SYRUS_FORCE_SSL", "true")')
     expect(production_config).to include('sidecar_process = ENV["SYRUS_MCP_SIDECAR"].present? || ENV["SYRUS_CHAT_MCP_SIDECAR"].present?')

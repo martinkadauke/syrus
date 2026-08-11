@@ -72,6 +72,20 @@ RSpec.describe PreviewProxyMiddleware do
       expect(headers["content-type"]).to eq("text/html")
     end
 
+    it "preserves the public preview host for the preview app" do
+      stub_request(:get, "http://127.0.0.1:25000/")
+        .with(headers: {
+          "Host" => "preview-#{job.id}.lvh.me",
+          "X-Forwarded-Host" => "preview-#{job.id}.lvh.me",
+          "X-Forwarded-Proto" => "http"
+        })
+        .to_return(status: 200, body: "host ok", headers: {})
+
+      status, _, body = middleware.call(env_for(host: "preview-#{job.id}.lvh.me"))
+      expect(status).to eq(200)
+      expect(body).to eq(["host ok"])
+    end
+
     it "proxies with path and query string" do
       stub_request(:get, "http://127.0.0.1:25000/dashboard?tab=logs")
         .to_return(status: 200, body: "dashboard", headers: {})

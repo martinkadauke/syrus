@@ -52,7 +52,9 @@ class PreviewProxyMiddleware
     proxy_req = http_klass.new(uri.request_uri)
 
     copy_request_headers(env, proxy_req)
-    proxy_req["Host"] = "#{target_host}:#{target_port}"
+    proxy_req["Host"] = request.host_with_port
+    proxy_req["X-Forwarded-Host"] = request.host_with_port
+    proxy_req["X-Forwarded-Proto"] = request.scheme
 
     if request.body
       body = request.body.read

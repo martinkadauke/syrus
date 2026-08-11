@@ -41,6 +41,8 @@ For each incoming request:
 4. If not found (environment not running, never started, or expired): a 503 response is returned with a message directing the user to the Syrus UI.
 5. If the host doesn't match the preview pattern: the request falls through to the normal Rails application.
 
+The proxy preserves the public preview `Host` header when forwarding to the preview app, and production host authorization automatically allows `preview-{job_id}.<SYRUS_PREVIEW_BASE_DOMAIN>`. Rewriting the upstream request to the internal service name would cause Rails preview apps to reject requests with HostAuthorization 403s.
+
 ### Preview service process
 
 The `preview` service (`bin/preview`, `Procfile.dev`) is a separate long-running process that manages preview app child processes. It is not involved in request routing.

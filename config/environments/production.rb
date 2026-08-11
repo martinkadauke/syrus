@@ -10,6 +10,7 @@ Rails.application.configure do
     .split(",")
     .map(&:strip)
     .reject(&:blank?)
+  preview_base_domain = ENV["SYRUS_PREVIEW_BASE_DOMAIN"].presence
 
   # Code is not reloaded between requests.
   config.enable_reloading = false
@@ -44,6 +45,9 @@ Rails.application.configure do
   # Enable DNS rebinding protection and other `Host` header attacks. Add extra
   # ingress names with SYRUS_ALLOWED_HOSTS as a comma-separated list.
   config.hosts.concat(allowed_hosts)
+  if preview_base_domain
+    config.hosts << /\Apreview-\d+\.#{Regexp.escape(preview_base_domain)}\z/
+  end
   config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 
   # Log to STDOUT with the current request id as a default log tag.
