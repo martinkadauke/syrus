@@ -72,7 +72,7 @@ Each preview server child process is recorded as a `SpawnedProcess` with `kind=p
 
 ## Lifecycle
 
-- Start: operator clicks "Start Preview" in the Syrus UI → preview service creates a fresh preview checkout, runs setup/seed commands, then spawns the app.
+- Start: operator clicks "Start Preview" in the Syrus UI for an implemented, approved, or landing Job → preview service creates a fresh preview checkout, runs setup/seed commands, then spawns the app.
 - Inactivity TTL: 10 minutes of no proxied traffic causes the preview service to stop the environment.
 - TTL reset: each proxied request through `PreviewProxyMiddleware` resets `last_activity_at` and extends `expires_at`.
 - Failure: if the checkout, preview command resolution, port allocation, setup/seed/app start, or health check fails, the environment is marked `failed` with an error message. It must not remain indefinitely in `starting` or `seeding`.

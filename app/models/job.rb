@@ -173,6 +173,10 @@ class Job < ApplicationRecord
       "#{latest_run_id} AS latest_run_id"
     )
   }
+
+  def previewable?
+    implemented? || approved? || landing?
+  end
   scope :without_active_workflows, -> {
     where(<<~SQL.squish)
       NOT EXISTS (

@@ -95,7 +95,17 @@ RSpec.describe "App API job preview", type: :request do
       expect(response).to have_http_status(:created)
     end
 
-    it "rejects jobs that are not implemented or approved" do
+    it "creates a preview environment for a landing job" do
+      job.update_columns(state: "landing")
+
+      expect {
+        post preview_path(job), as: :json
+      }.to change { job.preview_environments.count }.by(1)
+
+      expect(response).to have_http_status(:created)
+    end
+
+    it "rejects jobs that are not implemented, approved, or landing" do
       job.update_columns(state: "open")
 
       expect {
@@ -104,6 +114,7 @@ RSpec.describe "App API job preview", type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(parse_body.dig("error", "code")).to eq("validation_failed")
+      expect(parse_body.dig("error", "message")).to include("implemented, approved, or landing")
     end
 
     it "rejects creation when an active preview already exists" do

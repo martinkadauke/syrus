@@ -552,7 +552,7 @@ module App
         can_open_in_coding_mode: Feature.coding_mode_enabled? &&
           (@job.implemented? || @job.approved?) &&
           @job.branch_name.present?,
-        can_start_preview: preview_provider_configured? && (@job.implemented? || @job.approved?),
+        can_start_preview: preview_provider_configured? && @job.previewable?,
         feedback_agent_options: @job.alternate_configured_agent_providers,
         rebase_agent_options: @job.alternate_configured_agent_providers,
         retry_agent_options: @job.retry_with_agent_providers

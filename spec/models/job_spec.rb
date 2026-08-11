@@ -79,6 +79,18 @@ RSpec.describe Job do
     end
   end
 
+  describe "#previewable?" do
+    it "allows implemented, approved, and landing jobs" do
+      expect(Factories.job_record(state: "implemented")).to be_previewable
+      expect(Factories.job_record(state: "approved")).to be_previewable
+      expect(Factories.job_record(state: "landing")).to be_previewable
+    end
+
+    it "rejects jobs before implementation" do
+      expect(Factories.job_record(state: "running")).not_to be_previewable
+    end
+  end
+
   describe "fork base branch (fork -> upstream)" do
     let(:repo_owner) { Factories.user }
     let(:upstream) { Factories.repository(user: repo_owner, owner: "upstream-org", name: "project", default_branch: "main") }
