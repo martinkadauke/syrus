@@ -346,6 +346,7 @@ Rails.application.routes.draw do
           get "settings", to: "settings#show"
           patch "settings", to: "settings#update"
           post "settings/clear_secret", to: "settings#clear_secret"
+          post "platform_polling/start", to: "platform_polling#start"
         end
         match "*plugin_route", to: "plugin_routes#show", via: :all, constraints: lambda { |request|
           PluginRouteResolver.match?(request, controller_prefix: "api/v1/app/")

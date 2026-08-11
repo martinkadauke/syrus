@@ -187,6 +187,14 @@ How long to retain walkthrough video blobs before `VideoWalkthroughPruneJob` del
 
 Instance-wide storage budget for walkthrough video blobs, measured in megabytes. When the budget is exceeded, `VideoWalkthroughPruneJob` evicts the oldest blobs first (LRU). The class method `AppSetting.video_storage_budget_bytes` converts this to bytes for internal use.
 
+## External platform integrations
+
+### telegram_bot_handle
+
+**Type:** string · **Default:** nil
+
+The `@handle` of the Syrus Telegram bot (e.g. `syrus_bot`). Setting this marks Telegram as configured; `AppSetting.telegram_configured?` returns true and the Connected Platforms UI shows Telegram as available. The Telegram integration itself (long-poll adapter) is a separate job that registers via `PlatformPollingJob.registry`; this setting is what that job checks in its `configured?` guard.
+
 ## Coding-Mode workspaces
 
 ### chat_coding_workspace_budget_mb

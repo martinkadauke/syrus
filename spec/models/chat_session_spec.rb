@@ -720,7 +720,6 @@ RSpec.describe ChatSession do
     SQL
   end
 
-
   describe "chat participants" do
     it "creates an owner participant when the session is created" do
       session = described_class.create!(user: repo.user)

@@ -16,6 +16,7 @@ class ChatMessage < ApplicationRecord
   after_create_commit :broadcast_app_event
   after_create_commit :enqueue_search_index
   after_create_commit :clear_suggested_next_step, if: -> { role == "user" }
+  after_create_commit :deliver_to_platform, if: :platform_delivery_needed?
 
   validates :role, presence: true, inclusion: { in: ROLES }
   validate :content_is_present
@@ -89,5 +90,21 @@ class ChatMessage < ApplicationRecord
   # again — clear it the moment a user message lands.
   def clear_suggested_next_step
     chat_session&.clear_suggested_next_step!
+  end
+
+  def platform_delivery_needed?
+    role == "assistant" && chat_session.origin_platform.present?
+  end
+
+  def deliver_to_platform
+    platform = chat_session.origin_platform
+    return unless PlatformDelivery::Registry.registered?(platform)
+
+    adapter = PlatformDelivery::Registry.for(platform)
+    chat_session.participants.each do |participant|
+      identity = participant.platform_identities.find_by(platform: platform)
+      next unless identity
+      adapter.deliver(message: self, platform_identity: identity)
+    end
   end
 end

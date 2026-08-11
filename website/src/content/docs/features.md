@@ -710,6 +710,30 @@ set the bot handle in the admin settings page; the platform polling handler
 configuration (bot token and polling) is controlled via environment
 configuration for that platform's background worker.
 
+**Inbound message routing** — When a platform polling handler receives a
+message from an external user, `InboundMessageRouter` looks up the sender's
+`PlatformIdentity`, finds or creates a `ChatSession` scoped to that platform
+and user, records the message, and enqueues a `ChatTurnJob` when the session
+policy is `speak_when_spoken_to`.
+
+**Outbound delivery** — When Syrus replies (an `assistant`-role `ChatMessage`
+is created in a platform-origin session), a `PlatformDelivery::Registry`
+adapter delivers the message to each participant who has a linked identity
+for that platform. Participants with no linked identity receive the reply via
+ActionCable on the web UI as usual. Platform adapters are registered at load
+time; the `web` adapter is a no-op since ActionCable already handles it.
+
+**Starting the polling worker** — Platform polling workers self-reschedule
+after each poll cycle. On application boot, registered workers are started
+automatically when `SYRUS_ROLE` is set. Administrators can also trigger a
+manual start via the admin API:
+
+```
+POST /api/v1/app/admin/platform_polling/start
+```
+
+This enqueues any registered platform polling job that is not already running.
+
 Credentials are stored with Active Record Encryption in the Syrus database,
 so every web, worker, console, and migration context that reads users needs
 the same stable `ACTIVE_RECORD_ENCRYPTION_*` keys, or `RAILS_MASTER_KEY`
