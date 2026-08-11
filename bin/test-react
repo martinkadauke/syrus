@@ -2,10 +2,11 @@
 # Runs React/TypeScript unit tests for the SPA migration.
 set -euo pipefail
 
-# Install node_modules if missing — mirrors the `bundle check || bundle install`
-# pattern used by Ruby graders so this script is self-sufficient when the prepare
-# step does not complete npm ci before graders run.
-[ -d node_modules/.bin ] || npm ci
+# Install node_modules if missing or stale. npm writes node_modules/.package-lock.json,
+# which gives us a cheap freshness check without running npm on every grader pass.
+if [ ! -d node_modules/.bin ] || [ ! -f node_modules/.package-lock.json ] || [ package-lock.json -nt node_modules/.package-lock.json ] || [ package.json -nt node_modules/.package-lock.json ]; then
+  npm ci
+fi
 
 vitest_max_workers="${VITEST_MAX_WORKERS:-4}"
 
