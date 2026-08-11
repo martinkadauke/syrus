@@ -516,7 +516,9 @@ RSpec.describe "Mcp::Tools admin tools" do
       workflow_id: workflow.id,
       run_id: run.id
     )
-    expect(payload.fetch(:items).first.fetch(:repair_plan)).to include(action: "mark_worker_died")
+    repair_plan = payload.fetch(:items).first.fetch(:repair_plan)
+    expect(repair_plan).to include(target_type: "Run", target_id: run.id)
+    expect(repair_plan.fetch(:action)).to match(/\Amark_worker_died/)
   end
 
   it "returns the GitHub App installation diagnostic for admins" do

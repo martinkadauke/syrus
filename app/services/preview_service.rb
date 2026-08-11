@@ -301,6 +301,17 @@ class PreviewService
     SpawnedProcess.where(id: child.spawned_process_id).where.not(finished_at: nil).exists?
   end
 
+  def process_alive?(pid)
+    return false unless pid
+
+    Process.kill(0, pid)
+    true
+  rescue Errno::ESRCH
+    false
+  rescue Errno::EPERM
+    true
+  end
+
   def heartbeat_children!
     ids = @mutex.synchronize { @children.values.filter_map(&:spawned_process_id) }
     return if ids.empty?
@@ -335,6 +346,10 @@ class PreviewService
     children.each do |env_id, child|
       outcome = finished[child.spawned_process_id]
       next unless outcome
+      if outcome == "orphaned" && process_alive?(child.pid)
+        Rails.logger.warn("[PreviewService] ignoring orphaned SpawnedProcess ##{child.spawned_process_id}; pid #{child.pid} is still alive")
+        next
+      end
 
       @mutex.synchronize { @children.delete(env_id) }
       env = PreviewEnvironment.find_by(id: env_id)

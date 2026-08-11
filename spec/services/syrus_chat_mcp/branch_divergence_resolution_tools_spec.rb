@@ -45,7 +45,11 @@ RSpec.describe "SyrusChatMcp branch divergence resolution tools" do
     expect(payload.dig("evidence", "remote_sha")).to eq("remote-new")
     expect(payload.dig("evidence", "workflow_local_sha")).to eq("local-sha")
     expect(payload.dig("evidence", "base_sha")).to eq("base-sha")
-    expect(payload.dig("evidence", "diff_summary", "available")).to be(false)
+    expect(payload.dig("evidence", "diff_summary")).to include("available")
+    expect(payload.dig("evidence", "branch_divergence")).to include(
+      "remote_sha" => "remote-old",
+      "local_sha" => "local-sha"
+    )
   end
 
   it "creates a pending adoption action with the evidence snapshot" do

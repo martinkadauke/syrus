@@ -445,6 +445,27 @@ RSpec.describe PreviewService do
       expect(env.error_message).to include("preview process ended unexpectedly", "orphaned")
       expect(service.instance_variable_get(:@children)).not_to have_key(env.id)
     end
+
+    it "does not fail a preview from an orphaned row when the child pid is still alive" do
+      service = described_class.new
+      env = create_env(state: "running", port: 28_009)
+      process = SpawnedProcess.create!(
+        kind: "preview",
+        command: "bin/server",
+        hostname: "preview-host",
+        started_at: 1.minute.ago,
+        finished_at: Time.current,
+        outcome: "orphaned"
+      )
+      service.instance_variable_get(:@children)[env.id] =
+        PreviewService::ChildProcess.new(pid: 99_999, environment_id: env.id, port: 28_009, spawned_process_id: process.id)
+      allow(service).to receive(:process_alive?).with(99_999).and_return(true)
+
+      service.send(:reconcile_finished_spawned_processes!)
+
+      expect(env.reload).to be_running
+      expect(service.instance_variable_get(:@children)).to have_key(env.id)
+    end
   end
 
   describe "graceful shutdown" do

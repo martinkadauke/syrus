@@ -20,6 +20,9 @@ RSpec.describe ReapOrphanedSpawnedProcessesJob do
     allow_any_instance_of(described_class)
       .to receive(:live_solid_queue_hostnames)
       .and_return(Set.new(hostnames))
+    allow_any_instance_of(described_class)
+      .to receive(:live_instance_version_hostnames)
+      .and_return(Set.new)
   end
 
   it "finalizes rows whose hostname is not in the live SolidQueue process set" do
@@ -43,10 +46,28 @@ RSpec.describe ReapOrphanedSpawnedProcessesJob do
     expect(live).to be_running
   end
 
+  it "leaves preview rows whose hostname has a fresh InstanceVersion heartbeat alone" do
+    preview = fixture(kind: "preview", hostname: "syrus-preview-abc")
+    allow_any_instance_of(described_class)
+      .to receive(:live_solid_queue_hostnames)
+      .and_return(Set.new([ "worker-pod" ]))
+    allow_any_instance_of(described_class)
+      .to receive(:live_instance_version_hostnames)
+      .and_return(Set.new([ "syrus-preview-abc" ]))
+
+    described_class.perform_now
+
+    preview.reload
+    expect(preview).to be_running
+  end
+
   it "skips cleanly when the SolidQueue tables are unreachable" do
     sp = fixture(hostname: "any-pod")
     allow_any_instance_of(described_class)
       .to receive(:live_solid_queue_hostnames)
+      .and_return(nil)
+    allow_any_instance_of(described_class)
+      .to receive(:live_instance_version_hostnames)
       .and_return(nil)
 
     expect { described_class.perform_now }.not_to raise_error

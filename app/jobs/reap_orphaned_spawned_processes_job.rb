@@ -17,7 +17,7 @@ class ReapOrphanedSpawnedProcessesJob < ApplicationJob
   queue_as :cleanup
 
   def perform
-    live_hosts = live_solid_queue_hostnames
+    live_hosts = live_process_hostnames
     reap_cross_host_orphans(live_hosts) if live_hosts # SQ unreachable — single-DB dev/test
     reap_stale_chat_turns
   end
@@ -45,10 +45,24 @@ class ReapOrphanedSpawnedProcessesJob < ApplicationJob
     Rails.logger.info("[ReapOrphanedSpawnedProcessesJob] reconciled #{reconciled} stale chat turn(s)")
   end
 
+  def live_process_hostnames
+    sources = [ live_solid_queue_hostnames, live_instance_version_hostnames ].compact
+    return nil if sources.empty?
+
+    sources.reduce(Set.new, :+)
+  end
+
   def live_solid_queue_hostnames
     SolidQueue::Process.distinct.pluck(:hostname).to_set
   rescue ActiveRecord::StatementInvalid => e
     Rails.logger.debug("[ReapOrphanedSpawnedProcessesJob] SQ tables unreachable (#{e.class}); skipping cross-host sweep")
+    nil
+  end
+
+  def live_instance_version_hostnames
+    InstanceVersion.fresh.distinct.pluck(:hostname).to_set
+  rescue ActiveRecord::StatementInvalid => e
+    Rails.logger.debug("[ReapOrphanedSpawnedProcessesJob] instance_versions unreachable (#{e.class}); skipping instance-version host sweep")
     nil
   end
 end
