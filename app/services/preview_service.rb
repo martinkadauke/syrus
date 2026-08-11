@@ -130,7 +130,10 @@ class PreviewService
   end
 
   def spawn_app(command, workspace_path, port, preview_environment)
-    env = { "PORT" => port.to_s }
+    env = {
+      "PORT" => port.to_s,
+      "SYRUS_ALLOWED_HOSTS" => preview_allowed_hosts(preview_environment)
+    }
     pid = Process.spawn(env, command, chdir: workspace_path, pgroup: true,
                                       out: "/dev/null", err: "/dev/null")
     pgid = Process.getpgid(pid) rescue nil
@@ -152,6 +155,19 @@ class PreviewService
     SpawnedProcessSupervisor.ensure_running
     Rails.logger.info("[PreviewService] spawned pid=#{pid} port=#{port} cmd=#{command.inspect}")
     ChildProcess.new(pid: pid, environment_id: preview_environment.id, port: port, spawned_process_id: spawned_process.id)
+  end
+
+  def preview_allowed_hosts(preview_environment)
+    hosts = ENV.fetch("SYRUS_ALLOWED_HOSTS", ENV["SYRUS_APP_HOST"].to_s)
+      .split(",")
+      .map(&:strip)
+      .reject(&:blank?)
+    hosts << preview_host(preview_environment)
+    hosts.uniq.join(",")
+  end
+
+  def preview_host(preview_environment)
+    "preview-#{preview_environment.job_id}.#{ENV.fetch("SYRUS_PREVIEW_BASE_DOMAIN", "lvh.me")}"
   end
 
   def await_health_check(env, port, health_check_path)

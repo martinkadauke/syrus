@@ -81,6 +81,19 @@ RSpec.describe PreviewService do
       Process.kill("TERM", child.pid) rescue nil
       Process.waitpid(child.pid) rescue nil
     end
+
+    it "adds the preview hostname to the child app allowed hosts" do
+      service = described_class.new
+      env = create_env
+      stub_const("ENV", ENV.to_h.merge(
+        "SYRUS_ALLOWED_HOSTS" => "syrus.example.com",
+        "SYRUS_PREVIEW_BASE_DOMAIN" => "previews.example.com"
+      ))
+
+      expect(service.send(:preview_allowed_hosts, env)).to eq(
+        "syrus.example.com,preview-#{job.id}.previews.example.com"
+      )
+    end
   end
 
   describe "health check" do
