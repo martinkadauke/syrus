@@ -294,6 +294,19 @@ class ClaudeInvocation
       # system subtypes are noise.
       if event["subtype"] == "init"
         servers = nil
+        tools = Array(event["tools"]).map(&:to_s)
+        if tools.any?
+          mcp_tools = tools.select { |tool| tool.start_with?("mcp__") }
+          log_sink.call(
+            "[mcp_tools_init] count=#{mcp_tools.size} required=#{@required_mcp_tools.join(',')} tools=#{mcp_tools.join(',')}",
+            kind: "system"
+          )
+        else
+          log_sink.call(
+            "[mcp_tools_init] count=0 required=#{@required_mcp_tools.join(',')} tools=(none)",
+            kind: "system"
+          )
+        end
         # Log MCP server registration state so failed runs (esp.
         # `--resume`d ones) can be diagnosed: status=pending or
         # missing-from-list = the tool won't be callable. Logged
@@ -309,7 +322,7 @@ class ClaudeInvocation
         end
         updates = {}
         updates[:session_id] = event["session_id"] if event["session_id"]
-        if (required_update = required_mcp_tools_update(servers, log_sink))
+        if (required_update = required_mcp_tools_update(servers, tools, log_sink))
           updates.merge!(required_update)
         elsif servers&.any? { |server| server["status"] == "failed" }
           updates.merge!(
@@ -353,11 +366,25 @@ class ClaudeInvocation
     event["isApiErrorMessage"] == true || event["apiErrorStatus"].present? || event["error"].present?
   end
 
-  def required_mcp_tools_update(servers, log_sink)
+  def required_mcp_tools_update(servers, available_tools, log_sink)
     return if @required_mcp_tools.empty?
 
     sidecar = servers&.find { |server| server["name"] == "syrus-mcp-sidecar" }
     status = sidecar&.fetch("status", nil).presence || "missing"
+    missing_tools = @required_mcp_tools.reject { |tool| mcp_tool_matches?(available_tools, tool) }
+    if missing_tools.present? && available_tools.present?
+      log_sink.call(
+        "[mcp_required] syrus-mcp-sidecar=#{status}; required tools missing from Claude init tool list: #{missing_tools.join(', ')}",
+        kind: "system"
+      )
+      return {
+        mcp_server_failed: true,
+        is_error: true,
+        outcome: "mcp_sidecar_failed",
+        final_text: nil
+      }
+    end
+
     return if status == "connected" || status == "pending"
 
     log_sink.call(
@@ -370,6 +397,14 @@ class ClaudeInvocation
       outcome: "mcp_sidecar_failed",
       final_text: nil
     }
+  end
+
+  def mcp_tool_matches?(available_tools, required_tool)
+    Array(available_tools).any? do |name|
+      name.to_s == required_tool ||
+        name.to_s.end_with?("__#{required_tool}") ||
+        name.to_s.end_with?(".#{required_tool}")
+    end
   end
 
   def assistant_text_for(event)

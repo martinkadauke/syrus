@@ -200,7 +200,8 @@ module Steps
       end
 
       adapter.record_result!(result, log: ->(message) { log(message) })
-      capture_mcp_sidecar_stderr if result.outcome == "mcp_sidecar_failed"
+      log_mcp_required_tool_health(required_mcp_tools) if required_mcp_tools.present?
+      capture_mcp_sidecar_stderr if result.outcome == "mcp_sidecar_failed" || required_mcp_tools.present?
 
       raise StepFailed, "agent timed out"                            if result.timed_out
       raise StepFailed, "agent reported #{result.outcome || 'error'}" if result.is_error
@@ -232,6 +233,43 @@ module Steps
       return if stderr.blank?
 
       log("[mcp_sidecar_stderr]\n#{stderr}", kind: "system")
+    end
+
+    def log_mcp_required_tool_health(required_tools)
+      required_tools = Array(required_tools).compact_blank.map(&:to_s)
+      return if required_tools.empty?
+
+      transcript = run.reload.provider_session&.transcript_jsonl.to_s
+      summary = ClaudeTranscript.new(transcript).summary
+      available = Array(summary.available_tools_at_init).map(&:to_s)
+      missing = required_tools.reject { |tool| mcp_tool_available?(available, tool) }
+      called = required_tools.select { |tool| mcp_tool_called?(summary.tool_call_counts.keys, tool) }
+      status = missing.empty? ? "ok" : "missing"
+      log(
+        "[mcp_required_health] status=#{status} server=syrus-mcp-sidecar required=#{required_tools.join(',')} missing=#{missing.join(',')} called=#{called.join(',')} available_count=#{available.size} mcp_tool_called=#{summary.mcp_tool_called?} session_id=#{summary.session_id || '(none)'}",
+        kind: "system"
+      )
+    rescue StandardError => e
+      log("[mcp_required_health] failed to inspect transcript: #{e.class}: #{e.message}", kind: "system")
+    end
+
+    def mcp_tool_available?(available_tools, required_tool)
+      available_tools.any? do |name|
+        normalized_mcp_tool_match?(name, required_tool)
+      end
+    end
+
+    def mcp_tool_called?(called_tools, required_tool)
+      called_tools.any? do |name|
+        normalized_mcp_tool_match?(name, required_tool)
+      end
+    end
+
+    def normalized_mcp_tool_match?(name, required_tool)
+      normalized = name.to_s
+      normalized == required_tool ||
+        normalized.end_with?("__#{required_tool}") ||
+        normalized.end_with?(".#{required_tool}")
     end
 
     # Session continuation. v1 contract: `--resume` only crosses Step

@@ -178,11 +178,25 @@ module Mcp
     end
 
     def build_server
+      tools = @tools.call
+      context = @server_context.call
+      @built_server_context = context
+      log_workflow_sidecar_event!(
+        context,
+        "[mcp_sidecar] build server=#{@server_name} pid=#{Process.pid} tools=#{tool_names(tools).join(',')}"
+      )
       MCP::Server.new(
         name: @server_name,
-        tools: @tools.call,
-        server_context: @server_context.call
+        tools: tools,
+        server_context: context
       )
+    rescue Exception => e # rubocop:disable Lint/RescueException
+      context = safe_server_context
+      log_workflow_sidecar_event!(
+        context,
+        "[mcp_sidecar] build failed server=#{@server_name} pid=#{Process.pid} error=#{e.class}: #{e.message}"
+      )
+      raise
     end
 
     def run
@@ -193,7 +207,45 @@ module Mcp
 
       Signal.trap("TERM") { transport.close; exit 0 }
 
+      log_workflow_sidecar_event!(@built_server_context, "[mcp_sidecar] transport opening server=#{@server_name} pid=#{Process.pid}")
       transport.open
+    rescue Exception => e # rubocop:disable Lint/RescueException
+      log_workflow_sidecar_event!(safe_server_context, "[mcp_sidecar] transport failed server=#{@server_name} pid=#{Process.pid} error=#{e.class}: #{e.message}")
+      raise
+    end
+
+    def tool_names(tools)
+      Array(tools).map do |tool|
+        raw = if tool.respond_to?(:name) && tool.name.present?
+          tool.name
+        elsif tool.class.name.present?
+          tool.class.name
+        else
+          tool.to_s
+        end
+        raw.to_s.demodulize.sub(/Tool\z/, "").underscore
+      end.sort
+    end
+
+    def safe_server_context
+      @server_context.call
+    rescue StandardError
+      {}
+    end
+
+    def log_workflow_sidecar_event!(context, message)
+      return unless @server_name == WORKFLOW_SERVER
+
+      run_id = context.respond_to?(:[]) ? context[:run_id] || context["run_id"] : nil
+      return if run_id.blank?
+
+      Tools.with_database_connection do
+        if (run = Run.find_by(id: run_id))
+          JobLog.append!(run: run, kind: "system", chunk: message)
+        end
+      end
+    rescue StandardError => e
+      warn "[#{@server_name}] failed to write sidecar JobLog for run #{run_id || '(unknown)'}: #{e.class}: #{e.message}"
     end
   end
 end

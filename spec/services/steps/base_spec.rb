@@ -237,6 +237,37 @@ RSpec.describe Steps::Base do
       expect(log.chunk).to include("[mcp_sidecar_stderr]")
       expect(log.chunk).to include("boot exploded")
     end
+
+    it "logs required MCP tool health and stderr for required-tool steps even when the provider reports success" do
+      result = AgentInvocation::Result.new(
+        turns: 1,
+        exit_status: 0,
+        timed_out: false,
+        is_error: false,
+        outcome: "success",
+        final_text: nil,
+        session_id: "sid-1"
+      )
+      fake_adapter = instance_double(AgentProviders::Base)
+      allow(handler).to receive(:agent_adapter).and_return(fake_adapter)
+      allow(fake_adapter).to receive(:run).and_return(result)
+      allow(fake_adapter).to receive(:record_result!) do
+        ProviderSession.create!(
+          resumable: run,
+          provider: "claude",
+          session_id: "sid-1",
+          transcript_jsonl: { type: "system", subtype: "init", session_id: "sid-1", tools: [ "Bash" ] }.to_json + "\n"
+        )
+        result
+      end
+      allow(McpSidecarLog).to receive(:tail).with(run.id).and_return("sidecar booted\n")
+
+      handler.send(:run_agent, prompt: "summarize", required_mcp_tools: %w[submit_summary])
+
+      chunks = run.job_logs.order(:sequence).pluck(:chunk)
+      expect(chunks).to include(match(/\[mcp_required_health\] status=missing.*missing=submit_summary/))
+      expect(chunks).to include(include("[mcp_sidecar_stderr]", "sidecar booted"))
+    end
   end
 
   describe "#perform_agentic_change_step" do

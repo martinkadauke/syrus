@@ -19,6 +19,15 @@ RSpec.describe Mcp::Sidecar do
   end
 
   describe "MCP handshake" do
+    it "records the tool list when the workflow sidecar builds" do
+      server_for(run)
+
+      expect(run.job_logs.order(:sequence).last.chunk).to include(
+        "[mcp_sidecar] build server=syrus-mcp-sidecar",
+        "submit_summary"
+      )
+    end
+
     it "responds to `initialize` with serverInfo and a negotiated protocol version" do
       response = jsonrpc(server_for(run), "initialize", params: { protocolVersion: "2025-06-18", clientInfo: { name: "test", version: "1" }, capabilities: {} })
       expect(response[:result][:serverInfo]).to include(name: "syrus-mcp-sidecar")

@@ -96,6 +96,11 @@ RSpec.describe AgentProviders::Claude do
       result = adapter.run(prompt: "do it", log_sink: ->(*, **) { }, max_turns: 7)
 
       expect(result).to be_success
+      expect(run.job_logs.order(:sequence).last.chunk).to include(
+        "[mcp_config] server=syrus-mcp-sidecar",
+        "alwaysLoad=true",
+        "env_keys="
+      )
       expect(received).to include(
         workspace_path: "/tmp/worktree",
         prompt: "do it",

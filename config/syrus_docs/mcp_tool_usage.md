@@ -33,6 +33,16 @@ need authoritative tool profile data such as surface, tier, admin-only status,
 feature flag gates, required roles/capabilities, and read-only vs mutation
 classification.
 
+Workflow-sidecar health is intentionally visible in `JobLog` for agentic steps
+that require MCP submission tools such as `submit_summary` or
+`submit_test_plan`. Look for `[mcp_config]`, `[mcp_sidecar]`,
+`[mcp_tools_init]`, `[mcp_required]`, `[mcp_required_health]`, and
+`[mcp_sidecar_stderr]` rows when debugging "agent succeeded but did not call the
+required tool" failures. These rows show the generated MCP config path,
+forwarded env key names, sidecar startup/tool advertisement, Claude's init-time
+tool list, transcript evidence for whether the required tool was available or
+called, and the sidecar stderr tail.
+
 Tool implementations live under `Mcp::Tools`, and the stdio server processes
 are built through the shared `Mcp::Sidecar` infrastructure. Protocol-visible
 server names remain stable: `syrus-chat-sidecar`,

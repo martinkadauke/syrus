@@ -195,6 +195,62 @@ RSpec.describe ClaudeInvocation do
       )
     end
 
+    it "logs MCP tool availability from the init event" do
+      events = []
+      invocation = described_class.new(
+        "/tmp",
+        prompt: "x",
+        oauth_token: "x",
+        required_mcp_tools: %w[submit_summary]
+      )
+      event = {
+        type: "system",
+        subtype: "init",
+        session_id: "sid-1",
+        tools: [ "Bash", "mcp__syrus-mcp-sidecar__submit_summary" ],
+        mcp_servers: [ { "name" => "syrus-mcp-sidecar", "status" => "connected" } ]
+      }.to_json
+
+      update = invocation.send(:process_event, event, ->(line, **kwargs) { events << [ line, kwargs ] })
+
+      expect(update).to eq(session_id: "sid-1")
+      expect(events).to include(
+        [
+          "[mcp_tools_init] count=1 required=submit_summary tools=mcp__syrus-mcp-sidecar__submit_summary",
+          { kind: "system" }
+        ]
+      )
+    end
+
+    it "fails immediately when required MCP tools are absent from the init tool list" do
+      events = []
+      invocation = described_class.new(
+        "/tmp",
+        prompt: "x",
+        oauth_token: "x",
+        required_mcp_tools: %w[submit_summary]
+      )
+      event = {
+        type: "system",
+        subtype: "init",
+        session_id: "sid-1",
+        tools: [ "Bash", "Read" ],
+        mcp_servers: [ { "name" => "syrus-mcp-sidecar", "status" => "connected" } ]
+      }.to_json
+
+      update = invocation.send(:process_event, event, ->(line, **kwargs) { events << [ line, kwargs ] })
+
+      expect(update).to include(
+        mcp_server_failed: true,
+        is_error: true,
+        outcome: "mcp_sidecar_failed",
+        final_text: nil
+      )
+      expect(events.map(&:first)).to include(
+        "[mcp_required] syrus-mcp-sidecar=connected; required tools missing from Claude init tool list: submit_summary"
+      )
+    end
+
     it "reports Claude API authentication failures as system errors instead of assistant text" do
       events = []
       event = {
@@ -361,7 +417,7 @@ RSpec.describe ClaudeInvocation do
       update = invocation.send(:process_event, event, ->(line, **kwargs) { events << [ line, kwargs ] })
 
       expect(update).to eq(session_id: "abc-123-xyz")
-      expect(events).to contain_exactly(
+      expect(events).to include(
         [
           "[mcp_servers] syrus-chat-sidecar=pending",
           {
@@ -476,7 +532,7 @@ RSpec.describe ClaudeInvocation do
         outcome: "mcp_sidecar_failed",
         final_text: nil
       )
-      expect(events).to contain_exactly(
+      expect(events).to include(
         [
           "[mcp_servers] syrus-mcp-sidecar=failed",
           {

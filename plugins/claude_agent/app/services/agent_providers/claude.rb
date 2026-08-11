@@ -126,20 +126,32 @@ module AgentProviders
     # tool prefixes from the binary basename.
     def with_mcp_config
       Tempfile.create([ "syrus-mcp-#{@run.id}-", ".json" ]) do |f|
+        env = sidecar_env
         f.write({
           mcpServers: {
             "syrus-mcp-sidecar" => {
               type: "stdio",
               command: sidecar_command,
               args: sidecar_args,
-              env: sidecar_env,
+              env: env,
               alwaysLoad: true
             }
           }
         }.to_json)
         f.flush
+        log_mcp_config!(path: f.path, env: env)
         yield f.path
       end
+    end
+
+    def log_mcp_config!(path:, env:)
+      JobLog.append!(
+        run: @run,
+        kind: "system",
+        chunk: "[mcp_config] server=syrus-mcp-sidecar command=#{sidecar_command} args=#{sidecar_args.join(' ')} alwaysLoad=true path=#{path} stderr=#{McpSidecarLog.path_for(@run.id)} env_keys=#{env.keys.sort.join(',')}"
+      )
+    rescue StandardError => e
+      Rails.logger.warn("[AgentProviders::Claude] failed to log MCP config for Run ##{@run.id}: #{e.class}: #{e.message}")
     end
   end
 end
