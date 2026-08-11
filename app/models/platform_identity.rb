@@ -3,7 +3,7 @@ class PlatformIdentity < ApplicationRecord
 
   belongs_to :user
 
-  after_create_commit :broadcast_linked
+  after_commit :broadcast_linked, on: [ :create, :update ]
 
   enum :platform, PLATFORMS.index_with(&:itself), validate: true
 

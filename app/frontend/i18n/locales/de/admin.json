@@ -353,7 +353,17 @@
     "mode_simple": "Einfach (nicht-technisch)",
     "mode_confirm_to_advanced": "Der erweiterte Modus stellt die volle Entwicklererfahrung wieder her, einschließlich manueller Freigaben, Coding-Modus, lokalem Modus, geplanten Aufgaben und allen Operator-Steuerelementen. Syrus speichert die Änderung und lädt diese Seite neu.",
     "mode_confirm_to_simple": "Der einfache Modus blendet entwicklerorientierte Bereiche aus, deaktiviert Coding-Modus, lokalen Modus und geplante Aufgaben und nutzt einfachere Feature-Review-Abläufe. Syrus speichert die Änderung und lädt diese Seite neu.",
-    "settings_updated": "Einstellungen aktualisiert."
+    "settings_updated": "Einstellungen aktualisiert.",
+    "telegram_heading": "Telegram",
+    "telegram_token_label": "Bot-Token",
+    "telegram_token_placeholder": "Bot-Token eingeben…",
+    "telegram_token_clear_confirm": "Telegram-Bot-Token löschen?",
+    "telegram_save_token": "Token speichern",
+    "telegram_start_polling": "Polling starten",
+    "telegram_polling_starting": "Wird gestartet…",
+    "telegram_polling_started": "Telegram-Polling gestartet.",
+    "telegram_polling_already_running": "Telegram-Polling läuft bereits.",
+    "telegram_polling_error": "Telegram-Polling konnte nicht gestartet werden."
   },
   "github_app": {
     "register_title": "GitHub-App-Registrierung",
