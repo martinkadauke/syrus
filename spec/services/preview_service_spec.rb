@@ -60,12 +60,26 @@ RSpec.describe PreviewService do
   end
 
   describe "child process spawning" do
-    it "spawns a process and returns its pid" do
+    it "spawns a process and records a SpawnedProcess audit row" do
       service = described_class.new
-      pid = service.send(:spawn_app, "sleep 60", workspace_path, 28000)
-      expect(pid).to be_a(Integer)
-      Process.kill("TERM", pid) rescue nil
-      Process.waitpid(pid) rescue nil
+      env = create_env
+
+      child = service.send(:spawn_app, "sleep 60", workspace_path, 28000, env)
+
+      expect(child.pid).to be_a(Integer)
+      process = SpawnedProcess.find(child.spawned_process_id)
+      expect(process).to have_attributes(
+        kind: "preview",
+        command: "sleep 60",
+        workdir: workspace_path
+      )
+      expect(process.resource_attribution).to include(
+        "preview_environment_id" => env.id,
+        "job_id" => job.id,
+        "port" => 28_000
+      )
+      Process.kill("TERM", child.pid) rescue nil
+      Process.waitpid(child.pid) rescue nil
     end
   end
 
@@ -97,21 +111,14 @@ RSpec.describe PreviewService do
       service.send(:poll_starting_environments)
     end
 
-    it "marks the environment failed when no workspace exists" do
+    it "marks the environment failed when the preview workspace cannot be prepared" do
       env = create_env(workspace_path: "/nonexistent/path")
       service = described_class.new
-
-      source = instance_double(PreviewCommandSource,
-        resolve: PreviewCommandSource::Config.new(
-          start_command_for: ->(port:) { "echo #{port}" },
-          seed_command: nil,
-          health_check_path: "/",
-          log_paths: []
-        ))
-      allow(PreviewCommandSource).to receive(:new).and_return(source)
+      allow(PreviewWorkspace).to receive(:prepare!).with(env).and_raise("checkout failed")
 
       service.send(:poll_starting_environments)
-      expect(env.reload.state).to eq("starting")
+      expect(env.reload.state).to eq("failed")
+      expect(env.error_message).to eq("checkout failed")
     end
 
     it "stores the configured internal host for the web proxy target" do
@@ -127,7 +134,9 @@ RSpec.describe PreviewService do
         ))
       allow(PreviewCommandSource).to receive(:new).and_return(source)
       allow(service).to receive(:allocate_port).and_return(28_008)
-      allow(service).to receive(:spawn_app).and_return(12_345)
+      allow(service).to receive(:spawn_app).and_return(
+        PreviewService::ChildProcess.new(pid: 12_345, environment_id: env.id, port: 28_008)
+      )
       allow(service).to receive(:await_health_check)
 
       service.send(:poll_starting_environments)
@@ -190,6 +199,32 @@ RSpec.describe PreviewService do
       expect(env.error_message).to match(/exited unexpectedly/)
     end
 
+    it "finalizes the SpawnedProcess row when a preview child exits" do
+      service = described_class.new
+      env = create_env(state: "running", port: 28005)
+      process = SpawnedProcess.create!(
+        kind: "preview",
+        command: "sleep 1",
+        hostname: "preview-host",
+        started_at: Time.current
+      )
+      pid = Process.spawn("false")
+      Process.waitpid(pid)
+      service.instance_variable_get(:@children)[env.id] =
+        PreviewService::ChildProcess.new(pid: pid, environment_id: env.id, port: 28005, spawned_process_id: process.id)
+
+      allow(Process).to receive(:waitpid2).with(pid, Process::WNOHANG) do
+        status = instance_double(Process::Status, success?: false, exitstatus: 1)
+        [ pid, status ]
+      end
+
+      service.send(:reap_exited_children)
+
+      expect(process.reload).to be_finished
+      expect(process.outcome).to eq("failed")
+      expect(process.exit_status).to eq(1)
+    end
+
     it "marks the environment stopped when a stopping child exits cleanly" do
       service = described_class.new
       env = create_env(state: "stopping", port: 28006)
@@ -208,6 +243,28 @@ RSpec.describe PreviewService do
       service.send(:reap_exited_children)
 
       expect(env.reload.state).to eq("stopped")
+    end
+  end
+
+  describe "kill requests" do
+    it "stops the preview when its SpawnedProcess kill flag is set" do
+      service = described_class.new
+      env = create_env(state: "running", port: 28009)
+      process = SpawnedProcess.create!(
+        kind: "preview",
+        command: "bin/rails server",
+        hostname: "preview-host",
+        started_at: Time.current,
+        kill_requested_at: Time.current
+      )
+      service.instance_variable_get(:@children)[env.id] =
+        PreviewService::ChildProcess.new(pid: 99_999, environment_id: env.id, port: 28009, spawned_process_id: process.id)
+
+      expect(service).to receive(:kill_process_group).with(99_999)
+
+      service.send(:honor_kill_requests!)
+
+      expect(env.reload.state).to eq("stopping")
     end
   end
 

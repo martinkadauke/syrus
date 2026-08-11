@@ -1,4 +1,6 @@
 require "net/http"
+require "set"
+require "socket"
 
 # Long-running service that manages preview environment child processes.
 #
@@ -25,7 +27,7 @@ class PreviewService
   HEALTH_CHECK_RETRY_INTERVAL_SECONDS = 2
   GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = 10
 
-  ChildProcess = Struct.new(:pid, :environment_id, :port, keyword_init: true)
+  ChildProcess = Struct.new(:pid, :environment_id, :port, :spawned_process_id, keyword_init: true)
 
   def initialize
     @children = {}  # environment_id → ChildProcess
@@ -44,6 +46,8 @@ class PreviewService
       with_connection do
         poll_starting_environments
         check_ttl_expirations if ttl_check_due?
+        heartbeat_children!
+        honor_kill_requests!
         reap_exited_children
       end
 
@@ -87,21 +91,17 @@ class PreviewService
   end
 
   def start_environment(env)
-    port = allocate_port
-    unless port
-      Rails.logger.warn("[PreviewService] no free port available for environment #{env.id}")
-      return
-    end
-
-    workspace_path = env.workspace_path
-    unless workspace_path && Dir.exist?(workspace_path)
-      Rails.logger.warn("[PreviewService] no usable workspace for environment #{env.id}")
-      return
-    end
+    workspace_path = ensure_workspace!(env)
 
     source = PreviewCommandSource.new(workspace_path).resolve
     unless source
       mark_failed(env, "no preview command configured for this repository")
+      return
+    end
+
+    port = allocate_port
+    unless port
+      mark_failed(env, "no free preview port available")
       return
     end
 
@@ -110,8 +110,8 @@ class PreviewService
 
     run_seed_command(source, workspace_path) if source.seed_command
 
-    pid = spawn_app(source.start_command_for.call(port: port), workspace_path, port)
-    @mutex.synchronize { @children[env.id] = ChildProcess.new(pid: pid, environment_id: env.id, port: port) }
+    child = spawn_app(source.start_command_for.call(port: port), workspace_path, port, env)
+    @mutex.synchronize { @children[env.id] = child }
 
     await_health_check(env, port, source.health_check_path)
   end
@@ -122,12 +122,36 @@ class PreviewService
     Rails.logger.warn("[PreviewService] seed command exited non-zero") unless result
   end
 
-  def spawn_app(command, workspace_path, port)
+  def ensure_workspace!(env)
+    workspace_path = env.workspace_path
+    return workspace_path if workspace_path.present? && Dir.exist?(workspace_path)
+
+    PreviewWorkspace.prepare!(env)
+  end
+
+  def spawn_app(command, workspace_path, port, preview_environment)
     env = { "PORT" => port.to_s }
     pid = Process.spawn(env, command, chdir: workspace_path, pgroup: true,
                                       out: "/dev/null", err: "/dev/null")
+    pgid = Process.getpgid(pid) rescue nil
+    spawned_process = SpawnedProcess.create!(
+      kind: "preview",
+      command: command,
+      workdir: workspace_path,
+      hostname: Socket.gethostname,
+      started_at: Time.current,
+      last_chunk_at: Time.current,
+      pid: pid,
+      pgid: pgid,
+      resource_attribution: {
+        "preview_environment_id" => preview_environment.id,
+        "job_id" => preview_environment.job_id,
+        "port" => port
+      }
+    )
+    SpawnedProcessSupervisor.ensure_running
     Rails.logger.info("[PreviewService] spawned pid=#{pid} port=#{port} cmd=#{command.inspect}")
-    pid
+    ChildProcess.new(pid: pid, environment_id: preview_environment.id, port: port, spawned_process_id: spawned_process.id)
   end
 
   def await_health_check(env, port, health_check_path)
@@ -184,6 +208,7 @@ class PreviewService
 
       exit_status = result[1]
       @mutex.synchronize { @children.delete(env_id) }
+      finalize_spawned_process(child, outcome: exit_status.success? ? "succeeded" : "failed", exit_status: exit_status.exitstatus)
 
       with_connection do
         env = PreviewEnvironment.find_by(id: env_id)
@@ -191,10 +216,12 @@ class PreviewService
 
         if env.stopping?
           env.mark_stopped! && env.save!
+          PreviewWorkspace.cleanup_for(env)
           Rails.logger.info("[PreviewService] environment #{env_id} stopped (pid=#{child.pid})")
         elsif exit_status.success?
           env.begin_stopping! && env.save!
           env.mark_stopped! && env.save!
+          PreviewWorkspace.cleanup_for(env)
           Rails.logger.info("[PreviewService] environment #{env_id} exited cleanly")
         else
           mark_failed(env, "process exited unexpectedly with status #{exit_status.exitstatus}")
@@ -211,6 +238,7 @@ class PreviewService
       kill_process_group(child.pid)
     else
       env.mark_stopped! && env.save!
+      PreviewWorkspace.cleanup_for(env)
     end
   end
 
@@ -223,7 +251,42 @@ class PreviewService
   def mark_failed(env, message)
     env.update_columns(error_message: message) if env.persisted?
     env.fail! && env.save! if env.may_fail?
+    PreviewWorkspace.cleanup_for(env)
     Rails.logger.error("[PreviewService] environment #{env.id} failed: #{message}")
+  end
+
+  def heartbeat_children!
+    ids = @mutex.synchronize { @children.values.filter_map(&:spawned_process_id) }
+    return if ids.empty?
+
+    SpawnedProcess.where(id: ids, finished_at: nil).update_all(last_chunk_at: Time.current, updated_at: Time.current)
+  end
+
+  def honor_kill_requests!
+    children = @mutex.synchronize { @children.dup }
+    return if children.empty?
+
+    requested = SpawnedProcess.where(id: children.values.filter_map(&:spawned_process_id))
+                              .where.not(kill_requested_at: nil)
+                              .pluck(:id)
+                              .to_set
+    children.each do |env_id, child|
+      next unless requested.include?(child.spawned_process_id)
+
+      env = PreviewEnvironment.find_by(id: env_id)
+      stop_environment(env) if env&.active?
+    end
+  end
+
+  def finalize_spawned_process(child, outcome:, exit_status:)
+    return unless child.spawned_process_id
+
+    SpawnedProcess.where(id: child.spawned_process_id, finished_at: nil).update_all(
+      finished_at: Time.current,
+      outcome: outcome,
+      exit_status: exit_status,
+      updated_at: Time.current
+    )
   end
 
   def allocate_port
@@ -249,7 +312,8 @@ class PreviewService
     end
 
     deadline = Time.current + GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
-    @mutex.synchronize { @children.dup }.each do |env_id, child|
+    stopped_children = @mutex.synchronize { @children.dup }
+    stopped_children.each do |env_id, child|
       remaining = [ deadline - Time.current, 0 ].max
       begin
         Timeout.timeout(remaining) { Process.waitpid(child.pid) }
@@ -261,13 +325,15 @@ class PreviewService
           # gone
         end
       end
+      finalize_spawned_process(child, outcome: "stopped", exit_status: nil)
       @mutex.synchronize { @children.delete(env_id) }
     end
 
-    remaining_ids = @mutex.synchronize { @children.keys }
+    stopped_ids = stopped_children.keys
     with_connection do
-      PreviewEnvironment.where(id: remaining_ids, state: "stopping").find_each do |env|
+      PreviewEnvironment.where(id: stopped_ids, state: "stopping").find_each do |env|
         env.mark_stopped! && env.save!
+        PreviewWorkspace.cleanup_for(env)
       end
     end
 
