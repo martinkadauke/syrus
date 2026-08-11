@@ -84,6 +84,7 @@ gem "github_source", path: "plugins/github_source"
 gem "linear_source", path: "plugins/linear_source"
 gem "syrus_dev",     path: "plugins/syrus_dev"
 gem "tailscale",     path: "plugins/tailscale"
+gem "discord",       path: "plugins/discord"
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
