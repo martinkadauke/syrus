@@ -15,6 +15,7 @@ module Syrus
       artifact_renderer
       grader_augmentor
       callbacks
+      platform_delivery
     ].freeze
 
     # Lambdas defer constant resolution until call time (autoload-friendly).
@@ -32,7 +33,8 @@ module Syrus
       source_control_provider: -> { Syrus::Plugin::SourceControlProvider },
       artifact_renderer:       -> { Syrus::Plugin::ArtifactRenderer },
       grader_augmentor:        -> { Syrus::Plugin::GraderAugmentor },
-      callbacks:               -> { Syrus::Plugin::Callbacks }
+      callbacks:               -> { Syrus::Plugin::Callbacks },
+      platform_delivery:       -> { Syrus::Plugin::PlatformDelivery }
     }.freeze
 
     RegistrationError = Class.new(StandardError)
