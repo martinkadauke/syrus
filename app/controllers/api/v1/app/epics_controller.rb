@@ -52,7 +52,8 @@ module Api
         end
 
         def show
-          render json: detail_payload(find_epic)
+          epic = find_epic
+          render json: PerformanceLogging.phase("epic_detail_payload", epic_id: epic.id) { detail_payload(epic) }
         end
 
         def new
@@ -287,43 +288,61 @@ module Api
         end
 
         def detail_payload(epic, message: nil)
-          jobs = epic.jobs.includes(:repository, :deployment_stage_statuses, :dependencies, :dependent_links, :workflows).order(:id).to_a
-          deployment_stages_plan = RepoDeploymentStagesReader.for_repository(epic.repository)
-          blocked_dependency = epic.dependencies.includes(:depends_on_epic, :depends_on_job).find { |dependency| !dependency.dependency_succeeded? }
-          graph = EpicDependencyGraphRenderer.new(epic).render
-          active_train = MergeTrain.active.where(epic_id: epic.id).where.not(integration_branch: nil).order(:id).last
+          jobs = PerformanceLogging.phase("epic_detail.jobs", epic_id: epic.id) do
+            epic.jobs.includes(:repository, :deployment_stage_statuses, :dependencies, :dependent_links, :workflows).order(:id).to_a
+          end
+          deployment_stages_plan = PerformanceLogging.phase("epic_detail.deployment_stages_plan", epic_id: epic.id) do
+            RepoDeploymentStagesReader.for_repository(epic.repository)
+          end
+          blocked_dependency = PerformanceLogging.phase("epic_detail.blocked_dependency", epic_id: epic.id) do
+            epic.dependencies.includes(:depends_on_epic, :depends_on_job).find { |dependency| !dependency.dependency_succeeded? }
+          end
+          graph = PerformanceLogging.phase("epic_detail.graph", epic_id: epic.id) { EpicDependencyGraphRenderer.new(epic).render }
+          active_train = PerformanceLogging.phase("epic_detail.active_merge_train", epic_id: epic.id) do
+            MergeTrain.active.where(epic_id: epic.id).where.not(integration_branch: nil).order(:id).last
+          end
 
           payload = {
             message: message,
             simple_mode: AppSetting.simple?,
             merge_train_branch: active_train&.integration_branch,
-            merge_train_status: ::App::MergeTrainStatus.for_epic(epic),
-            origin_chat: epic_origin_chat_json(epic),
-            epic: detail_epic_json(epic, jobs: jobs),
+            merge_train_status: PerformanceLogging.phase("epic_detail.merge_train_status", epic_id: epic.id) { ::App::MergeTrainStatus.for_epic(epic) },
+            origin_chat: PerformanceLogging.phase("epic_detail.origin_chat", epic_id: epic.id) { epic_origin_chat_json(epic) },
+            epic: PerformanceLogging.phase("epic_detail.epic", epic_id: epic.id) { detail_epic_json(epic, jobs: jobs) },
             summary: {
               done_jobs_count: done_jobs_count(jobs),
               total_jobs_count: jobs.size,
               dependency_edge_count: epic.dependencies.size + epic.dependent_links.size,
               blocked: blocked_dependency.present?,
               blocked_reason: epic_blocked_reason(blocked_dependency),
-              review_summary: review_summary_for(jobs)
+              review_summary: PerformanceLogging.phase("epic_detail.review_summary", epic_id: epic.id) { review_summary_for(jobs) }
             },
-            state_transitions: ::App::Presentation.epic_state_transition_options(epic).map do |label, target_state|
-              {
-                label: label,
-                target_state: target_state,
-                confirm: target_state == "archived" ? "Archive this Epic?" : nil
-              }
+            state_transitions: PerformanceLogging.phase("epic_detail.state_transitions", epic_id: epic.id) do
+              ::App::Presentation.epic_state_transition_options(epic).map do |label, target_state|
+                {
+                  label: label,
+                  target_state: target_state,
+                  confirm: target_state == "archived" ? "Archive this Epic?" : nil
+                }
+              end
             end,
             graph: graph_json(graph),
-            dependencies: epic.dependencies.where.not(depends_on_epic_id: nil).includes(depends_on_epic: :repository).order(:depends_on_epic_id).map do |dependency|
-              dependency_epic_json(dependency.depends_on_epic)
+            dependencies: PerformanceLogging.phase("epic_detail.dependencies", epic_id: epic.id) do
+              epic.dependencies.where.not(depends_on_epic_id: nil).includes(depends_on_epic: :repository).order(:depends_on_epic_id).map do |dependency|
+                dependency_epic_json(dependency.depends_on_epic)
+              end
             end,
-            dependents: epic.dependent_links.includes(epic: :repository).order(:epic_id).map do |dependency|
-              dependency_epic_json(dependency.epic)
+            dependents: PerformanceLogging.phase("epic_detail.dependents", epic_id: epic.id) do
+              epic.dependent_links.includes(epic: :repository).order(:epic_id).map do |dependency|
+                dependency_epic_json(dependency.epic)
+              end
             end,
-            jobs: jobs.map { |job| job_json(job, deployment_stages_plan: deployment_stages_plan) },
-            versions: epic.versions.includes(:user).order(created_at: :desc, id: :desc).map { |version| version_json(version) },
+            jobs: PerformanceLogging.phase("epic_detail.jobs.serialize", epic_id: epic.id, count: jobs.size) do
+              jobs.map { |job| job_json(job, deployment_stages_plan: deployment_stages_plan) }
+            end,
+            versions: PerformanceLogging.phase("epic_detail.versions", epic_id: epic.id) do
+              epic.versions.includes(:user).order(created_at: :desc, id: :desc).map { |version| version_json(version) }
+            end,
             paths: {
               dashboard_epics_path: dashboard_epics_path,
               edit_epic_path: edit_epic_path(epic),
@@ -336,11 +355,13 @@ module Api
               app_dependencies_path: "/api/v1/app/epics/#{epic.id}/dependencies",
               app_review_approve_path: "/api/v1/app/epics/#{epic.id}/review/approve",
               app_review_feedback_path: "/api/v1/app/epics/#{epic.id}/review/feedback",
-              app_start_preview_path: epic_start_preview_path(epic, jobs)
+              app_start_preview_path: PerformanceLogging.phase("epic_detail.start_preview_path", epic_id: epic.id) { epic_start_preview_path(epic, jobs) }
             }
           }
 
-          aggregate_stages = epic_aggregate_deployment_stages(epic, jobs, deployment_stages_plan)
+          aggregate_stages = PerformanceLogging.phase("epic_detail.aggregate_deployment_stages", epic_id: epic.id) do
+            epic_aggregate_deployment_stages(epic, jobs, deployment_stages_plan)
+          end
           payload[:deployment_stages] = aggregate_stages if aggregate_stages
           payload
         end

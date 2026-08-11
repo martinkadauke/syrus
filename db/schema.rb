@@ -10,8 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_11_150500) do
-
+ActiveRecord::Schema[8.1].define(version: 2026_08_11_153213) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -226,6 +225,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_150500) do
     t.index ["chat_session_id", "role"], name: "idx_chat_messages_session_role"
     t.index ["chat_session_id"], name: "index_chat_messages_on_chat_session_id"
     t.index ["pending_action_id"], name: "index_chat_messages_on_pending_action_id"
+    t.index ["proposal_id", "id"], name: "idx_chat_messages_proposal_id_id"
     t.index ["proposal_id"], name: "index_chat_messages_on_proposal_id"
     t.index ["sender_user_id"], name: "index_chat_messages_on_sender_user_id"
   end
@@ -566,6 +566,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_150500) do
     t.index ["depends_on_epic_id"], name: "index_epic_dependencies_on_depends_on_epic_id"
     t.index ["depends_on_job_id"], name: "index_epic_dependencies_on_depends_on_job_id"
     t.index ["epic_id", "depends_on_epic_id", "derived"], name: "index_epic_deps_on_epic_and_depends_on_and_derived", unique: true
+    t.index ["epic_id", "depends_on_epic_id", "id"], name: "idx_epic_dependencies_epic_epic_id"
+    t.index ["epic_id", "depends_on_job_id", "id"], name: "idx_epic_dependencies_epic_job_id"
     t.index ["epic_id"], name: "index_epic_dependencies_on_epic_id"
   end
 
@@ -829,6 +831,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_150500) do
     t.datetime "updated_at", null: false
     t.index ["created_by_user_id"], name: "index_job_dependencies_on_created_by_user_id"
     t.index ["depends_on_epic_id"], name: "index_job_dependencies_on_depends_on_epic_id"
+    t.index ["depends_on_job_id", "job_id", "id"], name: "idx_job_dependencies_depends_on_job_job_id"
     t.index ["depends_on_job_id"], name: "index_job_dependencies_on_depends_on_job_id"
     t.index ["job_id", "depends_on_job_id"], name: "index_job_dependencies_on_job_id_and_depends_on_job_id", unique: true
     t.index ["job_id", "unresolved_chat_proposal_id"], name: "index_job_deps_on_unresolved_proposal_per_job", unique: true, where: "depends_on_job_id IS NULL AND unresolved_chat_proposal_id IS NOT NULL"
@@ -1606,10 +1609,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_150500) do
     t.index ["state", "finished_at", "step_id"], name: "idx_runs_throughput_state_finished"
     t.index ["state", "job_id", "updated_at"], name: "idx_runs_state_job_updated"
     t.index ["state", "last_heartbeat_at"], name: "index_runs_on_state_and_last_heartbeat_at"
+    t.index ["state", "step_id"], name: "idx_runs_state_step_id"
     t.index ["step_id", "created_at", "id"], name: "idx_runs_step_created"
     t.index ["step_id", "state", "id"], name: "idx_runs_step_state_id"
     t.index ["step_id"], name: "index_runs_on_step_id"
     t.index ["user_id", "agent_provider", "finished_at", "updated_at", "id"], name: "idx_runs_provider_latest_finished"
+    t.index ["user_id", "agent_provider", "state", "finished_at", "updated_at", "id"], name: "idx_runs_user_provider_state_recent"
     t.index ["user_id", "created_at", "cost_usd"], name: "idx_runs_spending_user_window"
     t.index ["user_id", "state", "agent_provider", "finished_at", "updated_at", "id"], name: "idx_runs_user_state_provider_recent"
     t.index ["user_id"], name: "index_runs_on_user_id"
@@ -1751,6 +1756,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_150500) do
     t.datetime "updated_at", null: false
     t.integer "workflow_id", null: false
     t.index ["kind", "state", "finished_at", "workflow_id"], name: "idx_steps_throughput_kind_state_finished"
+    t.index ["kind", "workflow_id"], name: "idx_steps_kind_workflow_id"
     t.index ["next_step_id"], name: "index_steps_on_next_step_id"
     t.index ["workflow_id", "loop_id", "iteration"], name: "index_steps_on_workflow_id_and_loop_id_and_iteration"
     t.index ["workflow_id", "position"], name: "index_steps_on_workflow_id_and_position"
