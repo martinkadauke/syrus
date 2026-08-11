@@ -131,7 +131,7 @@ grade:
       boot — it can't claim a connection per thread. Bump
       RAILS_MAX_THREADS / config/database.yml's pool, or trim the
       queue's thread count.
-    run: bin/check-thread-budget
+    run: BUNDLE_PATH="$PWD/vendor/bundle" BUNDLE_APP_CONFIG="$PWD/.bundle" bundle check || BUNDLE_PATH="$PWD/vendor/bundle" BUNDLE_APP_CONFIG="$PWD/.bundle" bundle install --jobs 4 && bin/check-thread-budget
     timeout_minutes: 1
 
   - name: feature-slugs

@@ -202,6 +202,14 @@ and parallel-test behavior in wrapper
 scripts such as `bin/rspec-fast` or `bin/rspec-ci`; Syrus runs the
 configured command as-is.
 
+If the repository root contains a version file (`.tool-versions`,
+`.mise.toml`, `.ruby-version`, `.python-version`, `.node-version`, or
+`.go-version`), Syrus automatically runs `mise install` before any
+package-manager commands. This installs the pinned language versions into
+the shared mise cache volume so subsequent workflows find them already
+available. A failed `mise install` is a soft failure — Syrus logs a
+warning and continues to the agent rather than blocking the run.
+
 :::tip
 Use `.syrus.yml` `hooks.post_checkout` when developers need local
 automation after `syrus checkout`, such as running migrations or

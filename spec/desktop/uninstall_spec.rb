@@ -54,7 +54,7 @@ RSpec.describe "uninstall scripts", :ci_only do
     containers = File.join(dir, "containers.txt")
     volumes = File.join(dir, "volumes.txt")
     File.write(containers, "cid-web\ncid-worker\ncid-setup\n")
-    File.write(volumes, "syrus_syrus-data\nsyrus_syrus-search\n")
+    File.write(volumes, "syrus_syrus-data\nsyrus_syrus-mise-cache\nsyrus_syrus-search\n")
     volume_rm_body =
       if stuck_volumes
         "exit 1"
@@ -208,7 +208,7 @@ RSpec.describe "uninstall scripts", :ci_only do
           # Volumes by label PLUS the known names as a fallback, then verified.
           expect(calls).to include("volume ls -q --filter label=com.docker.compose.project=syrus")
           expect(calls).to include("volume inspect syrus_syrus-data")
-          expect(calls).to include("volume rm syrus_syrus-data syrus_syrus-search")
+          expect(calls).to include("volume rm syrus_syrus-data syrus_syrus-mise-cache syrus_syrus-search")
           # Images are removed per repo:tag with a plain rmi — never -f (that
           # would untag every tag sharing the ID) — matched by exact repository
           # basename under any registry; my-syrus-backend and nginx survive.
@@ -588,10 +588,10 @@ RSpec.describe "uninstall scripts", :ci_only do
       # its own isolated set; the stable default stays "syrus".
       expect(script_text).to include('-p "$PROJECT"')
       expect(script_text).to include('COMPOSE_LABEL_FILTER="label=com.docker.compose.project=$PROJECT"')
-      expect(script_text).to include('KNOWN_VOLUMES="${PROJECT}_syrus-data ${PROJECT}_syrus-search"')
+      expect(script_text).to include('KNOWN_VOLUMES="${PROJECT}_syrus-data ${PROJECT}_syrus-search ${PROJECT}_syrus-mise-cache"')
       expect(ps1).to include('@("-p", $project')
       expect(ps1).to include('"label=com.docker.compose.project=$project"')
-      expect(ps1).to include('@("${project}_syrus-data", "${project}_syrus-search")')
+      expect(ps1).to include('@("${project}_syrus-data", "${project}_syrus-search", "${project}_syrus-mise-cache")')
       ["--remove-orphans"].each do |token|
         expect(script_text).to include(token), "uninstall.sh: missing #{token.inspect}"
         expect(ps1).to include(token), "uninstall.ps1: missing #{token.inspect}"

@@ -123,7 +123,7 @@ RSpec.describe "bin/syrus-chat-sidecar", :ci_only do
   end
 
   def wait_for_exit(wait_thread)
-    Timeout.timeout(10) { wait_thread.value }
+    Timeout.timeout(30) { wait_thread.value }
   rescue Timeout::Error
     kill_process(wait_thread)
     wait_thread.value

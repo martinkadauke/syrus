@@ -5,7 +5,7 @@
 #     their compose project label (covers compose v1 underscore and v2
 #     hyphen container names alike) and removed by ID; unless --keep-data, the
 #     data volumes go too - found by the same label PLUS the known names
-#     (syrus_syrus-data, syrus_syrus-search) as a fallback. Teardown is
+#     (syrus_syrus-data, syrus_syrus-search, syrus_syrus-mise-cache) as a fallback. Teardown is
 #     VERIFIED by re-listing afterwards; anything left behind is reported
 #     honestly (step status `failed`) and the script exits 3
 #   - images whose repository BASENAME is exactly `syrus-backend` or
@@ -444,7 +444,7 @@ $runOnceValueName = if ($script:Channel -eq "test") { "SyrusResumeSetupTest" } e
 # docker-compose v1 and odd invocation dirs.
 $env:COMPOSE_PROJECT_NAME = $project
 $script:ComposeLabelFilter = "label=com.docker.compose.project=$project"
-$script:KnownVolumes = @("${project}_syrus-data", "${project}_syrus-search")
+$script:KnownVolumes = @("${project}_syrus-data", "${project}_syrus-search", "${project}_syrus-mise-cache")
 
 $dockerReady = Test-DockerDaemon
 

@@ -143,6 +143,7 @@ fi
 # grace period before the new pod becomes ready. 15m gives us ~5m
 # of headroom.
 ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-15m}"
+MISE_CACHE_HOST_PATH="${MISE_CACHE_HOST_PATH:-/data/syrus-mise-cache}"
 
 rollout() {
   local label="$1" kubeconfig="$2" namespace="$3"
@@ -163,6 +164,7 @@ rollout() {
   fi
 
   flux_suspend_with_watchdog "$kubeconfig" "$label"
+  ensure_mise_cache "$label" "$kubeconfig" "$namespace"
   echo "→ ${label}: rollout restart in ${namespace}"
   KUBECONFIG="$kubeconfig" kubectl rollout restart -n "$namespace" "${targets[@]}"
   for dep in "${targets[@]}"; do
@@ -171,6 +173,57 @@ rollout() {
   verify_sha "$label" "$kubeconfig" "$namespace"
   flux_resume_now "$kubeconfig" "$label"
   echo "✓ ${label} rolled to ${SHA}"
+}
+
+ensure_mise_cache() {
+  local label="$1" kubeconfig="$2" namespace="$3"
+  echo "→ ${label}: applying per-node mise cache worker mounts"
+  patch_mise_mount "$kubeconfig" "$namespace" "deployment" "syrus-worker-home"
+  patch_mise_mount "$kubeconfig" "$namespace" "daemonset" "syrus-worker-compute"
+}
+
+patch_mise_mount() {
+  local kubeconfig="$1" namespace="$2" kind="$3" name="$4"
+  if ! KUBECONFIG="$kubeconfig" kubectl get "$kind" "$name" -n "$namespace" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  KUBECONFIG="$kubeconfig" kubectl patch "$kind" "$name" -n "$namespace" --type strategic -p "$(cat <<EOF
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "securityContext": {
+          "fsGroup": 1000,
+          "fsGroupChangePolicy": "OnRootMismatch"
+        },
+        "containers": [
+          {
+            "name": "syrus-worker",
+            "volumeMounts": [
+              {
+                "name": "syrus-mise-cache",
+                "mountPath": "/opt/mise",
+                "readOnly": false
+              }
+            ]
+          }
+        ],
+        "volumes": [
+          {
+            "name": "syrus-mise-cache",
+            "hostPath": {
+              "path": "${MISE_CACHE_HOST_PATH}",
+              "type": "DirectoryOrCreate"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+EOF
+)" >/dev/null
 }
 
 # Flux's apps Kustomization reconciles every 10min and re-applies

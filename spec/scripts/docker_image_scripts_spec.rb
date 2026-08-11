@@ -148,4 +148,27 @@ RSpec.describe "Docker image scripts" do
     expect(compose_yml).to include("      - syrus-search:/home/rails/.syrus-search\n")
     expect(compose_yml).not_to include("syrus-search:/home/rails/.syrus-search:ro")
   end
+
+  it "mounts the mise cache as a named volume on the worker service only" do
+    expect(compose_yml).to include("      - syrus-mise-cache:/opt/mise\n")
+    expect(compose_yml).to include("  syrus-mise-cache:\n")
+
+    # Scope: only the worker needs the mise cache; setup and web do not.
+    web_section = compose_yml[/^  web:.*?(?=^  \w)/m] || ""
+    setup_section = compose_yml[/^  setup:.*?(?=^  \w)/m] || ""
+    expect(web_section).not_to include("syrus-mise-cache")
+    expect(setup_section).not_to include("syrus-mise-cache")
+  end
+
+  it "mounts the Kubernetes mise cache on worker pods only, not web or preview" do
+    expect(deploy).to include('ensure_mise_cache "$label" "$kubeconfig" "$namespace"')
+    expect(deploy).to include('patch_mise_mount "$kubeconfig" "$namespace" "deployment" "syrus-worker-home"')
+    expect(deploy).to include('patch_mise_mount "$kubeconfig" "$namespace" "daemonset" "syrus-worker-compute"')
+    expect(deploy).to include('MISE_CACHE_HOST_PATH="${MISE_CACHE_HOST_PATH:-/data/syrus-mise-cache}"')
+    expect(deploy).to include('"hostPath"')
+    expect(deploy).to include('"mountPath": "/opt/mise"')
+    expect(deploy).to include('"readOnly": false')
+    expect(deploy).not_to include('patch_mise_mount "$kubeconfig" "$namespace" "deployment" "syrus-web"')
+    expect(deploy).not_to include('patch_mise_mount "$kubeconfig" "$namespace" "deployment" "syrus-preview"')
+  end
 end

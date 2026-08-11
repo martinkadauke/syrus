@@ -5,7 +5,7 @@ set -euo pipefail
 # Install node_modules if missing — mirrors the `bundle check || bundle install`
 # pattern used by Ruby graders so this script is self-sufficient when the prepare
 # step does not complete npm ci before graders run.
-[ -d "node_modules" ] || npm ci
+[ -d node_modules/.bin ] || npm ci
 
 vitest_max_workers="${VITEST_MAX_WORKERS:-4}"
 
