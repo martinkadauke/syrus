@@ -94,9 +94,12 @@ RSpec.describe PreviewService do
         unset_env: [ "DATABASE_URL" ]
       )
 
-      expect(service.send(:preview_process_env, source)).to eq(
+      result = service.send(:preview_process_env, source, workspace_path)
+      expect(result).to include(
         "DATABASE_URL" => nil,
-        "RAILS_ENV" => "development"
+        "RAILS_ENV" => "development",
+        "BUNDLE_PATH" => File.join(workspace_path, ".syrus/deps/bundle"),
+        "BUNDLE_APP_CONFIG" => File.join(workspace_path, ".syrus/deps/bundle-config")
       )
     end
 
@@ -114,7 +117,7 @@ RSpec.describe PreviewService do
       expect(Process).to have_received(:spawn).with(
         { "DATABASE_URL" => nil, "RAILS_ENV" => "development", "PORT" => "28000" },
         "bin/server",
-        hash_including(chdir: workspace_path, pgroup: true)
+        hash_including(chdir: workspace_path, pgroup: true, unsetenv_others: true)
       )
     end
   end
@@ -200,7 +203,9 @@ RSpec.describe PreviewService do
 
       allow(PreviewCommandSource).to receive(:new).and_return(source)
       allow(service).to receive(:allocate_port).and_return(28_008)
-      allow(service).to receive(:system).with({}, "bin/seed", chdir: workspace_path, exception: false).and_return(false)
+      allow(service).to receive(:system)
+        .with(anything, "bash", "-c", "bin/seed", chdir: workspace_path, exception: false, unsetenv_others: true)
+        .and_return(false)
       expect(service).not_to receive(:spawn_app)
 
       service.send(:poll_starting_environments)
@@ -224,8 +229,12 @@ RSpec.describe PreviewService do
       )
       process_env = { "RAILS_ENV" => "development" }
 
-      expect(service).to receive(:system).with(process_env, "bundle install", chdir: workspace_path, exception: false).and_return(true)
-      expect(service).to receive(:system).with(process_env, "npm ci", chdir: workspace_path, exception: false).and_return(true)
+      expect(service).to receive(:system)
+        .with(process_env, "bash", "-c", "bundle install", chdir: workspace_path, exception: false, unsetenv_others: true)
+        .and_return(true)
+      expect(service).to receive(:system)
+        .with(process_env, "bash", "-c", "npm ci", chdir: workspace_path, exception: false, unsetenv_others: true)
+        .and_return(true)
 
       service.send(:run_setup_commands, source, workspace_path, process_env)
     end
@@ -243,7 +252,9 @@ RSpec.describe PreviewService do
       )
       process_env = { "DATABASE_URL" => nil, "RAILS_ENV" => "development" }
 
-      expect(service).to receive(:system).with(process_env, "bin/seed", chdir: workspace_path, exception: false).and_return(true)
+      expect(service).to receive(:system)
+        .with(process_env, "bash", "-c", "bin/seed", chdir: workspace_path, exception: false, unsetenv_others: true)
+        .and_return(true)
 
       service.send(:run_seed_command, source, workspace_path, process_env)
     end

@@ -64,9 +64,13 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
 
     it "passes PORT env var and pgroup: true to spawn" do
       expect(Process).to receive(:spawn).with(
-        { "PORT" => "3001" },
+        hash_including(
+          "PORT" => "3001",
+          "BUNDLE_PATH" => File.join(workspace_path, ".syrus/deps/bundle"),
+          "BUNDLE_APP_CONFIG" => File.join(workspace_path, ".syrus/deps/bundle-config")
+        ),
         anything,
-        hash_including(chdir: workspace_path, pgroup: true)
+        hash_including(chdir: workspace_path, pgroup: true, unsetenv_others: true)
       ).and_return(12345)
       call
     end
@@ -84,9 +88,9 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
       allow(PreviewCommandSource).to receive(:new).with(workspace_path).and_return(double(resolve: preview_config))
 
       expect(Process).to receive(:spawn).with(
-        { "DATABASE_URL" => nil, "RAILS_ENV" => "development", "PORT" => "3001" },
+        hash_including("DATABASE_URL" => nil, "RAILS_ENV" => "development", "PORT" => "3001"),
         anything,
-        hash_including(chdir: workspace_path, pgroup: true)
+        hash_including(chdir: workspace_path, pgroup: true, unsetenv_others: true)
       ).and_return(12345)
       call
     end
@@ -167,7 +171,11 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
     end
 
     it "calls run_seed! with the config and workspace path" do
-      expect(described_class).to receive(:run_seed!).with(preview_config, workspace_path, {})
+      expect(described_class).to receive(:run_seed!).with(
+        preview_config,
+        workspace_path,
+        hash_including("BUNDLE_PATH" => File.join(workspace_path, ".syrus/deps/bundle"))
+      )
       call
     end
 
@@ -186,7 +194,7 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
       expect(described_class).to receive(:run_seed!).with(
         preview_config,
         workspace_path,
-        { "DATABASE_URL" => nil, "RAILS_ENV" => "development" }
+        hash_including("DATABASE_URL" => nil, "RAILS_ENV" => "development")
       )
       call
     end
@@ -219,10 +227,13 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
 
     it "runs setup before spawning the preview process" do
       expect(described_class).to receive(:system).with(
-        { "RAILS_ENV" => "development" },
+        hash_including("RAILS_ENV" => "development", "BUNDLE_PATH" => File.join(workspace_path, ".syrus/deps/bundle")),
+        "bash",
+        "-c",
         "bundle install",
         chdir: workspace_path,
-        exception: false
+        exception: false,
+        unsetenv_others: true
       ).and_return(true)
 
       call

@@ -109,7 +109,7 @@ class PreviewService
     env.update_columns(port: port, internal_host: INTERNAL_HOST)
     env.begin_seeding! && env.save!
 
-    process_env = preview_process_env(source)
+    process_env = preview_process_env(source, workspace_path)
 
     run_setup_commands(source, workspace_path, process_env)
     run_seed_command(source, workspace_path, process_env) if source.seed_command
@@ -132,7 +132,7 @@ class PreviewService
 
   def run_preview_command!(label, command, workspace_path, process_env)
     Rails.logger.info("[PreviewService] running #{label}: #{command}")
-    result = system(process_env, command, chdir: workspace_path, exception: false)
+    result = system(process_env, "bash", "-c", command, chdir: workspace_path, exception: false, unsetenv_others: true)
     raise "preview #{label} command exited non-zero: #{command}" unless result
   end
 
@@ -146,7 +146,8 @@ class PreviewService
   def spawn_app(command, workspace_path, port, preview_environment, process_env = {})
     env = process_env.merge("PORT" => port.to_s)
     pid = Process.spawn(env, command, chdir: workspace_path, pgroup: true,
-                                      out: "/dev/null", err: "/dev/null")
+                                      out: "/dev/null", err: "/dev/null",
+                                      unsetenv_others: true)
     pgid = Process.getpgid(pid) rescue nil
     spawned_process = SpawnedProcess.create!(
       kind: "preview",
@@ -168,8 +169,11 @@ class PreviewService
     ChildProcess.new(pid: pid, environment_id: preview_environment.id, port: port, spawned_process_id: spawned_process.id)
   end
 
-  def preview_process_env(source)
-    env = {}
+  def preview_process_env(source, workspace_path)
+    env = ProcessRunner.forwarded_env(
+      Steps::Prepare::PREP_ENV_FORWARD,
+      extra: WorkspaceDependencyEnv.for(workspace_path)
+    )
     Array(source.unset_env).each { |name| env[name.to_s] = nil }
     env.merge!(source.env || {})
     env
