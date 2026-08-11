@@ -142,6 +142,42 @@ class AppSettingRegistry
       secret: false
     ),
     Definition.new(
+      key: :telegram_bot_handle,
+      type: :string,
+      default: nil,
+      min: nil,
+      max: nil,
+      category: "External platforms",
+      operational_meaning: "Public Telegram bot handle shown by Connected Platforms when Telegram is configured.",
+      zero_means: nil,
+      admin_editable: false,
+      secret: false
+    ),
+    Definition.new(
+      key: :telegram_bot_token,
+      type: :string,
+      default: nil,
+      min: nil,
+      max: nil,
+      category: "External platforms",
+      operational_meaning: "Encrypted Telegram bot token used by the long-polling Telegram adapter.",
+      zero_means: nil,
+      admin_editable: true,
+      secret: true
+    ),
+    Definition.new(
+      key: :telegram_update_offset,
+      type: :integer,
+      default: 0,
+      min: 0,
+      max: nil,
+      category: "External platforms",
+      operational_meaning: "Last Telegram update offset consumed by the long-polling Telegram adapter.",
+      zero_means: "Polling starts from Telegram's current backlog cursor.",
+      admin_editable: false,
+      secret: false
+    ),
+    Definition.new(
       key: :runs_paused,
       type: :boolean,
       default: false,

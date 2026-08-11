@@ -1,5 +1,5 @@
 class PlatformPollingJob < ApplicationJob
-  queue_as :default
+  queue_as :polling
 
   @registry = []
 

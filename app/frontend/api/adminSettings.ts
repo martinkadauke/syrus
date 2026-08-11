@@ -52,7 +52,7 @@ export type AdminSettingsUpdate = {
   workflow_admission_control_enabled?: boolean
   workflow_admission_policy?: "whole_workflow" | "phase_aware"
   mode?: "advanced" | "simple"
-  telegram_bot_token: string
+  telegram_bot_token?: string
 }
 
 export type PlatformPollingStartResult = {

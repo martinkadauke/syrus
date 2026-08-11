@@ -197,6 +197,7 @@ RSpec.describe StepDispatcher do
         prerequisite.close_with_reason!("pr_merged")
       }.to change { s1.runs.count }.by(1)
 
+      expect(s1.runs.count).to eq(1)
       expect {
         described_class.start_workflow(workflow)
       }.not_to change { s1.runs.count }
