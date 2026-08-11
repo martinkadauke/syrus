@@ -300,9 +300,8 @@ class Job < ApplicationRecord
     # the owning session. Exit via release_from_coding/exit_local_mode (→ implemented) or close.
     state :coding
     state :failed
-    # Agent ran to completion and correctly determined the requested work was
-    # already done — no diff was produced. Semi-terminal: the operator can
-    # close the Job or give feedback if the agent may have missed something.
+    # Legacy semi-terminal state for older no-change outcomes. New automatic
+    # no-change outcomes close the Job with closure_reason=no_changes.
     state :no_change_needed
     state :approved
     state :landing
@@ -386,10 +385,8 @@ class Job < ApplicationRecord
       ], to: :failed
     end
 
-    # Fired by Workflow#fail's after-callback when the failing step
-    # raised NoChangesProduced — the agent ran correctly but found
-    # nothing to do. Distinct from :failed so the UI can surface
-    # Close / Give Feedback rather than retry actions.
+    # Legacy repair transition for old no-change rows. Normal no-change
+    # propagation now closes the Job with closure_reason=no_changes.
     event :mark_no_change_needed do
       transitions from: :running, to: :no_change_needed
     end
@@ -537,6 +534,7 @@ class Job < ApplicationRecord
   after_update_commit :trigger_insight_if_max_threshold_reached, if: :saved_change_to_closed_coding_job?
   after_update_commit :ensure_main_branch_repair_after_close, if: :saved_change_to_closed_main_branch_repair?
   after_update_commit :enqueue_urgent_job_closed, if: :saved_change_to_closed_urgent_job?
+  after_update_commit :start_dependent_jobs_after_successful_close, if: :saved_change_to_successful_closed_dependency?
   after_update_commit :start_dependent_jobs_after_approval, if: :saved_change_to_approved?
   after_update_commit :cancel_queued_retry_workflows_after_approval, if: :saved_change_to_approved?
   after_update_commit :enqueue_landing_queue_processor, if: :saved_change_needs_landing_queue_processor?
@@ -993,6 +991,10 @@ class Job < ApplicationRecord
     start_dependent_jobs_if_ready
   end
 
+  def start_dependent_jobs_after_successful_close
+    start_dependent_jobs_if_ready
+  end
+
   def start_dependent_jobs_if_ready
     dependents.open_threads.find_each do |dependent|
       dependent.start_pending_workflows_if_dependencies_satisfied!
@@ -1378,6 +1380,10 @@ class Job < ApplicationRecord
 
   def saved_change_to_stack_parent_resolved_terminal?
     saved_change_to_state? && closed? && closure_reason.in?(%w[ pr_merged no_changes ])
+  end
+
+  def saved_change_to_successful_closed_dependency?
+    saved_change_to_state? && closed? && SUCCESSFUL_CLOSURE_REASONS.include?(closure_reason)
   end
 
   def saved_change_needs_landing_queue_processor?

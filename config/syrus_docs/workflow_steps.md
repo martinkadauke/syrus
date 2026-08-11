@@ -28,7 +28,13 @@ pin.
 
 Agentic. The primary coding step: the agent reads the issue, explores the repo, writes code, and commits. Used in initial and retry workflows.
 
-**No-change outcome:** When the agent runs successfully but produces no diff (it correctly determined the requested work was already done), the step raises `Steps::Base::NoChangesProduced`. The workflow fails as normal, but `propagate_fail_to_job!` detects this error class and transitions the Job to `:no_change_needed` instead of `:failed`. The `:no_change_needed` state is semi-terminal — the operator can close the Job (the work was indeed already done) or give feedback (the agent may have missed something). Retry actions are suppressed; this outcome is non-retryable by the auto-retry scheduler.
+**No-change outcome:** When the agent runs successfully but produces no diff
+(it correctly determined the requested work was already done), the step raises
+`Steps::Base::NoChangesProduced`. The workflow fails as normal for audit
+accuracy, but `propagate_fail_to_job!` detects this error class and closes the
+Job with `closure_reason: "no_changes"` instead of marking it failed.
+`no_changes` is a successful terminal outcome and satisfies downstream Job
+dependencies automatically.
 
 **Provider usage-limit outcome:** If the provider reports exhausted usage, quota, credits, billing balance, or a daily/weekly/monthly/model limit, the run records `agent_outcome=provider_usage_limit` and failure classification `provider_usage_limit`. The provider circuit breaker opens immediately for the affected provider/model when known; if the model cannot be determined, Syrus fails closed at provider scope and shows that reason to the operator. When the provider reports a reset time, Syrus schedules the failed Run's auto-retry for five minutes after that reset; Codex structured usage reset windows are preferred over parsing log text, while provider text such as `resets 7am (America/New_York)` is parsed from the failure time. If no reset is known, Syrus uses the conservative provider-circuit backoff. The app projects current-user provider availability into chat and Job payloads: chats using the exhausted effective chat provider and Jobs using the exhausted agent provider show a red triangle warning until the usage-limit window expires/restores or the operator switches that chat/Job to another configured provider. Transient provider circuits remain separate and use the existing non-red treatment.
 

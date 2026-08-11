@@ -1703,6 +1703,17 @@ it "auto-creates and starts a workflow for direct jobs on advance_after_triage" 
       expect(job.parent_job).to be_nil
     end
 
+    it "starts blocked dependent workflows when a prerequisite closes with no_changes" do
+      prerequisite = Job.create!(user: user, repository: repository, issue_number: 42)
+      dependent = Job.create!(user: user, repository: repository, issue_number: 43, issue_body: "Depends-on: #42")
+      dependent.update!(state: "queued")
+      workflow = Workflow.create!(job: dependent, trigger_kind: "initial", agent_provider: dependent.agent_provider, state: "queued")
+
+      expect(StepDispatcher).to receive(:start_workflow).with(workflow)
+
+      prerequisite.close_with_reason!("no_changes")
+    end
+
     it "treats an approved same-epic dependency as satisfied for execution" do
       epic = Factories.epic(user: user, repository: repository, state: "in_progress")
       prerequisite = Factories.job_record(user: user, repository: repository, epic: epic, issue_number: 42, state: "approved")

@@ -361,7 +361,7 @@ RSpec.describe Workflow do
       expect(job.latest_workflow).to eq(retry_workflow)
     end
 
-    it "drives :running → :no_change_needed on workflow.fail! when the failing run has a NoChangesProduced diagnostic" do
+    it "closes the Job with no_changes on workflow.fail! when the failing run has a NoChangesProduced diagnostic" do
       job.update!(state: "running")
       wf = described_class.create!(job: job, trigger_kind: "initial", state: "running", started_at: 1.minute.ago)
       step = Step.create!(workflow: wf, kind: "implement", position: 0, state: "failed", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
@@ -369,7 +369,8 @@ RSpec.describe Workflow do
       run.create_run_diagnostic!(error_class: "Steps::Base::NoChangesProduced", error_message: "agent produced no changes")
 
       expect { wf.fail!; wf.save! }
-        .to change { job.reload.state }.from("running").to("no_change_needed")
+        .to change { job.reload.state }.from("running").to("closed")
+      expect(job.reload.closure_reason).to eq("no_changes")
     end
 
     it "drives :running → :failed (not :no_change_needed) for other failure types even with NoChangesProduced on a different run" do

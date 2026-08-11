@@ -25,7 +25,7 @@ existing `Job`s.
 The state machines (AASM):
 
 ```
-Job (one per issue):       open ⇄ closed; no_change_needed (semi-terminal)
+Job (one per issue):       open ⇄ closed
 Workflow (one per attempt): queued → running → succeeded | failed | cancelled
 Step (one per step):        queued → running → succeeded | failed | cancelled
 Run (one per step):         queued → running → succeeded | failed | cancelled
@@ -347,10 +347,8 @@ threshold; the operator must unpause the task to re-enable it.
 
 "No changes" is the explicit happy path for cron Jobs — the agent
 surveys, calls `submit_summary` with a one-line note, and exits without
-committing anything. The Job lands in `no_change_needed` (a semi-terminal
-state); the operator can Close it (work already done) or Give Feedback
-(agent may have missed something). Retry actions are suppressed for this
-state.
+committing anything. The Job closes with `closure_reason: "no_changes"`,
+counts as successful, and satisfies downstream dependencies.
 
 ### Instance mode
 

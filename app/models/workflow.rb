@@ -239,9 +239,9 @@ class Workflow < ApplicationRecord
   # state transitions and optional chat notifications.
   #
   # When the failing step raised NoChangesProduced (agent ran correctly
-  # but found nothing to do), the Job lands in :no_change_needed rather
-  # than :failed so the UI surfaces Close / Give Feedback instead of
-  # retry actions.
+  # but found nothing to do), the Job closes successfully with
+  # closure_reason=no_changes. That makes the outcome terminal and lets
+  # dependent Jobs proceed without operator acknowledgement.
   def propagate_fail_to_job!
     return if landing_workflow?
     return if coding_handoff_workflow?
@@ -251,11 +251,10 @@ class Workflow < ApplicationRecord
     return if newer_active_workflow?
 
     if no_changes_produced_failure?
-      return unless job.may_mark_no_change_needed?
+      return unless job.may_close?
 
       StateTransition.with_source("propagate") do
-        job.mark_no_change_needed!
-        job.save!
+        job.close_with_reason!("no_changes")
       end
     else
       return unless job.may_mark_failed?
