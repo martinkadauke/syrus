@@ -32,4 +32,13 @@ RSpec.describe SyrusRails::PromptContext do
       expect(described_class.ancestors).to include(Syrus::Plugin::PromptInjector)
     end
   end
+
+  describe ".call" do
+    subject(:result) { described_class.call(repository: repository, job: job) }
+
+    it "returns the prompt when the class is registered as the provider" do
+      expect(result).to include("Rails-specific tools")
+      expect(result).to include("read_schema")
+    end
+  end
 end

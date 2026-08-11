@@ -10,6 +10,10 @@ module SyrusRails
       If you add or modify a migration, call submit_artifact(type: 'rails_migration_diff', title: 'Migration: <filename>', payload: explain_migration(file_path: 'db/migrate/...')) for each changed migration.
     TEXT
 
+    def self.call(repository:, job:)
+      new.call(repository: repository, job: job)
+    end
+
     def call(repository:, job:)
       PROMPT
     end
