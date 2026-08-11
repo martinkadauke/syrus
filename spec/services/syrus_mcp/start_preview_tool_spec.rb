@@ -9,7 +9,9 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
       start_command_for: ->(port:) { "bin/rails server -p #{port}" },
       seed_command:      nil,
       health_check_path: "/health",
-      log_paths:         [ "log/development.log" ]
+      log_paths:         [ "log/development.log" ],
+      env:               {},
+      unset_env:         []
     )
   end
 
@@ -62,6 +64,25 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
     it "passes PORT env var and pgroup: true to spawn" do
       expect(Process).to receive(:spawn).with(
         { "PORT" => "3001" },
+        anything,
+        hash_including(chdir: workspace_path, pgroup: true)
+      ).and_return(12345)
+      call
+    end
+
+    it "passes configured preview env to spawn" do
+      preview_config = PreviewCommandSource::Config.new(
+        start_command_for: ->(port:) { "bin/rails server -p #{port}" },
+        seed_command: nil,
+        health_check_path: "/health",
+        log_paths: [],
+        env: { "RAILS_ENV" => "development" },
+        unset_env: [ "DATABASE_URL" ]
+      )
+      allow(PreviewCommandSource).to receive(:new).with(workspace_path).and_return(double(resolve: preview_config))
+
+      expect(Process).to receive(:spawn).with(
+        { "DATABASE_URL" => nil, "RAILS_ENV" => "development", "PORT" => "3001" },
         anything,
         hash_including(chdir: workspace_path, pgroup: true)
       ).and_return(12345)
@@ -131,7 +152,9 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
         start_command_for: ->(port:) { "bin/rails server -p #{port}" },
         seed_command:      "bin/rails db:seed",
         health_check_path: "/",
-        log_paths:         []
+        log_paths:         [],
+        env:               {},
+        unset_env:         []
       )
     end
 
@@ -141,7 +164,26 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
     end
 
     it "calls run_seed! with the config and workspace path" do
-      expect(described_class).to receive(:run_seed!).with(preview_config, workspace_path)
+      expect(described_class).to receive(:run_seed!).with(preview_config, workspace_path, {})
+      call
+    end
+
+    it "passes configured preview env to the seed command" do
+      preview_config = PreviewCommandSource::Config.new(
+        start_command_for: ->(port:) { "bin/rails server -p #{port}" },
+        seed_command: "bin/rails db:seed",
+        health_check_path: "/",
+        log_paths: [],
+        env: { "RAILS_ENV" => "development" },
+        unset_env: [ "DATABASE_URL" ]
+      )
+      allow(PreviewCommandSource).to receive(:new).with(workspace_path).and_return(double(resolve: preview_config))
+
+      expect(described_class).to receive(:run_seed!).with(
+        preview_config,
+        workspace_path,
+        { "DATABASE_URL" => nil, "RAILS_ENV" => "development" }
+      )
       call
     end
 

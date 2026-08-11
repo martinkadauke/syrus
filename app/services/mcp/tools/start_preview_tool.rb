@@ -55,10 +55,12 @@ module Mcp::Tools
         source = PreviewCommandSource.new(workspace_path).resolve
         return Mcp::Tools.invalid("no preview command configured — add a preview: section to .syrus.yml") unless source
 
-        run_seed!(source, workspace_path) if source.seed_command
+        process_env = preview_process_env(source)
+
+        run_seed!(source, workspace_path, process_env) if source.seed_command
 
         command = source.start_command_for.call(port: port)
-        pid     = spawn_app(command, workspace_path, port)
+        pid     = spawn_app(command, workspace_path, port, process_env)
         AgentPreviewRegistry.register(run_id: run.id, pid: pid, port: port)
 
         begin
@@ -90,14 +92,21 @@ module Mcp::Tools
         WorkflowWorkspace.path_for(workflow).to_s
       end
 
-      def run_seed!(source, workspace_path)
-        system(source.seed_command, chdir: workspace_path, exception: false)
+      def run_seed!(source, workspace_path, process_env)
+        system(process_env, source.seed_command, chdir: workspace_path, exception: false)
       end
 
-      def spawn_app(command, workspace_path, port)
-        env = { "PORT" => port.to_s }
+      def spawn_app(command, workspace_path, port, process_env = {})
+        env = process_env.merge("PORT" => port.to_s)
         Process.spawn(env, command, chdir: workspace_path, pgroup: true,
                                     out: "/dev/null", err: "/dev/null")
+      end
+
+      def preview_process_env(source)
+        env = {}
+        Array(source.unset_env).each { |name| env[name.to_s] = nil }
+        env.merge!(source.env || {})
+        env
       end
 
       def await_health_check!(url)

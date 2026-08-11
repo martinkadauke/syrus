@@ -36,7 +36,7 @@ class SyrusYml
   # e.g. schema.rb across SQLite/MySQL) — grader-validated, not diff-validated.
   GeneratedStep = Data.define(:command, :sources, :generates, :codegen_ignore)
   HooksConfig = Data.define(:post_checkout)
-  PreviewConfig = Data.define(:start, :seed, :health_check, :logs)
+  PreviewConfig = Data.define(:start, :seed, :health_check, :logs, :env, :unset_env)
   AdversarialReviewConfig = Data.define(:rounds, :criteria)
   AgentInsightConfig = Data.define(:prepare)
   # Backward-compat aliases — point to the canonical RepoCoveragePlan types so
@@ -339,8 +339,33 @@ class SyrusYml
       start:        start,
       seed:         raw["seed"].to_s.strip.presence,
       health_check: raw["health_check"].to_s.strip.presence || "/",
-      logs:         Array(raw["logs"]).map { |p| p.to_s.strip }.reject(&:empty?)
+      logs:         Array(raw["logs"]).map { |p| p.to_s.strip }.reject(&:empty?),
+      env:          parse_preview_env(raw["env"]),
+      unset_env:    parse_preview_unset_env(raw["unset_env"])
     )
+  end
+
+  def parse_preview_env(raw)
+    return {} if raw.nil?
+    raise ParseError, "preview.env: must be a mapping" unless raw.is_a?(Hash)
+
+    raw.each_with_object({}) do |(key, value), env|
+      name = key.to_s.strip
+      raise ParseError, "preview.env: contains a blank key" if name.empty?
+      env[name] = value.to_s
+    end
+  end
+
+  def parse_preview_unset_env(raw)
+    return [] if raw.nil?
+    values =
+      case raw
+      when String then [ raw ]
+      when Array then raw
+      else raise ParseError, "preview.unset_env: must be a string or an array of strings"
+      end
+
+    values.map { |name| name.to_s.strip }.reject(&:empty?)
   end
 
   def parse_adversarial_review_rounds(raw)

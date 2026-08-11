@@ -41,7 +41,24 @@ For each incoming request:
 4. If not found (environment not running, never started, or expired): a 503 response is returned with a message directing the user to the Syrus UI.
 5. If the host doesn't match the preview pattern: the request falls through to the normal Rails application.
 
-The proxy preserves the public preview `Host` header when forwarding to the preview app, and production host authorization automatically allows `preview-{job_id}.<SYRUS_PREVIEW_BASE_DOMAIN>`. Preview child processes also receive a `SYRUS_ALLOWED_HOSTS` value that includes their own preview hostname, so previewing an older Syrus branch still works even if that branch predates the preview-host allowlist. Rewriting the upstream request to the internal service name would cause Rails preview apps to reject requests with HostAuthorization 403s.
+The proxy sends `Host: localhost:<port>` to the preview app and preserves the browser-facing hostname in `X-Forwarded-Host`. Rails apps running in development mode accept `localhost` without app-specific preview host allowlists, while apps that care about public URL generation can still inspect the forwarded host.
+
+Preview command configuration lives in the target repository's `.syrus.yml`:
+
+```yaml
+preview:
+  start: bin/rails server -p $PORT -b 0.0.0.0 -e development
+  seed: bin/rails db:prepare db:seed
+  health_check: /up
+  logs:
+    - log/development.log
+  env:
+    RAILS_ENV: development
+  unset_env:
+    - DATABASE_URL
+```
+
+`start` may use `$PORT` or `${PORT}`; Syrus replaces it with a dynamically allocated port. `seed` runs before the server starts and receives the same preview environment as the server process. `env` sets repository-specific variables and `unset_env` strips inherited variables such as production database URLs. Use these keys for repo-specific preview guardrails rather than hardcoding repository checks into Syrus.
 
 ### Preview service process
 

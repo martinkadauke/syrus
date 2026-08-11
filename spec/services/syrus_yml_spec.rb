@@ -815,12 +815,23 @@ RSpec.describe SyrusYml do
           health_check: "/health"
           logs:
             - log/development.log
+          env:
+            RAILS_ENV: development
+            DATABASE_URL: sqlite3:db/preview.sqlite3
+          unset_env:
+            - CACHE_DATABASE_URL
+            - QUEUE_DATABASE_URL
       YAML
 
       expect(config.preview.start).to eq("bin/rails server -p $PORT")
       expect(config.preview.seed).to eq("bin/rails db:seed")
       expect(config.preview.health_check).to eq("/health")
       expect(config.preview.logs).to eq([ "log/development.log" ])
+      expect(config.preview.env).to eq(
+        "RAILS_ENV" => "development",
+        "DATABASE_URL" => "sqlite3:db/preview.sqlite3"
+      )
+      expect(config.preview.unset_env).to eq(%w[ CACHE_DATABASE_URL QUEUE_DATABASE_URL ])
     end
 
     it "returns nil when preview key is absent" do
@@ -844,6 +855,18 @@ RSpec.describe SyrusYml do
 
       expect(config.preview.seed).to be_nil
       expect(config.preview.logs).to eq([])
+      expect(config.preview.env).to eq({})
+      expect(config.preview.unset_env).to eq([])
+    end
+
+    it "accepts a single unset_env string" do
+      config = parse(<<~YAML)
+        preview:
+          start: "node server.js"
+          unset_env: DATABASE_URL
+      YAML
+
+      expect(config.preview.unset_env).to eq([ "DATABASE_URL" ])
     end
 
     it "rejects a preview block with no start command" do
@@ -856,6 +879,18 @@ RSpec.describe SyrusYml do
       expect {
         parse("preview: true\n")
       }.to raise_error(SyrusYml::ParseError, /preview.*mapping/)
+    end
+
+    it "rejects a non-mapping preview env" do
+      expect {
+        parse("preview:\n  start: node server.js\n  env: []\n")
+      }.to raise_error(SyrusYml::ParseError, /preview\.env.*mapping/)
+    end
+
+    it "rejects a non-array preview unset_env" do
+      expect {
+        parse("preview:\n  start: node server.js\n  unset_env:\n    DATABASE_URL: true\n")
+      }.to raise_error(SyrusYml::ParseError, /preview\.unset_env/)
     end
   end
 end

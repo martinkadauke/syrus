@@ -72,10 +72,10 @@ RSpec.describe PreviewProxyMiddleware do
       expect(headers["content-type"]).to eq("text/html")
     end
 
-    it "preserves the public preview host for the preview app" do
+    it "uses a localhost Host header for the preview app while forwarding the public host" do
       stub_request(:get, "http://127.0.0.1:25000/")
         .with(headers: {
-          "Host" => "preview-#{job.id}.lvh.me",
+          "Host" => "localhost:25000",
           "X-Forwarded-Host" => "preview-#{job.id}.lvh.me",
           "X-Forwarded-Proto" => "http"
         })

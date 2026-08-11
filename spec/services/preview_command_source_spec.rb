@@ -23,6 +23,10 @@ RSpec.describe PreviewCommandSource do
             health_check: "/health"
             logs:
               - "log/server.log"
+            env:
+              RAILS_ENV: development
+            unset_env:
+              - DATABASE_URL
         YAML
       end
 
@@ -54,6 +58,12 @@ RSpec.describe PreviewCommandSource do
       it "returns log_paths from yml" do
         result = described_class.new(workspace).resolve
         expect(result.log_paths).to eq([ "log/server.log" ])
+      end
+
+      it "returns the preview process environment contract from yml" do
+        result = described_class.new(workspace).resolve
+        expect(result.env).to eq("RAILS_ENV" => "development")
+        expect(result.unset_env).to eq([ "DATABASE_URL" ])
       end
     end
 
@@ -139,6 +149,30 @@ RSpec.describe PreviewCommandSource do
           expect(result.start_command_for.call(port: 4000)).to eq("bin/rails server")
           expect(result.health_check_path).to eq("/up")
           expect(skipped).not_to have_received(:detect?)
+        ensure
+          Syrus::Plugin::PreviewProvider.instance_variable_set(:@registry, original_registry)
+        end
+      end
+
+      it "returns optional env settings from plugins" do
+        provider = instance_double(
+          "EnvPreviewProvider",
+          detect?: true,
+          start_command: "bin/server",
+          seed_command: nil,
+          health_check_path: "/",
+          log_paths: [],
+          env: { "RAILS_ENV" => "development" },
+          unset_env: [ "DATABASE_URL" ]
+        )
+        allow(provider).to receive(:start_command).with(port: 3000).and_return("bin/server")
+
+        original_registry = Syrus::Plugin::PreviewProvider.registry.dup
+        begin
+          Syrus::Plugin::PreviewProvider.registry.replace([ provider ])
+          result = described_class.new(workspace).resolve
+          expect(result.env).to eq("RAILS_ENV" => "development")
+          expect(result.unset_env).to eq([ "DATABASE_URL" ])
         ensure
           Syrus::Plugin::PreviewProvider.instance_variable_set(:@registry, original_registry)
         end

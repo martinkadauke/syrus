@@ -13,6 +13,8 @@ module Syrus
     #     def seed_command = "bin/rails db:seed"
     #     def health_check_path = "/"
     #     def log_paths = ["log/development.log"]
+    #     def env = { "RAILS_ENV" => "development" }
+    #     def unset_env = ["DATABASE_URL"]
     #   end
     #
     #   Syrus::PluginRegistry.register(
@@ -96,6 +98,14 @@ module Syrus
       end
 
       def log_paths
+        []
+      end
+
+      def env
+        {}
+      end
+
+      def unset_env
         []
       end
     end

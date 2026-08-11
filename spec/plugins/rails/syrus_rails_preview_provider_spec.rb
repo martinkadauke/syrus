@@ -88,6 +88,29 @@ RSpec.describe SyrusRails::PreviewProvider do
       expect(provider.log_paths).to eq(["log/development.log"])
     end
   end
+
+  describe "#env" do
+    it "runs Rails previews in development with an isolated search database" do
+      expect(provider.env).to eq(
+        "RAILS_ENV" => "development",
+        "SEARCH_DATABASE_PATH" => "storage/preview_search.sqlite3"
+      )
+    end
+  end
+
+  describe "#unset_env" do
+    it "strips inherited production database settings" do
+      expect(provider.unset_env).to include(
+        "DATABASE_URL",
+        "CACHE_DATABASE_URL",
+        "QUEUE_DATABASE_URL",
+        "CABLE_DATABASE_URL",
+        "DB_HOST",
+        "SYRUS_DATABASE_PASSWORD",
+        "SYRUS_SQLITE"
+      )
+    end
+  end
 end
 
 RSpec.describe "SyrusRails plugin registration" do

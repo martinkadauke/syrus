@@ -21,6 +21,24 @@ prepare:
   - env -u BUNDLE_PATH BUNDLE_APP_CONFIG=.bundle bundle install --jobs 4
   - npm ci
 
+preview:
+  start: bin/rails server -p $PORT -b 0.0.0.0 -e development
+  seed: bin/rails db:prepare db:seed
+  health_check: /up
+  logs:
+    - log/development.log
+  env:
+    RAILS_ENV: development
+    SEARCH_DATABASE_PATH: storage/preview_search.sqlite3
+  unset_env:
+    - DATABASE_URL
+    - CACHE_DATABASE_URL
+    - QUEUE_DATABASE_URL
+    - CABLE_DATABASE_URL
+    - DB_HOST
+    - SYRUS_DATABASE_PASSWORD
+    - SYRUS_SQLITE
+
 hooks:
   post_checkout:
     - bundle check || bundle install --jobs 4

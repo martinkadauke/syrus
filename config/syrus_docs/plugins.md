@@ -47,6 +47,10 @@ application for a repository. The provider is selected at runtime by
 `Syrus::PreviewProviderResolver.for(repo_path)`, which calls `detect?` on each
 registered provider in order and returns the first match.
 
+A repository's explicit `.syrus.yml preview:` section takes precedence over
+plugin auto-detection. Providers should supply safe framework defaults; repos
+with production-specific guardrails should declare them in `.syrus.yml`.
+
 Include `Syrus::Plugin::PreviewProvider` and implement the interface methods:
 
 | Method | Signature | Description |
@@ -56,6 +60,8 @@ Include `Syrus::Plugin::PreviewProvider` and implement the interface methods:
 | `seed_command` | `() → String \| nil` | Command to seed the database (nil = skip) |
 | `health_check_path` | `() → String` | URL path polled to determine readiness |
 | `log_paths` | `() → Array<String>` | Log paths (relative to repo root) to tail |
+| `env` | `() → Hash<String, String>` | Environment variables to set for seed and server commands |
+| `unset_env` | `() → Array<String>` | Inherited environment variables to remove for seed and server commands |
 
 Register an instance using the direct form:
 

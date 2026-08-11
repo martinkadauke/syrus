@@ -21,5 +21,24 @@ module SyrusRails
     def log_paths
       ["log/development.log"]
     end
+
+    def env
+      {
+        "RAILS_ENV" => "development",
+        "SEARCH_DATABASE_PATH" => "storage/preview_search.sqlite3"
+      }
+    end
+
+    def unset_env
+      %w[
+        DATABASE_URL
+        CACHE_DATABASE_URL
+        QUEUE_DATABASE_URL
+        CABLE_DATABASE_URL
+        DB_HOST
+        SYRUS_DATABASE_PASSWORD
+        SYRUS_SQLITE
+      ]
+    end
   end
 end

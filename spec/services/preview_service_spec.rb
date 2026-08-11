@@ -82,16 +82,38 @@ RSpec.describe PreviewService do
       Process.waitpid(child.pid) rescue nil
     end
 
-    it "adds the preview hostname to the child app allowed hosts" do
+    it "builds the child process env from the preview config" do
+      service = described_class.new
+      source = PreviewCommandSource::Config.new(
+        start_command_for: ->(port:) { "bin/server -p #{port}" },
+        seed_command: nil,
+        health_check_path: "/",
+        log_paths: [],
+        env: { "RAILS_ENV" => "development" },
+        unset_env: [ "DATABASE_URL" ]
+      )
+
+      expect(service.send(:preview_process_env, source)).to eq(
+        "DATABASE_URL" => nil,
+        "RAILS_ENV" => "development"
+      )
+    end
+
+    it "passes preview env to the spawned app" do
       service = described_class.new
       env = create_env
-      stub_const("ENV", ENV.to_h.merge(
-        "SYRUS_ALLOWED_HOSTS" => "syrus.example.com",
-        "SYRUS_PREVIEW_BASE_DOMAIN" => "previews.example.com"
-      ))
+      allow(Process).to receive(:spawn).and_return(12_345)
+      allow(Process).to receive(:getpgid).with(12_345).and_return(12_345)
 
-      expect(service.send(:preview_allowed_hosts, env)).to eq(
-        "syrus.example.com,preview-#{job.id}.previews.example.com"
+      service.send(:spawn_app, "bin/server", workspace_path, 28_000, env, {
+        "DATABASE_URL" => nil,
+        "RAILS_ENV" => "development"
+      })
+
+      expect(Process).to have_received(:spawn).with(
+        { "DATABASE_URL" => nil, "RAILS_ENV" => "development", "PORT" => "28000" },
+        "bin/server",
+        hash_including(chdir: workspace_path, pgroup: true)
       )
     end
   end
@@ -143,7 +165,9 @@ RSpec.describe PreviewService do
           start_command_for: ->(port:) { "echo #{port}" },
           seed_command: nil,
           health_check_path: "/",
-          log_paths: []
+          log_paths: [],
+          env: {},
+          unset_env: []
         ))
       allow(PreviewCommandSource).to receive(:new).and_return(source)
       allow(service).to receive(:allocate_port).and_return(28_008)
@@ -156,6 +180,25 @@ RSpec.describe PreviewService do
 
       expect(env.reload.internal_host).to eq("preview")
       expect(env.port).to eq(28_008)
+    end
+  end
+
+  describe "seed commands" do
+    it "passes preview env to the seed command" do
+      service = described_class.new
+      source = PreviewCommandSource::Config.new(
+        start_command_for: ->(port:) { "bin/server -p #{port}" },
+        seed_command: "bin/seed",
+        health_check_path: "/",
+        log_paths: [],
+        env: { "RAILS_ENV" => "development" },
+        unset_env: [ "DATABASE_URL" ]
+      )
+      process_env = { "DATABASE_URL" => nil, "RAILS_ENV" => "development" }
+
+      expect(service).to receive(:system).with(process_env, "bin/seed", chdir: workspace_path, exception: false).and_return(true)
+
+      service.send(:run_seed_command, source, workspace_path, process_env)
     end
   end
 
@@ -278,6 +321,29 @@ RSpec.describe PreviewService do
       service.send(:honor_kill_requests!)
 
       expect(env.reload.state).to eq("stopping")
+    end
+  end
+
+  describe "spawned process reconciliation" do
+    it "fails an active preview when its SpawnedProcess is finalized elsewhere" do
+      service = described_class.new
+      env = create_env(state: "running", port: 28_009)
+      process = SpawnedProcess.create!(
+        kind: "preview",
+        command: "bin/server",
+        hostname: "preview-host",
+        started_at: 1.minute.ago,
+        finished_at: Time.current,
+        outcome: "orphaned"
+      )
+      service.instance_variable_get(:@children)[env.id] =
+        PreviewService::ChildProcess.new(pid: 99_999, environment_id: env.id, port: 28_009, spawned_process_id: process.id)
+
+      service.send(:reconcile_finished_spawned_processes!)
+
+      expect(env.reload.state).to eq("failed")
+      expect(env.error_message).to include("preview process ended unexpectedly", "orphaned")
+      expect(service.instance_variable_get(:@children)).not_to have_key(env.id)
     end
   end
 

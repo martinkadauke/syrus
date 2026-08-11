@@ -14,7 +14,7 @@ require "syrus/plugin/preview_provider"
 # can pick a free port and hand it off in one step.
 class PreviewCommandSource
   # `start_command_for` — callable(port:) → String
-  Config = Data.define(:start_command_for, :seed_command, :health_check_path, :log_paths)
+  Config = Data.define(:start_command_for, :seed_command, :health_check_path, :log_paths, :env, :unset_env)
 
   def initialize(workspace_path)
     @workspace_path = workspace_path
@@ -35,7 +35,9 @@ class PreviewCommandSource
       start_command_for: ->(port:) { p.start.gsub("${PORT}", port.to_s).gsub("$PORT", port.to_s) },
       seed_command:      p.seed,
       health_check_path: p.health_check,
-      log_paths:         p.logs
+      log_paths:         p.logs,
+      env:               p.env,
+      unset_env:         p.unset_env
     )
   rescue SyrusYml::ParseError, Errno::ENOENT
     nil
@@ -49,7 +51,9 @@ class PreviewCommandSource
       start_command_for: ->(port:) { provider.start_command(port: port) },
       seed_command:      provider.seed_command,
       health_check_path: provider.health_check_path,
-      log_paths:         provider.log_paths
+      log_paths:         provider.log_paths,
+      env:               provider.respond_to?(:env) ? provider.env : {},
+      unset_env:         provider.respond_to?(:unset_env) ? provider.unset_env : []
     )
   end
 end

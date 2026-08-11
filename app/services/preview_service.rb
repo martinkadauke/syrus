@@ -48,6 +48,7 @@ class PreviewService
         check_ttl_expirations if ttl_check_due?
         heartbeat_children!
         honor_kill_requests!
+        reconcile_finished_spawned_processes!
         reap_exited_children
       end
 
@@ -108,17 +109,19 @@ class PreviewService
     env.update_columns(port: port, internal_host: INTERNAL_HOST)
     env.begin_seeding! && env.save!
 
-    run_seed_command(source, workspace_path) if source.seed_command
+    process_env = preview_process_env(source)
 
-    child = spawn_app(source.start_command_for.call(port: port), workspace_path, port, env)
+    run_seed_command(source, workspace_path, process_env) if source.seed_command
+
+    child = spawn_app(source.start_command_for.call(port: port), workspace_path, port, env, process_env)
     @mutex.synchronize { @children[env.id] = child }
 
     await_health_check(env, port, source.health_check_path)
   end
 
-  def run_seed_command(source, workspace_path)
+  def run_seed_command(source, workspace_path, process_env)
     Rails.logger.info("[PreviewService] running seed: #{source.seed_command}")
-    result = system(source.seed_command, chdir: workspace_path, exception: false)
+    result = system(process_env, source.seed_command, chdir: workspace_path, exception: false)
     Rails.logger.warn("[PreviewService] seed command exited non-zero") unless result
   end
 
@@ -129,11 +132,8 @@ class PreviewService
     PreviewWorkspace.prepare!(env)
   end
 
-  def spawn_app(command, workspace_path, port, preview_environment)
-    env = {
-      "PORT" => port.to_s,
-      "SYRUS_ALLOWED_HOSTS" => preview_allowed_hosts(preview_environment)
-    }
+  def spawn_app(command, workspace_path, port, preview_environment, process_env = {})
+    env = process_env.merge("PORT" => port.to_s)
     pid = Process.spawn(env, command, chdir: workspace_path, pgroup: true,
                                       out: "/dev/null", err: "/dev/null")
     pgid = Process.getpgid(pid) rescue nil
@@ -157,17 +157,11 @@ class PreviewService
     ChildProcess.new(pid: pid, environment_id: preview_environment.id, port: port, spawned_process_id: spawned_process.id)
   end
 
-  def preview_allowed_hosts(preview_environment)
-    hosts = ENV.fetch("SYRUS_ALLOWED_HOSTS", ENV["SYRUS_APP_HOST"].to_s)
-      .split(",")
-      .map(&:strip)
-      .reject(&:blank?)
-    hosts << preview_host(preview_environment)
-    hosts.uniq.join(",")
-  end
-
-  def preview_host(preview_environment)
-    "preview-#{preview_environment.job_id}.#{ENV.fetch("SYRUS_PREVIEW_BASE_DOMAIN", "lvh.me")}"
+  def preview_process_env(source)
+    env = {}
+    Array(source.unset_env).each { |name| env[name.to_s] = nil }
+    env.merge!(source.env || {})
+    env
   end
 
   def await_health_check(env, port, health_check_path)
@@ -291,6 +285,26 @@ class PreviewService
 
       env = PreviewEnvironment.find_by(id: env_id)
       stop_environment(env) if env&.active?
+    end
+  end
+
+  def reconcile_finished_spawned_processes!
+    children = @mutex.synchronize { @children.dup }
+    return if children.empty?
+
+    finished = SpawnedProcess.where(id: children.values.filter_map(&:spawned_process_id))
+                             .where.not(finished_at: nil)
+                             .pluck(:id, :outcome)
+                             .to_h
+    children.each do |env_id, child|
+      outcome = finished[child.spawned_process_id]
+      next unless outcome
+
+      @mutex.synchronize { @children.delete(env_id) }
+      env = PreviewEnvironment.find_by(id: env_id)
+      next unless env&.active?
+
+      mark_failed(env, "preview process ended unexpectedly (#{outcome})")
     end
   end
 
