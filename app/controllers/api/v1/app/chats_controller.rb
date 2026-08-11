@@ -176,7 +176,7 @@ module Api
             return
           end
 
-          chat_session = Current.user.chat_sessions.visible.find(params[:chat_session_id])
+          chat_session = Current.user.accessible_chat_sessions.visible.find(params[:chat_session_id])
           render json: {
             matches: chat_search_rows(query, chat_session_id: chat_session.id).map { |row| chat_search_match_json(row) }
           }
@@ -184,7 +184,7 @@ module Api
 
         def hidden
           page = [ Integer(params[:page], exception: false).to_i, 1 ].max
-          scope = Current.user.chat_sessions.hidden
+          scope = Current.user.accessible_chat_sessions.hidden
           total = scope.count
           chats = scope
             .preload(repository_attachments: :attachable)
@@ -249,7 +249,8 @@ module Api
             )
             user_message = chat_session.messages.create!(
               role: "user",
-              content: { "text" => "I just finished setting up Syrus. Show me how it works and help me get started." }
+              content: { "text" => "I just finished setting up Syrus. Show me how it works and help me get started." },
+              sender_user_id: Current.user.id
             )
             chat_session.pin_chat_provider!
           end
@@ -299,7 +300,7 @@ module Api
               last_message_at: Time.current,
               title: chat_session.title.presence
             )
-            user_message = chat_session.messages.create!(role: "user", content: content)
+            user_message = chat_session.messages.create!(role: "user", content: content, sender_user_id: Current.user.id)
             chat_session.pin_chat_provider!
           end
           if chat_session.title.blank? && (title_message = first_user_message(chat_session))
@@ -415,7 +416,7 @@ module Api
           branched_chat = nil
           ApplicationRecord.transaction do
             branched_chat = ChatSession.create!(
-              user: source_chat.user,
+              user: Current.user,
               repository: source_chat.repository,
               title: branch_chat_title(source_chat),
               chat_provider: source_chat.chat_provider,
@@ -469,13 +470,13 @@ module Api
         end
 
         def mark_read
-          find_chat_session.update_columns(last_read_at: Time.current)
+          current_participant_for(find_chat_session)&.update_columns(last_read_at: Time.current)
 
           head :no_content
         end
 
         def mark_unread
-          find_chat_session.update_columns(last_read_at: nil)
+          current_participant_for(find_chat_session)&.update_columns(last_read_at: nil)
 
           head :no_content
         end
@@ -664,7 +665,7 @@ module Api
             return
           end
 
-          if question.answer_and_record!(answer)
+          if question.answer_and_record!(answer, sender_user: Current.user)
             render json: chat_payload(chat_session.reload, message: "Answer submitted.")
           else
             render_error("validation_failed", "Question is no longer active.", status: :unprocessable_content)
@@ -1162,10 +1163,206 @@ module Api
         end
 
 
-        # Walkthrough videos shared in this chat, for the workspace media panel.
-        # Metadata only — the video itself is far too large to inline (unlike the
-        # base64 image attachments) and is pruned after a retention window, so
-        # `has_video` tells the UI whether it can still be played back / re-analyzed.
+        def search_payload_for_query(scope, query, page)
+          allowed_session_ids = scope.distinct.pluck(:id).map(&:to_i)
+          grouped_matches = []
+          matches_by_chat = {}
+
+          chat_search_rows(query).each do |row|
+            chat_session_id = row.fetch(:chat_session_id).to_i
+            next unless allowed_session_ids.include?(chat_session_id)
+
+            grouped_matches << chat_session_id unless matches_by_chat.key?(chat_session_id)
+            matches_by_chat[chat_session_id] ||= []
+            matches_by_chat[chat_session_id] << row
+          end
+
+          total = grouped_matches.length
+          paged_chat_ids = grouped_matches.slice(search_offset(page), SEARCH_PAGE_SIZE) || []
+          sessions_by_id = Current.user.accessible_chat_sessions
+            .where(id: paged_chat_ids)
+            .preload(repository_attachments: :attachable)
+            .index_by(&:id)
+
+          {
+            results: paged_chat_ids.filter_map do |chat_session_id|
+              chat_search_result_json(sessions_by_id[chat_session_id], matches_by_chat.fetch(chat_session_id))
+            end,
+            total: total,
+            page: page,
+            per_page: SEARCH_PAGE_SIZE
+          }
+        end
+
+        def search_payload_for_scope(scope, page)
+          total = scope.distinct.count
+          sessions = scope
+            .distinct
+            .preload(repository_attachments: :attachable)
+            .order(updated_at: :desc, id: :desc)
+            .offset(search_offset(page))
+            .limit(SEARCH_PAGE_SIZE)
+
+          {
+            results: sessions.map { |chat_session| chat_filter_result_json(chat_session) },
+            total: total,
+            page: page,
+            per_page: SEARCH_PAGE_SIZE
+          }
+        end
+
+        def filtered_chat_search_scope
+          scope = Current.user.accessible_chat_sessions.visible
+          scope = apply_chat_attachment_filter(scope, "Repository", :repository_id)
+          return scope if performed?
+
+          scope = apply_chat_attachment_filter(scope, "Epic", :epic_id)
+          return scope if performed?
+
+          apply_chat_attachment_filter(scope, "Job", :job_id)
+        end
+
+        def apply_chat_attachment_filter(scope, attachable_type, param_name)
+          attachable_id = optional_positive_integer_param(param_name)
+          return scope unless attachable_id
+
+          alias_name = "chat_attachments_#{param_name}_filter"
+          quoted_alias = ApplicationRecord.connection.quote_table_name(alias_name)
+          quoted_type = ApplicationRecord.connection.quote(attachable_type)
+
+          scope.joins(<<~SQL.squish)
+            INNER JOIN chat_attachments #{quoted_alias}
+              ON #{quoted_alias}.chat_session_id = chat_sessions.id
+              AND #{quoted_alias}.attachable_type = #{quoted_type}
+              AND #{quoted_alias}.attachable_id = #{attachable_id}
+          SQL
+        end
+
+        def optional_positive_integer_param(name)
+          raw = params[name]
+          return if raw.blank?
+
+          value = Integer(raw, exception: false)
+          return value if value&.positive?
+
+          render_error("bad_request", "#{name} must be a positive integer.", status: :bad_request)
+          nil
+        end
+
+        def search_query
+          params[:q].to_s.strip
+        end
+
+        def proposal_update_params
+          params.require(:proposal).permit(:title, :body, dependency_slugs: [], depends_on_job_ids: [], depends_on_epic_ids: [], media_ids: [])
+        end
+
+        def rebuild_proposal_dependencies!(chat_session, proposal, dependency_slugs)
+          slugs = dependency_slugs.map(&:to_s).map(&:strip).reject(&:blank?).uniq
+          dependencies = chat_session.proposals.where(slug: slugs).index_by(&:slug)
+          missing = slugs - dependencies.keys
+          raise ArgumentError, "Unknown proposal dependency: #{missing.first}" if missing.any?
+
+          proposal.dependency_edges.destroy_all
+          slugs.each do |slug|
+            proposal.dependency_edges.create!(depends_on: dependencies.fetch(slug))
+          end
+        end
+
+        def dependency_ids!(scope, raw_ids, name)
+          ids = raw_ids.map(&:to_i).select(&:positive?).uniq
+          found_ids = scope.where(id: ids).pluck(:id)
+          missing = ids - found_ids
+          raise ArgumentError, "Unknown #{name}: #{missing.first}" if missing.any?
+
+          ids
+        end
+
+        def proposal_search_json(proposal)
+          {
+            id: proposal.id,
+            slug: proposal.slug,
+            title: proposal.title,
+            state: proposal.state
+          }
+        end
+
+        def broadcast_proposal_updated(chat_session, proposal)
+          event_args = {
+            type: "updated",
+            resource: "chat",
+            id: chat_session.id,
+            changed: [ "proposal" ],
+            payload: {
+              action: "update_proposal",
+              proposal_id: proposal.id
+            }
+          }
+          (chat_session.participants.to_a.presence || [ chat_session.user ]).each do |p|
+            AppEvents.broadcast(user: p, **event_args)
+          end
+        end
+
+        def search_page
+          [ Integer(params[:page], exception: false).to_i, 1 ].max
+        end
+
+        def search_offset(page)
+          (page - 1) * SEARCH_PAGE_SIZE
+        end
+
+        def chat_search_rows(query, chat_session_id: nil)
+          ChatMessageSearchIndex.search(
+            query,
+            user_id: Current.user.id,
+            chat_session_id: chat_session_id,
+            limit: nil,
+            snippet_start: "<b>",
+            snippet_end: "</b>",
+            snippet_tokens: 50
+          )
+        end
+
+        def chat_search_result_json(chat_session, rows)
+          return unless chat_session
+
+          top_matches = rows.first(SEARCH_TOP_MATCHES).map { |row| chat_search_match_json(row) }
+          {
+            chat_session_id: chat_session.id,
+            chat_title: chat_search_title(chat_session),
+            best_snippet: top_matches.first&.fetch(:snippet),
+            best_match_message_id: top_matches.first&.fetch(:message_id),
+            top_matches: top_matches,
+            total_match_count: rows.length,
+            has_more_matches: rows.length > SEARCH_TOP_MATCHES
+          }
+        end
+
+        def chat_filter_result_json(chat_session)
+          {
+            chat_session_id: chat_session.id,
+            chat_title: chat_search_title(chat_session),
+            best_snippet: nil,
+            best_match_message_id: nil,
+            top_matches: [],
+            total_match_count: 0,
+            has_more_matches: false
+          }
+        end
+
+        def chat_search_match_json(row)
+          {
+            message_id: row.fetch(:chat_message_id).to_i,
+            role: row.fetch(:role),
+            snippet: row.fetch(:snippet),
+            created_at: row.fetch(:created_at)
+          }
+        end
+
+        def chat_search_title(chat_session)
+          chat_session.title.presence || ChatSession.fallback_title_for(chat_session.repository)
+        end
+
         ATTACHMENT_LABEL_FORMATTERS = {
           Repository => ->(r) { r.slug },
           Epic       => ->(r) { [ r.slug, r.title.presence ].compact.join(": ") },
@@ -1173,12 +1370,477 @@ module Api
           Document   => ->(r) { "#{r.title} (#{r.repository&.slug})" }
         }.freeze
 
+        # Walkthrough videos shared in this chat, for the workspace media panel.
+        # Metadata only — the video itself is far too large to inline (unlike the
+        # base64 image attachments) and is pruned after a retention window, so
+        # `has_video` tells the UI whether it can still be played back / re-analyzed.
+        def video_walkthroughs_json(chat_session)
+          chat_session.video_walkthroughs.newest_first.map do |walkthrough|
+            {
+              id: walkthrough.id,
+              title: walkthrough.display_title,
+              state: walkthrough.state,
+              duration_seconds: walkthrough.duration_seconds,
+              byte_size: walkthrough.byte_size,
+              error_message: walkthrough.error_message,
+              has_video: walkthrough.file.attached?,
+              created_at: walkthrough.created_at.iso8601
+            }
+          end
+        end
+
+        def chat_payload(chat_session, message: nil)
+          messages, has_more_older = paginated_tail(chat_session)
+          repository = chat_session.repository
+          attachment_groups = chat_session.chat_attachments.includes(:attachable).order(:attachable_type, :attached_at, :id).group_by(&:attachable_type)
+          whiteboard = chat_session.whiteboard
+          whiteboard_scene = whiteboard ? whiteboard.current_state : Whiteboard.default_state
+
+          {
+            message: message,
+            chat: chat_json(chat_session),
+            chat_available: Current.user.chat_available?,
+            turn_in_flight: chat_session.turn_in_flight?,
+            agent_busy: chat_session.agent_busy?,
+            switching_provider: false,
+            has_more_older: has_more_older,
+            pending_proposal_count: chat_session.proposals.where(state: "proposed").count,
+            messages: messages_json(messages, repository: repository),
+            bookmarks: chat_session.bookmarks.includes(:chat_message).map { |bookmark| bookmark_json(bookmark) },
+            recent_chats: [],
+            pending_actions: pending_actions_json(chat_session),
+            agent_questions: chat_session.agent_questions_payload,
+            queued_messages: chat_session.queued_messages_payload,
+            scratchpad_items: chat_session.scratchpad_items_payload,
+            video_walkthroughs: video_walkthroughs_json(chat_session),
+            attachment_groups: attachment_groups_json(attachment_groups),
+            documents_in_scope: chat_session.attached_documents_in_scope.includes(:attachable).order(:title, :id).map { |document| document_json(document) },
+            attachment_results: attachment_search_results(chat_session).map { |record| attachable_result_json(record) },
+            whiteboard: {
+              version: whiteboard_scene.fetch("version"),
+              elements: whiteboard_scene.fetch("elements"),
+              appState: whiteboard_scene.fetch("appState"),
+              files: whiteboard_scene.fetch("files")
+            },
+            paths: {
+              credentials_path: "/credentials",
+              repositories_path: repositories_path,
+              app_messages_path: "/api/v1/app/chats/#{chat_session.id}/messages",
+              app_message_path: "/api/v1/app/chats/#{chat_session.id}/message",
+              app_rename_path: "/api/v1/app/chats/#{chat_session.id}/rename",
+              app_delete_path: "/api/v1/app/chats/#{chat_session.id}",
+              app_clear_path: "/api/v1/app/chats/#{chat_session.id}/messages",
+              app_branch_path: "/api/v1/app/chats/#{chat_session.id}/branch",
+              app_share_path: "/api/v1/app/chats/#{chat_session.id}/share",
+              app_enqueue_message_path: "/api/v1/app/chats/#{chat_session.id}/queued_messages",
+              app_stop_path: "/api/v1/app/chats/#{chat_session.id}/stop",
+              app_daemon_connection_path: "/api/v1/app/chats/#{chat_session.id}/daemon_connection",
+              app_bookmarks_path: "/api/v1/app/chats/#{chat_session.id}/bookmarks",
+              app_attachments_path: "/api/v1/app/chats/#{chat_session.id}/attachments",
+              app_whiteboard_path: "/api/v1/app/chats/#{chat_session.id}/whiteboard",
+              app_switch_provider_path: "/api/v1/app/chats/#{chat_session.id}/switch_provider",
+              app_scratchpad_reorder_path: "/api/v1/app/chats/#{chat_session.id}/scratchpad_items/reorder",
+              app_video_walkthroughs_path: "/api/v1/app/chats/#{chat_session.id}/video_walkthroughs",
+              app_cancel_coding_checkout_path: "/api/v1/app/chats/#{chat_session.id}/coding_checkout",
+              app_coding_files_path: "/api/v1/app/chats/#{chat_session.id}/coding_files",
+              app_coding_commits_path: "/api/v1/app/chats/#{chat_session.id}/coding_commits",
+              app_coding_file_path: "/api/v1/app/chats/#{chat_session.id}/coding_file",
+              app_coding_diff_path: "/api/v1/app/chats/#{chat_session.id}/coding_diff"
+            },
+            gemini_configured: Current.user.gemini_configured?,
+            # Labs flag: gates the composer's record/drag/upload intake. The
+            # video_walkthroughs media list stays in the payload regardless so
+            # already-analyzed threads keep their history when the flag is off.
+            walkthroughs_enabled: Feature.video_walkthroughs_enabled?,
+            coding_mode_enabled: Feature.coding_mode_enabled?,
+            local_mode_enabled: Feature.local_mode_enabled?,
+            local_tunnel_connected: Feature.local_mode_enabled? && LocalDaemonSession.connected.exists?(chat_session_id: chat_session.id)
+          }
+        end
+
+        def paginated_tail(chat_session)
+          scope = message_scope(chat_session)
+          fetched = scope.order(id: :desc).limit(PAGE_SIZE + 1).to_a
+          has_more = fetched.size > PAGE_SIZE
+          [ fetched.first(PAGE_SIZE).reverse, has_more ]
+        end
+
+        def paginated_before(chat_session, before_id)
+          scope = message_scope(chat_session)
+          scope = scope.where("id < ?", before_id) if before_id&.positive?
+          fetched = scope.order(id: :desc).limit(PAGE_SIZE + 1).to_a
+          has_more = fetched.size > PAGE_SIZE
+          [ fetched.first(PAGE_SIZE).reverse, has_more ]
+        end
+
+        def message_scope(chat_session)
+          scope = ChatMessage.where(chat_session_id: chat_session.id)
+          scope = force_chat_message_cursor_index(scope) if mysql_adapter?
+
+          scope.includes(:pending_action, proposal: [ :repository, :job, :epic, :target_epic, dependencies: [], child_proposals: [ :repository, :job, dependencies: [] ] ])
+        end
+
+        def force_chat_message_cursor_index(scope)
+          scope.from(Arel.sql("#{ChatMessage.quoted_table_name} FORCE INDEX (index_chat_messages_on_session_id_and_id)"))
+        end
+
+        def mysql_adapter?
+          ActiveRecord::Base.connection.adapter_name.downcase.include?("mysql")
+        end
+
+        def messages_json(messages, repository:)
+          ::App::ChatMessagePayload.messages(messages, repository: repository)
+        end
+
+        def bookmark_json(bookmark)
+          {
+            id: bookmark.id,
+            label: bookmark.label,
+            chat_message_id: bookmark.chat_message_id,
+            anchor_message_id: bookmark.anchor_message_id
+          }
+        end
+
+        def recent_chats_json(current_chat_session)
+          chat_ids = Current.user.accessible_chat_sessions
+            .visible
+            .ordinary_chats
+            .order(Arel.sql("chat_sessions.pinned DESC, #{chat_activity_order_sql} DESC"), id: :desc)
+            .limit(20)
+            .pluck(:id)
+
+          chat_ids = chat_ids.first(19) + [ current_chat_session.id ] if current_chat_session.hidden_at.blank? && !chat_ids.include?(current_chat_session.id)
+
+          Current.user.accessible_chat_sessions
+            .visible
+            .ordinary_chats
+            .where(id: chat_ids)
+            .preload(repository_attachments: :attachable)
+            .to_a
+            .sort_by { |chat_session| [ chat_activity_at(chat_session), chat_session.id ] }
+            .reverse
+            .map do |chat_session|
+            chat_json(chat_session).merge(
+              current: chat_session.id == current_chat_session.id,
+              last_message_at: chat_session.last_message_at&.iso8601,
+              unread: chat_unread?(chat_session),
+              created_at: chat_session.created_at.iso8601,
+              updated_at: chat_session.updated_at.iso8601
+            )
+          end
+        end
+
+        def recent_chats_index_json
+          groups = []
+          general_chats, general_has_more = paginated_chat_index_group(chat_index_group_scope(nil))
+          if general_chats.any?
+            groups << chat_index_group_json(
+              key: "general",
+              label: "General",
+              repository_id: nil,
+              chats: general_chats,
+              has_more: general_has_more
+            )
+          end
+
+          chat_index_repositories.each do |repository|
+            chats, has_more = paginated_chat_index_group(chat_index_group_scope(repository.id))
+            next if chats.blank?
+
+            groups << chat_index_group_json(
+              key: "repository-#{repository.id}",
+              label: repository.slug,
+              repository_id: repository.id,
+              chats: chats,
+              has_more: has_more
+            )
+          end
+
+          groups.sort_by { |group| group.delete(:active_at) || Time.at(0) }.reverse
+        end
+
+        def chat_index_group_json(key:, label:, repository_id:, chats:, has_more:)
+          {
+            key: key,
+            label: label,
+            repository_id: repository_id,
+            chats: chats.map { |chat_session| chat_index_json(chat_session) },
+            has_more: has_more,
+            active_at: chats.map { |chat_session| chat_activity_timestamp(chat_session) }.max
+          }
+        end
+
+        def chat_index_json(chat_session)
+          chat_json(chat_session).merge(
+            last_message_at: chat_session.last_message_at&.iso8601,
+            unread: chat_unread?(chat_session),
+            created_at: chat_session.created_at.iso8601,
+            updated_at: chat_session.updated_at.iso8601
+          )
+        end
+
+        def paginated_chat_index_group(scope, before_chat: nil)
+          scope = chat_index_before(scope, before_chat) if before_chat
+          fetched = scope.preload(repository_attachments: :attachable).limit(CHAT_INDEX_GROUP_SIZE + 1).to_a
+          [ fetched.first(CHAT_INDEX_GROUP_SIZE), fetched.size > CHAT_INDEX_GROUP_SIZE ]
+        end
+
+        def chat_index_before(scope, before_chat)
+          timestamp = chat_activity_timestamp(before_chat)
+          scope.where(
+            "chat_sessions.pinned < ? OR (chat_sessions.pinned = ? AND ((#{chat_activity_order_sql}) < ? OR ((#{chat_activity_order_sql}) = ? AND chat_sessions.id < ?)))",
+            before_chat.pinned? ? 1 : 0,
+            before_chat.pinned? ? 1 : 0,
+            timestamp,
+            timestamp,
+            before_chat.id
+          )
+        end
+
+        def chat_index_group_scope(repository_id)
+          scope = Current.user.accessible_chat_sessions
+            .visible
+            .ordinary_chats
+            .left_outer_joins(:repository_attachments)
+            .order(Arel.sql("chat_sessions.pinned DESC, #{chat_activity_order_sql} DESC, chat_sessions.id DESC"))
+
+          if repository_id.present?
+            scope.where(chat_attachments: { attachable_type: "Repository", attachable_id: repository_id })
+          else
+            scope.where(chat_attachments: { id: nil })
+          end
+        end
+
+        def chat_index_repositories
+          repository_ids = Current.user.accessible_chat_sessions
+            .visible
+            .ordinary_chats
+            .joins(:repository_attachments)
+            .where(chat_attachments: { attachable_type: "Repository" })
+            .distinct
+            .pluck("chat_attachments.attachable_id")
+
+          Current.user.repositories.where(id: repository_ids).order(:owner, :name)
+        end
+
+        def chat_index_repository_id
+          repository_id = params[:repository_id].to_s
+          return nil if repository_id == "general"
+
+          parsed = Integer(repository_id, exception: false)
+          return parsed if parsed
+
+          render_error("validation_failed", "repository_id is required.", status: :unprocessable_content)
+          nil
+        end
+
+        def chat_activity_timestamp(chat_session)
+          chat_activity_at(chat_session)
+        end
+
+        def chat_activity_order_sql
+          "COALESCE(chat_sessions.last_message_at, chat_sessions.created_at)"
+        end
+
+        def chat_activity_at(chat_session)
+          chat_session.last_message_at || chat_session.created_at
+        end
+
+        def hidden_chat_json(chat_session)
+          chat_index_json(chat_session).merge(
+            hidden_at: chat_session.hidden_at&.iso8601,
+            app_unhide_path: "/api/v1/app/chats/#{chat_session.id}/unhide"
+          )
+        end
+
+        def chat_unread?(chat_session)
+          last_read_at = current_participant_for(chat_session)&.last_read_at || chat_session.last_read_at
+          chat_session.last_message_at.present? &&
+            (last_read_at.blank? || chat_session.last_message_at > last_read_at)
+        end
+
+        def pending_actions_json(chat_session)
+          ChatPendingAction.repair_tool_call_anchors_for!(chat_session)
+          chat_session.association(:pending_actions).reset
+
+          chat_session.pending_actions.includes(:tool_call_message, :message).where(state: %w[queued pending]).order(:created_at, :id).map do |action|
+            {
+              id: action.id,
+              label: pending_action_label(action),
+              detail: pending_action_detail(action),
+              state: action.state,
+              action: action.action,
+              action_type: action.action_type,
+              chat_message_id: action.anchor_message&.id,
+              app_confirm_path: "/api/v1/app/chats/#{chat_session.id}/pending_actions/#{action.id}/confirm",
+              app_reject_path: "/api/v1/app/chats/#{chat_session.id}/pending_actions/#{action.id}/reject",
+              app_cancel_path: "/api/v1/app/chats/#{chat_session.id}/pending_actions/#{action.id}"
+            }
+          end
+        end
+
+        def attachment_groups_json(groups)
+          {
+            repositories: attachment_group_json(groups["Repository"]),
+            epics: attachment_group_json(groups["Epic"]),
+            jobs: attachment_group_json(groups["Job"]),
+            documents: attachment_group_json(groups["Document"])
+          }
+        end
+
+        def attachment_group_json(attachments)
+          Array(attachments).map do |attachment|
+            {
+              id: attachment.id,
+              label: attachment_label(attachment.attachable),
+              app_detach_path: "/api/v1/app/chats/#{attachment.chat_session_id}/attachments/#{attachment.id}"
+            }
+          end
+        end
+
+        def document_json(document)
+          {
+            id: document.id,
+            title: document.title,
+            repository_slug: document.repository&.slug
+          }
+        end
+
+        def attachment_search_results(chat_session)
+          type = normalized_search_type
+          scope = attachment_search_scope(type)
+          return [] unless scope
+
+          query = params[:attachment_query].to_s.strip
+          scope = filter_attachment_scope(scope, type, query) if query.present?
+          attached_ids = chat_session.chat_attachments.where(attachable_type: type).select(:attachable_id)
+          scope.where.not(id: attached_ids).limit(10).to_a
+        end
+
+        def normalized_search_type
+          raw = params[:attachment_type].presence || params[:attachable_type].presence || "Repository"
+          %w[Document RepositoryDocument].include?(raw.to_s) ? "Document" : raw.to_s
+        end
+
+        def attachment_search_scope(type)
+          case type
+          when "Repository"
+            Current.user.repositories.active.order(:owner, :name, :id)
+          when "Job"
+            Current.user.jobs
+              .where.not(kind: ChatAttachmentSearch::INFRA_JOB_KINDS)
+              .includes(:repository)
+              .order(created_at: :desc, id: :desc)
+          when "Document"
+            Document.where(user: Current.user, attachable_type: "Repository").includes(:attachable).order(:title, :id)
+          when "Epic"
+            Current.user.epics.includes(:repository).order(:id)
+          end
+        end
+
+        def filter_attachment_scope(scope, type, query)
+          like = "%#{ActiveRecord::Base.sanitize_sql_like(query)}%"
+          case type
+          when "Repository"
+            scope.where("owner LIKE ? OR name LIKE ?", like, like)
+          when "Job"
+            id = Integer(query, exception: false)
+            id ? scope.where("issue_title LIKE ? OR issue_body LIKE ? OR jobs.id = ?", like, like, id) : scope.where("issue_title LIKE ? OR issue_body LIKE ?", like, like)
+          when "Document"
+            scope.where("title LIKE ?", like)
+          when "Epic"
+            scope.where("title LIKE ?", like)
+          else
+            scope
+          end
+        end
+
+        def attachable_result_json(record)
+          {
+            type: record.is_a?(Document) ? "Document" : record.class.name,
+            id: record.id,
+            label: attachment_label(record)
+          }
+        end
+
+        def create_chat_session
+          text = message_text
+          repository = repository_from_params
+          content = message_content(text) if text.present?
+          return if performed?
+
+          chat_session = nil
+          user_message = nil
+
+          ApplicationRecord.transaction do
+            chat_session = ChatSession.create!(
+              user: Current.user,
+              repository: repository,
+              title: nil,
+              last_message_at: text.present? ? Time.current : nil
+            )
+            if text.present?
+              user_message = chat_session.messages.create!(role: "user", content: content, sender_user_id: Current.user.id)
+            end
+          end
+
+          enqueue_chat_title(chat_session, user_message) if user_message
+          enqueue_chat_turn(chat_session, user_message) if user_message
+          chat_session
+        end
+
+        def enqueue_chat_title(chat_session, user_message)
+          ChatTitleJob.perform_later(chat_session.id, user_message.id)
+        end
+
+        def first_user_message(chat_session)
+          chat_session.messages.where(role: "user").order(:created_at, :id).first
+        end
+
+        def enqueue_chat_turn(chat_session, user_message)
+          retry_delays = CHAT_TURN_ENQUEUE_RETRY_DELAYS.dup
+
+          begin
+            ChatTurnJob.perform_later(chat_session.id, user_message.id)
+          rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked, ActiveRecord::StatementTimeout, SolidQueue::Job::EnqueueError => e
+            raise unless transient_chat_lock_error?(e) && retry_delays.any?
+
+            delay = retry_delays.shift
+            Rails.logger.warn("Retrying ChatTurnJob enqueue after transient database lock: #{e.class}: #{e.message}")
+            sleep(delay) if delay.positive?
+            retry
+          end
+        end
+
+        def notify_agent_of_proposal_outcome(message)
+          chat_session = message.chat_session
+          return unless chat_session
+
+          ApplicationRecord.transaction do
+            chat_session.update!(
+              last_message_at: Time.current,
+              title: chat_session.title.presence
+            )
+          end
+
+          enqueue_chat_turn(chat_session, message)
+        end
+
+        def proposal_outcome_control_content(proposal, text:, outcome:)
+          {
+            "text" => text,
+            "source" => ChatProposalOutcomeNotification::SOURCE,
+            "outcome" => outcome.to_s,
+            "acknowledgment" => ChatProposalOutcomeNotification.acknowledgment(proposal, outcome: outcome)
+          }
+        end
+
         def promote_queued_message(chat_session, queued_message)
           user_message = nil
           ApplicationRecord.transaction do
             locked_chat = ChatSession.lock.find(chat_session.id)
             locked_queued_message = locked_chat.queued_messages.find(queued_message.id)
-            user_message = locked_chat.messages.create!(role: "user", content: locked_queued_message.content)
+            user_message = locked_chat.messages.create!(role: "user", content: locked_queued_message.content, sender_user_id: Current.user.id)
             locked_queued_message.update!(delivered_at: Time.current)
             locked_chat.update!(
               last_message_at: Time.current,
@@ -1189,6 +1851,78 @@ module Api
           user_message
         end
 
+        def render_temporary_chat_lock_error
+          render_error(
+            "temporary_lock",
+            "Chat request was blocked by a temporary database lock. Try again.",
+            status: :service_unavailable
+          )
+        end
+
+        def transient_chat_lock_error?(error)
+          error_chain(error).any? do |candidate|
+            candidate.is_a?(ActiveRecord::LockWaitTimeout) ||
+              candidate.is_a?(ActiveRecord::Deadlocked) ||
+              candidate.is_a?(ActiveRecord::StatementTimeout) ||
+              candidate.class.name == "SQLite3::BusyException" ||
+              candidate.message.match?(/SQLite3::BusyException|database is locked|LockWaitTimeout|Deadlocked|StatementTimeout/i)
+          end
+        end
+
+        def error_chain(error)
+          chain = []
+          while error && !chain.include?(error)
+            chain << error
+            error = error.cause
+          end
+          chain
+        end
+
+        def find_chat_session
+          Current.user.accessible_chat_sessions.find(params[:id])
+        end
+
+        BRANCH_TITLE_SUFFIX = " (branch)".freeze
+
+        # Rename enforces ChatSession::TITLE_MAX_LENGTH (in characters,
+        # matching the model validation), so a branch of a max-length
+        # title must clamp the base before appending the suffix instead
+        # of overflowing it.
+        def branch_chat_title(source_chat)
+          base = source_chat.title.presence ||
+            ChatSession.fallback_title_for(source_chat.repository).presence ||
+            "New chat"
+          max_base_length = ChatSession::TITLE_MAX_LENGTH - BRANCH_TITLE_SUFFIX.length
+          base = base.truncate(max_base_length, omission: "…") if base.length > max_base_length
+          "#{base}#{BRANCH_TITLE_SUFFIX}"
+        end
+
+        def find_branch_source_chat_session
+          chat_session = Current.user.accessible_chat_sessions.find_by(id: params[:id])
+          return chat_session if chat_session
+
+          render_error("forbidden", "You cannot branch this chat.", status: :forbidden)
+          nil
+        end
+
+        def branch_chat_messages!(source_chat, branched_chat)
+          rows = source_chat.messages.order(:created_at, :id).map do |message|
+            message.attributes.slice(
+              "role",
+              "content",
+              "tool_name",
+              "tool_use_id",
+              "created_at",
+              "updated_at"
+            ).merge(
+              "chat_session_id" => branched_chat.id,
+              "proposal_id" => nil,
+              "pending_action_id" => nil,
+              "sender_user_id" => message.sender_user_id
+            )
+          end
+          ChatMessage.insert_all!(rows) if rows.any?
+        end
 
         def find_pending_action(chat_session)
           chat_session.pending_actions.find(params[:pending_action_id])

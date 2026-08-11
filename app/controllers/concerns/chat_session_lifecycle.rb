@@ -26,7 +26,7 @@ module ChatSessionLifecycle
         last_message_at: text.present? ? Time.current : nil
       )
       if text.present?
-        user_message = chat_session.messages.create!(role: "user", content: content)
+        user_message = chat_session.messages.create!(role: "user", content: content, sender_user_id: Current.user.id)
         chat_session.pin_chat_provider!
       end
     end
@@ -60,7 +60,7 @@ module ChatSessionLifecycle
   end
 
   def find_chat_session
-    Current.user.chat_sessions.find(params[:id])
+    Current.user.accessible_chat_sessions.find(params[:id])
   end
 
   # Rename enforces ChatSession::TITLE_MAX_LENGTH (in characters,
@@ -77,8 +77,8 @@ module ChatSessionLifecycle
   end
 
   def find_branch_source_chat_session
-    chat_session = ChatSession.find(params[:id])
-    return chat_session if chat_session.user_id == Current.user.id
+    chat_session = Current.user.accessible_chat_sessions.find_by(id: params[:id])
+    return chat_session if chat_session
 
     render_error("forbidden", "You cannot branch this chat.", status: :forbidden)
     nil
@@ -96,7 +96,8 @@ module ChatSessionLifecycle
       ).merge(
         "chat_session_id" => branched_chat.id,
         "proposal_id" => nil,
-        "pending_action_id" => nil
+        "pending_action_id" => nil,
+        "sender_user_id" => message.sender_user_id
       )
     end
     if rows.any?

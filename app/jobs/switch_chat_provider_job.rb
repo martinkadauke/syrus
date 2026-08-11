@@ -10,7 +10,7 @@ class SwitchChatProviderJob < ApplicationJob
                      duration: 30.minutes
 
   def perform(chat_session_id, provider)
-    @chat = ChatSession.includes(:user, :provider_session).find(chat_session_id)
+    @chat = ChatSession.includes(:participants, :provider_session).find(chat_session_id)
 
     if @chat.turn_in_flight? || @chat.agent_busy?
       @chat.messages.create!(role: "system", content: { "text" => "Cannot switch provider while a turn is in progress." })
@@ -49,8 +49,10 @@ class SwitchChatProviderJob < ApplicationJob
           @chat.create_provider_session!(attrs)
         end
       end
-      App::ProviderAvailability.broadcast_changed(user: @chat.user, provider: previous_provider) if previous_provider.present? && previous_provider != provider
-      App::ProviderAvailability.broadcast_changed(user: @chat.user, provider: provider)
+      @chat.participants.each do |participant|
+        App::ProviderAvailability.broadcast_changed(user: participant, provider: previous_provider) if previous_provider.present? && previous_provider != provider
+        App::ProviderAvailability.broadcast_changed(user: participant, provider: provider)
+      end
     end
   end
 

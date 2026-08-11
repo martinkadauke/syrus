@@ -11,6 +11,7 @@
 # It's strongly recommended that you check this file into your version control system.
 
 ActiveRecord::Schema[8.1].define(version: 2026_08_11_150500) do
+
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -210,6 +211,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_150500) do
     t.bigint "pending_action_id"
     t.integer "proposal_id"
     t.string "role", null: false
+    t.integer "sender_user_id"
     t.string "tool_name"
     t.string "tool_use_id"
     t.datetime "updated_at", null: false
@@ -222,6 +224,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_150500) do
     t.index ["chat_session_id"], name: "index_chat_messages_on_chat_session_id"
     t.index ["pending_action_id"], name: "index_chat_messages_on_pending_action_id"
     t.index ["proposal_id"], name: "index_chat_messages_on_proposal_id"
+    t.index ["sender_user_id"], name: "index_chat_messages_on_sender_user_id"
+  end
+
+  create_table "chat_participants", force: :cascade do |t|
+    t.integer "chat_session_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "joined_at", null: false
+    t.datetime "last_read_at"
+    t.string "role", default: "member", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["chat_session_id", "user_id"], name: "index_chat_participants_on_chat_session_id_and_user_id", unique: true
+    t.index ["chat_session_id"], name: "index_chat_participants_on_chat_session_id"
+    t.index ["user_id"], name: "index_chat_participants_on_user_id"
   end
 
   create_table "chat_pending_actions", force: :cascade do |t|
@@ -381,6 +397,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_150500) do
     t.string "local_daemon_state"
     t.string "mode"
     t.boolean "onboarding", default: false, null: false
+    t.string "origin_platform"
     t.boolean "pinned", default: false, null: false
     t.text "pinned_context"
     t.string "share_token"
@@ -388,11 +405,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_150500) do
     t.string "suggested_next_step"
     t.string "system_kind"
     t.string "title"
+    t.string "trigger_policy", default: "speak_when_spoken_to", null: false
     t.boolean "turn_in_flight", default: false, null: false
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
     t.string "workspace_path"
     t.index ["cumulative_cost_usd"], name: "idx_chat_sessions_spending_cost"
+    t.index ["origin_platform", "user_id"], name: "index_chat_sessions_on_origin_platform_and_user_id"
     t.index ["share_token"], name: "index_chat_sessions_on_share_token", unique: true
     t.index ["turn_in_flight", "last_message_at"], name: "idx_chat_sessions_stale_turns"
     t.index ["user_id", "cumulative_cost_usd"], name: "idx_chat_sessions_spending_user_cost"
@@ -2039,6 +2058,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_150500) do
   add_foreign_key "chat_messages", "chat_pending_actions", column: "pending_action_id"
   add_foreign_key "chat_messages", "chat_proposals", column: "proposal_id"
   add_foreign_key "chat_messages", "chat_sessions"
+  add_foreign_key "chat_messages", "users", column: "sender_user_id"
+  add_foreign_key "chat_participants", "chat_sessions"
+  add_foreign_key "chat_participants", "users"
   add_foreign_key "chat_pending_actions", "chat_sessions"
   add_foreign_key "chat_pending_actions", "repositories"
   add_foreign_key "chat_pending_actions", "users"

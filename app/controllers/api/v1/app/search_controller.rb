@@ -356,8 +356,8 @@ module Api
 
         def chat_messages_by_id
           @chat_messages_by_id ||= ChatMessage
-            .joins(:chat_session)
-            .where(chat_sessions: { user_id: Current.user.id }, id: result_ids(:chat_message_id))
+            .joins(chat_session: :chat_participants)
+            .where(chat_participants: { user_id: Current.user.id }, id: result_ids(:chat_message_id))
             .includes(chat_session: :attached_repositories)
             .index_by(&:id)
         end

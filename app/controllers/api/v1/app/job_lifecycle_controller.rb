@@ -219,9 +219,9 @@ module Api
 
           chat_id = params[:chat_id].presence
           chat = if chat_id
-            Current.user.chat_sessions.find_by(id: chat_id, mode: "local")
+            Current.user.accessible_chat_sessions.find_by(id: chat_id, mode: "local")
           else
-            Current.user.chat_sessions.where(mode: "local").order(updated_at: :desc).first
+            Current.user.accessible_chat_sessions.where(mode: "local").order(updated_at: :desc).first
           end
 
           unless chat

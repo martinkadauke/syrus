@@ -10,6 +10,7 @@ class ScheduledChatMessageFireJob < ApplicationJob
       chat = ChatSession.lock.find(message.chat_session_id)
       chat_message = chat.messages.create!(
         role: "user",
+        sender_user: message.user,
         content: {
           "text" => message.body,
           "requested_by" => "scheduled_message",

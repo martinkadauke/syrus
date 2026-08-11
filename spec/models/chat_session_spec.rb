@@ -719,4 +719,114 @@ RSpec.describe ChatSession do
       )
     SQL
   end
+
+  describe "chat participants" do
+    it "creates an owner participant when the session is created" do
+      session = described_class.create!(user: repo.user)
+
+      expect(session.chat_participants.count).to eq(1)
+      expect(session.chat_participants.first.user).to eq(repo.user)
+      expect(session.chat_participants.first.role).to eq("owner")
+    end
+
+    it "exposes participants through the through association" do
+      session = described_class.create!(user: repo.user)
+      other_user = Factories.user
+      session.chat_participants.create!(user: other_user, role: "member")
+
+      expect(session.participants).to contain_exactly(repo.user, other_user)
+    end
+
+    it "returns the owner user via the user association" do
+      session = described_class.create!(user: repo.user)
+
+      expect(session.user).to eq(repo.user)
+    end
+  end
+
+  describe ".for_platform" do
+    it "creates a new session for a user on an unknown platform" do
+      user = repo.user
+
+      session = described_class.for_platform(user: user, platform: "telegram")
+
+      expect(session).to be_persisted
+      expect(session.origin_platform).to eq("telegram")
+      expect(session.trigger_policy).to eq("speak_when_spoken_to")
+      expect(session.participants).to include(user)
+    end
+
+    it "finds the existing session on repeated calls for the same user and platform" do
+      user = repo.user
+      first = described_class.for_platform(user: user, platform: "telegram")
+
+      second = described_class.for_platform(user: user, platform: "telegram")
+
+      expect(second.id).to eq(first.id)
+    end
+
+    it "creates separate sessions for different platforms" do
+      user = repo.user
+      telegram = described_class.for_platform(user: user, platform: "telegram")
+      slack = described_class.for_platform(user: user, platform: "slack")
+
+      expect(telegram.id).not_to eq(slack.id)
+    end
+
+    it "creates separate sessions for different users on the same platform" do
+      other_user = Factories.user
+      session1 = described_class.for_platform(user: repo.user, platform: "telegram")
+      session2 = described_class.for_platform(user: other_user, platform: "telegram")
+
+      expect(session1.id).not_to eq(session2.id)
+    end
+  end
+
+  describe "trigger_policy" do
+    it "defaults to speak_when_spoken_to" do
+      session = described_class.create!(user: repo.user)
+
+      expect(session.trigger_policy).to eq("speak_when_spoken_to")
+    end
+
+    it "rejects unknown trigger policies" do
+      session = described_class.new(user: repo.user, trigger_policy: "proactive")
+
+      expect(session).not_to be_valid
+      expect(session.errors[:trigger_policy]).to be_present
+    end
+  end
+
+  describe "broadcasting to participants" do
+    it "broadcasts header updates to all participants" do
+      session = described_class.create!(user: repo.user)
+      other_user = Factories.user
+      session.chat_participants.create!(user: other_user, role: "member")
+
+      expect(AppEvents).to receive(:broadcast).with(hash_including(user: repo.user))
+      expect(AppEvents).to receive(:broadcast).with(hash_including(user: other_user))
+
+      session.broadcast_app_header_update
+    end
+
+    it "broadcasts controls updates to all participants" do
+      session = described_class.create!(user: repo.user)
+      other_user = Factories.user
+      session.chat_participants.create!(user: other_user, role: "member")
+
+      expect(AppEvents).to receive(:broadcast).with(hash_including(user: repo.user))
+      expect(AppEvents).to receive(:broadcast).with(hash_including(user: other_user))
+
+      session.broadcast_app_controls_update
+    end
+
+    it "falls back to the session user if no participants exist" do
+      session = described_class.create!(user: repo.user)
+      session.chat_participants.destroy_all
+
+      expect(AppEvents).to receive(:broadcast).with(hash_including(user: repo.user)).once
+
+      session.broadcast_app_header_update
+    end
+  end
 end

@@ -43,8 +43,8 @@ class ChatBookmark < ApplicationRecord
 
   def broadcast_app_event
     chat = chat_message.chat_session
-    AppEvents.broadcast(
-      user: chat.user,
+    chat.send(
+      :broadcast_to_participants,
       type: "updated",
       resource: "chat",
       id: chat.id,

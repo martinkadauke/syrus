@@ -19,12 +19,13 @@ RSpec.describe ChatAgentQuestion do
     question = chat_session.agent_questions.create!(question: "Deploy now?", options: [ "Yes", "No" ], asked_at: Time.current)
 
     expect {
-      expect(question.answer_and_record!("No")).to eq(true)
+      expect(question.answer_and_record!("No", sender_user: user)).to eq(true)
     }.to have_enqueued_job(ChatTurnJob).with(chat_session.id, kind_of(Integer))
     expect(question.reload.answer).to eq("No")
     expect(chat_session.messages.sole).to have_attributes(
       role: "user",
-      content: { "text" => "No" }
+      content: { "text" => "No" },
+      sender_user_id: user.id
     )
     expect(chat_session.reload.last_message_at).to be_present
     jobs = ActiveJob::Base.queue_adapter.enqueued_jobs

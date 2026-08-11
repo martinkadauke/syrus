@@ -660,9 +660,9 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     patch "/api/v1/app/chats/#{chat.id}/mark_read"
 
     expect(response).to have_http_status(:no_content)
-    expect(chat.reload.last_read_at).to be_present
+    expect(chat.reload.chat_participants.find_by(user: user).last_read_at).to be_present
     expect(chat.updated_at.to_i).to eq(original_updated_at.to_i)
-    expect(foreign_chat.reload.last_read_at).to be_nil
+    expect(foreign_chat.reload.chat_participants.first.last_read_at).to be_nil
 
     get "/api/v1/app/chats"
 
@@ -679,13 +679,15 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       last_message_at: 1.hour.ago,
       last_read_at: Time.current
     )
+    chat.chat_participants.find_by(user: user).update!(last_read_at: Time.current)
     foreign_chat = ChatSession.create!(user: Factories.user, last_message_at: Time.current, last_read_at: Time.current)
+    foreign_chat.chat_participants.first.update!(last_read_at: Time.current)
 
     patch "/api/v1/app/chats/#{chat.id}/mark_unread"
 
     expect(response).to have_http_status(:no_content)
-    expect(chat.reload.last_read_at).to be_nil
-    expect(foreign_chat.reload.last_read_at).to be_present
+    expect(chat.reload.chat_participants.find_by(user: user).last_read_at).to be_nil
+    expect(foreign_chat.reload.chat_participants.first.last_read_at).to be_present
   end
 
   it "rejects unauthenticated mark_unread requests" do
@@ -2227,7 +2229,8 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(question.answered_at).to be_present
     expect(chat.messages.order(:created_at, :id).last).to have_attributes(
       role: "user",
-      content: { "text" => "release" }
+      content: { "text" => "release" },
+      sender_user_id: user.id
     )
     expect(parse_body["agent_questions"]).to eq([])
     expect(parse_body["messages"]).to include(include(
@@ -4380,6 +4383,71 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
     expect(response).to have_http_status(:unprocessable_content)
     expect(chat.reload.chat_model).to be_nil
+  end
+
+  describe "participant-based access" do
+    let(:owner) { Factories.user(claude_oauth_token: "oat-owner") }
+    let(:participant) { Factories.user(claude_oauth_token: "oat-participant") }
+    let(:stranger) { Factories.user }
+    let(:owner_chat) { ChatSession.create!(user: owner, title: "Multi-party planning") }
+
+    before { owner_chat.chat_participants.create!(user: participant, role: "member") }
+
+    it "lets a participant (non-owner) read the chat via show" do
+      sign_in_as(participant)
+
+      get "/api/v1/app/chats/#{owner_chat.id}"
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body.dig("chat", "id")).to eq(owner_chat.id)
+    end
+
+    it "lets a participant post a message" do
+      allow(ChatTurnJob).to receive(:perform_later)
+
+      sign_in_as(participant)
+
+      post "/api/v1/app/chats/#{owner_chat.id}/message", params: { content: "What is the plan?" }
+
+      expect(response).to have_http_status(:ok)
+      message = owner_chat.messages.where(role: "user").last
+      expect(message.sender_user_id).to eq(participant.id)
+    end
+
+    it "returns 404 for a user who is not a participant" do
+      sign_in_as(stranger)
+
+      get "/api/v1/app/chats/#{owner_chat.id}"
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "sender_user_id tracking" do
+    let(:chat) { ChatSession.create!(user: user, title: "Tracking test") }
+
+    it "records sender_user_id on user messages posted via the message action" do
+      allow(ChatTurnJob).to receive(:perform_later)
+      sign_in_as(user)
+
+      post "/api/v1/app/chats/#{chat.id}/message", params: { content: "Hello" }
+
+      expect(response).to have_http_status(:ok)
+      message = chat.messages.where(role: "user").last
+      expect(message.sender_user_id).to eq(user.id)
+    end
+
+    it "records sender_user_id on user messages when creating a chat with an initial message" do
+      allow(ChatTurnJob).to receive(:perform_later)
+      sign_in_as(user)
+
+      post "/api/v1/app/chats", params: { content: "Create and send" }
+
+      expect(response).to have_http_status(:created)
+      new_chat = ChatSession.find(parse_body.dig("chat", "id"))
+      message = new_chat.messages.where(role: "user").last
+      expect(message.sender_user_id).to eq(user.id)
+    end
   end
 
   def create_indexed_message(chat_session, text:, role: "assistant")
