@@ -113,6 +113,27 @@ RSpec.describe PreviewProxyMiddleware do
       expect(headers["content-type"]).to eq("text/html")
     end
 
+    it "uses preview-safe browser policy headers instead of restrictive upstream headers" do
+      stub_request(:get, "http://127.0.0.1:25000/")
+        .to_return(status: 200, body: "preview", headers: {
+          "content-security-policy" => "default-src 'self'; script-src 'self'; style-src 'self'",
+          "content-security-policy-report-only" => "default-src 'none'",
+          "x-frame-options" => "DENY",
+          "permissions-policy" => "fullscreen=()"
+        })
+
+      _, headers, _ = middleware.call(env_for(host: "preview-#{job.id}.lvh.me"))
+
+      expect(headers).not_to have_key("content-security-policy")
+      expect(headers).not_to have_key("content-security-policy-report-only")
+      expect(headers).not_to have_key("x-frame-options")
+      expect(headers).not_to have_key("permissions-policy")
+      expect(headers["Content-Security-Policy"]).to include("script-src 'self' 'unsafe-inline' 'unsafe-eval'")
+      expect(headers["Content-Security-Policy"]).to include("style-src 'self' 'unsafe-inline'")
+      expect(headers["Content-Security-Policy"]).to include("connect-src 'self' http: https: ws: wss:")
+      expect(headers["Content-Security-Policy"]).to include("frame-src 'self'")
+    end
+
     it "resets last_activity_at on each proxied request" do
       freeze_time do
         middleware.call(env_for(host: "preview-#{job.id}.lvh.me"))

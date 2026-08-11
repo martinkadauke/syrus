@@ -1,6 +1,17 @@
 require "net/http"
 
 class PreviewProxyMiddleware
+  PREVIEW_CSP = [
+    "default-src 'self' http: https: data: blob:",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https: blob:",
+    "style-src 'self' 'unsafe-inline' http: https:",
+    "img-src 'self' http: https: data: blob:",
+    "font-src 'self' http: https: data:",
+    "connect-src 'self' http: https: ws: wss:",
+    "frame-src 'self' http: https:",
+    "worker-src 'self' blob:"
+  ].join("; ").freeze
+
   HOP_BY_HOP_HEADERS = %w[
     connection keep-alive proxy-authenticate proxy-authorization
     te trailer transfer-encoding upgrade
@@ -69,8 +80,22 @@ class PreviewProxyMiddleware
       proxy_resp.each_header do |name, value|
         headers[name] = value unless HOP_BY_HOP_HEADERS.include?(name.downcase)
       end
+      apply_preview_headers!(headers)
       [status, headers, [proxy_resp.body || ""]]
     end
+  end
+
+  def apply_preview_headers!(headers)
+    delete_header!(headers, "Content-Security-Policy")
+    delete_header!(headers, "Content-Security-Policy-Report-Only")
+    delete_header!(headers, "X-Frame-Options")
+    delete_header!(headers, "Permissions-Policy")
+    headers["Content-Security-Policy"] = PREVIEW_CSP
+  end
+
+  def delete_header!(headers, name)
+    key = headers.keys.find { |candidate| candidate.casecmp?(name) }
+    headers.delete(key) if key
   end
 
   def copy_request_headers(env, proxy_req)
