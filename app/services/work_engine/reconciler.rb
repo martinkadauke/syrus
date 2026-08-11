@@ -770,6 +770,7 @@ module WorkEngine
 
         latest = job.latest_workflow
         next unless recoverable_cancelled_workflow_for_queued_job?(job, latest)
+        next if ReconcileJobStatesJob::Plan.for(job)
 
         issue(
           kind: :queued_job_after_cancelled_workflow,

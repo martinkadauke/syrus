@@ -623,6 +623,36 @@ RSpec.describe WorkEngine::Reconciler do
     expect(job.latest_workflow).to eq(cancelled)
   end
 
+  it "reconciles a queued Job whose cancelled workflow already opened a clean PR" do
+    workflow.update!(
+      state: "cancelled",
+      trigger_kind: "initial",
+      started_at: 30.minutes.ago,
+      finished_at: 1.minute.ago,
+      artifacts: { "publication_branch" => "syrus/direct-2884" }
+    )
+    step.update_columns(kind: "pr_open", state: "succeeded", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+    run.update_columns(state: "succeeded", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+    job.update!(
+      state: "queued",
+      pr_number: 5,
+      branch_name: "syrus/direct-2884",
+      pr_checks_state: nil,
+      commits_behind_base: 0,
+      github_mergeable_state: "clean"
+    )
+
+    result = reconcile_and_execute(job_id: job.id)
+
+    expect(kind(result, :unambiguous_job_state_drift)).to have_attributes(
+      recommended_repair_action: "reconcile_job_state",
+      safe_to_auto_repair: true
+    )
+    expect(plan(result, :reconcile_job_state)).to have_attributes(target_id: job.id)
+    expect(plan(result, :retry_job_after_cancelled_workflow)).to be_nil
+    expect(job.reload.state).to eq("implemented")
+  end
+
   it "discards stale branch-diverged workflow output when the current PR head matches the protected remote SHA" do
     job.update!(
       state: "queued",

@@ -154,11 +154,21 @@ class ReconcileJobStatesJob < ApplicationJob
     def self.ready_pr_with_successful_publication?(job, latest_wf)
       return false unless job.pr_number.present?
       return false unless job.branch_name.present?
-      return false unless job.pr_checks_state == "passing"
       return false unless job.commits_behind_base.to_i.zero?
       return false unless job.github_mergeable_state == "clean"
+      return true if workflow_published_ready_pr?(job, latest_wf)
+      return false unless job.pr_checks_state == "passing"
 
       successful_publication_for_branch?(job, latest_wf)
+    end
+
+    def self.workflow_published_ready_pr?(job, workflow)
+      return false unless workflow
+
+      publication_branch = workflow.artifact("publication_branch").presence
+      return true if publication_branch == job.branch_name
+
+      workflow.steps.where(kind: "pr_open", state: "succeeded").exists?
     end
 
     def self.successful_publication_for_branch?(job, latest_wf)
