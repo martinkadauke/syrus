@@ -138,7 +138,7 @@ module Steps
         kind: "system"
       )
       Step.suppress_cancel_cascade do
-        cursor = step.next_step
+        cursor = step.reload.next_step
         while cursor && cursor.kind != "auto_merge"
           if cursor.may_cancel?
             cursor.cancellation_reason = "landing_validation_cached"

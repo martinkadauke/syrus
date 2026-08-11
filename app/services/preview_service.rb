@@ -111,6 +111,7 @@ class PreviewService
 
     process_env = preview_process_env(source)
 
+    run_setup_commands(source, workspace_path, process_env)
     run_seed_command(source, workspace_path, process_env) if source.seed_command
 
     child = spawn_app(source.start_command_for.call(port: port), workspace_path, port, env, process_env)
@@ -120,9 +121,19 @@ class PreviewService
   end
 
   def run_seed_command(source, workspace_path, process_env)
-    Rails.logger.info("[PreviewService] running seed: #{source.seed_command}")
-    result = system(process_env, source.seed_command, chdir: workspace_path, exception: false)
-    Rails.logger.warn("[PreviewService] seed command exited non-zero") unless result
+    run_preview_command!("seed", source.seed_command, workspace_path, process_env)
+  end
+
+  def run_setup_commands(source, workspace_path, process_env)
+    Array(source.setup_commands).each do |command|
+      run_preview_command!("setup", command, workspace_path, process_env)
+    end
+  end
+
+  def run_preview_command!(label, command, workspace_path, process_env)
+    Rails.logger.info("[PreviewService] running #{label}: #{command}")
+    result = system(process_env, command, chdir: workspace_path, exception: false)
+    raise "preview #{label} command exited non-zero: #{command}" unless result
   end
 
   def ensure_workspace!(env)
@@ -173,6 +184,10 @@ class PreviewService
       child = @mutex.synchronize { @children[env.id] }
       unless child
         raise "child process for environment #{env.id} disappeared before health check passed"
+      end
+      if child_exited?(child)
+        @mutex.synchronize { @children.delete(env.id) }
+        raise "preview process exited before health check passed"
       end
 
       if http_ok?("http://127.0.0.1:#{port}#{health_check_path}")
@@ -259,10 +274,27 @@ class PreviewService
   end
 
   def mark_failed(env, message)
+    child = @mutex.synchronize { @children.delete(env.id) }
+    if child
+      kill_process_group(child.pid)
+      finalize_spawned_process(child, outcome: "failed", exit_status: nil)
+    end
+
     env.update_columns(error_message: message) if env.persisted?
     env.fail! && env.save! if env.may_fail?
     PreviewWorkspace.cleanup_for(env)
     Rails.logger.error("[PreviewService] environment #{env.id} failed: #{message}")
+  end
+
+  def child_exited?(child)
+    result = Process.waitpid2(child.pid, Process::WNOHANG)
+    return false unless result
+
+    status = result[1]
+    finalize_spawned_process(child, outcome: status.success? ? "succeeded" : "failed", exit_status: status.exitstatus)
+    true
+  rescue Errno::ECHILD
+    SpawnedProcess.where(id: child.spawned_process_id).where.not(finished_at: nil).exists?
   end
 
   def heartbeat_children!

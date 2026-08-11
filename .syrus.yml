@@ -6,7 +6,7 @@
 # Ruby and Node deps explicit here because the presence of this file
 # disables RepoPrepPlan's lockfile auto-detection.
 
-prepare:
+prepare: &syrus_prepare
   # The agent's env strips BUNDLE_PATH (per Steps::Prepare's
   # PREP_ENV_FORWARD allowlist), but bundler defaults to a global
   # location otherwise. Pin install location to the workspace's
@@ -22,6 +22,7 @@ prepare:
   - npm ci
 
 preview:
+  setup: *syrus_prepare
   start: bin/rails server -p $PORT -b 0.0.0.0 -e development
   seed: bin/rails db:prepare db:seed
   health_check: /up

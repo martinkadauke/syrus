@@ -7,6 +7,7 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
   let(:preview_config) do
     PreviewCommandSource::Config.new(
       start_command_for: ->(port:) { "bin/rails server -p #{port}" },
+      setup_commands:    [],
       seed_command:      nil,
       health_check_path: "/health",
       log_paths:         [ "log/development.log" ],
@@ -73,6 +74,7 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
     it "passes configured preview env to spawn" do
       preview_config = PreviewCommandSource::Config.new(
         start_command_for: ->(port:) { "bin/rails server -p #{port}" },
+        setup_commands:    [],
         seed_command: nil,
         health_check_path: "/health",
         log_paths: [],
@@ -150,6 +152,7 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
     let(:preview_config) do
       PreviewCommandSource::Config.new(
         start_command_for: ->(port:) { "bin/rails server -p #{port}" },
+        setup_commands:    [],
         seed_command:      "bin/rails db:seed",
         health_check_path: "/",
         log_paths:         [],
@@ -171,6 +174,7 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
     it "passes configured preview env to the seed command" do
       preview_config = PreviewCommandSource::Config.new(
         start_command_for: ->(port:) { "bin/rails server -p #{port}" },
+        setup_commands:    [],
         seed_command: "bin/rails db:seed",
         health_check_path: "/",
         log_paths: [],
@@ -187,10 +191,51 @@ RSpec.describe Mcp::Tools::StartPreviewTool do
       call
     end
 
-    it "still spawns and returns a URL even when the seed step fails" do
-      allow(described_class).to receive(:run_seed!)
+    it "returns an error when the seed step fails" do
+      allow(described_class).to receive(:run_seed!).and_raise("preview seed command exited non-zero: bin/rails db:seed")
       response = call
-      expect(response).not_to be_error
+      expect(response).to be_error
+      expect(response.content.first[:text]).to include("preview seed command exited non-zero")
+    end
+  end
+
+  context "when setup commands are configured" do
+    let(:preview_config) do
+      PreviewCommandSource::Config.new(
+        start_command_for: ->(port:) { "bin/rails server -p #{port}" },
+        setup_commands:    [ "bundle install" ],
+        seed_command:      nil,
+        health_check_path: "/",
+        log_paths:         [],
+        env:               { "RAILS_ENV" => "development" },
+        unset_env:         []
+      )
+    end
+
+    before do
+      allow(Process).to receive(:spawn).and_return(1111)
+      allow(described_class).to receive(:http_ok?).and_return(true)
+    end
+
+    it "runs setup before spawning the preview process" do
+      expect(described_class).to receive(:system).with(
+        { "RAILS_ENV" => "development" },
+        "bundle install",
+        chdir: workspace_path,
+        exception: false
+      ).and_return(true)
+
+      call
+    end
+
+    it "returns an error when setup fails" do
+      allow(described_class).to receive(:system).and_return(false)
+
+      response = call
+
+      expect(response).to be_error
+      expect(response.content.first[:text]).to include("preview setup command exited non-zero")
+      expect(Process).not_to have_received(:spawn)
     end
   end
 end

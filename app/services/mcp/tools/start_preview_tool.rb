@@ -57,6 +57,7 @@ module Mcp::Tools
 
         process_env = preview_process_env(source)
 
+        run_setup!(source, workspace_path, process_env)
         run_seed!(source, workspace_path, process_env) if source.seed_command
 
         command = source.start_command_for.call(port: port)
@@ -93,7 +94,18 @@ module Mcp::Tools
       end
 
       def run_seed!(source, workspace_path, process_env)
-        system(process_env, source.seed_command, chdir: workspace_path, exception: false)
+        run_preview_command!("seed", source.seed_command, workspace_path, process_env)
+      end
+
+      def run_setup!(source, workspace_path, process_env)
+        Array(source.setup_commands).each do |command|
+          run_preview_command!("setup", command, workspace_path, process_env)
+        end
+      end
+
+      def run_preview_command!(label, command, workspace_path, process_env)
+        result = system(process_env, command, chdir: workspace_path, exception: false)
+        raise "preview #{label} command exited non-zero: #{command}" unless result
       end
 
       def spawn_app(command, workspace_path, port, process_env = {})

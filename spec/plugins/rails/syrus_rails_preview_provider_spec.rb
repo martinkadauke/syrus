@@ -77,6 +77,15 @@ RSpec.describe SyrusRails::PreviewProvider do
     end
   end
 
+  describe "#setup_commands" do
+    it "installs gems into the preview workspace before seed/start" do
+      expect(provider.setup_commands).to eq([
+        "bundle config set --local path vendor/bundle",
+        "bundle install --jobs 4"
+      ])
+    end
+  end
+
   describe "#health_check_path" do
     it "returns /up" do
       expect(provider.health_check_path).to eq("/up")

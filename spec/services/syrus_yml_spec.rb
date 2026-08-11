@@ -811,6 +811,9 @@ RSpec.describe SyrusYml do
       config = parse(<<~YAML)
         preview:
           start: "bin/rails server -p $PORT"
+          setup:
+            - "bundle install"
+            - "npm ci"
           seed: "bin/rails db:seed"
           health_check: "/health"
           logs:
@@ -824,6 +827,7 @@ RSpec.describe SyrusYml do
       YAML
 
       expect(config.preview.start).to eq("bin/rails server -p $PORT")
+      expect(config.preview.setup).to eq([ "bundle install", "npm ci" ])
       expect(config.preview.seed).to eq("bin/rails db:seed")
       expect(config.preview.health_check).to eq("/health")
       expect(config.preview.logs).to eq([ "log/development.log" ])
@@ -847,12 +851,13 @@ RSpec.describe SyrusYml do
       expect(config.preview.health_check).to eq("/")
     end
 
-    it "defaults seed and logs to nil/[] when omitted" do
+    it "defaults setup, seed, and logs to []/nil/[] when omitted" do
       config = parse(<<~YAML)
         preview:
           start: "node server.js"
       YAML
 
+      expect(config.preview.setup).to eq([])
       expect(config.preview.seed).to be_nil
       expect(config.preview.logs).to eq([])
       expect(config.preview.env).to eq({})
@@ -867,6 +872,35 @@ RSpec.describe SyrusYml do
       YAML
 
       expect(config.preview.unset_env).to eq([ "DATABASE_URL" ])
+    end
+
+    it "accepts a single setup string" do
+      config = parse(<<~YAML)
+        preview:
+          start: "node server.js"
+          setup: npm ci
+      YAML
+
+      expect(config.preview.setup).to eq([ "npm ci" ])
+    end
+
+    it "supports YAML aliases for sharing prepare commands with preview setup" do
+      config = parse(<<~YAML)
+        prepare: &prepare_commands
+          - bundle install
+        preview:
+          setup: *prepare_commands
+          start: "node server.js"
+      YAML
+
+      expect(config.prepare).to eq([ "bundle install" ])
+      expect(config.preview.setup).to eq([ "bundle install" ])
+    end
+
+    it "rejects a non-array preview setup" do
+      expect {
+        parse("preview:\n  start: node server.js\n  setup:\n    command: npm ci\n")
+      }.to raise_error(SyrusYml::ParseError, /preview\.setup/)
     end
 
     it "rejects a preview block with no start command" do

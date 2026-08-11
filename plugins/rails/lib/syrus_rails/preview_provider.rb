@@ -14,6 +14,13 @@ module SyrusRails
       "bin/rails db:create db:migrate db:seed"
     end
 
+    def setup_commands
+      [
+        "bundle config set --local path vendor/bundle",
+        "bundle install --jobs 4"
+      ]
+    end
+
     def health_check_path
       "/up"
     end

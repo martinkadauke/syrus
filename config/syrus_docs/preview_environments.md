@@ -47,6 +47,8 @@ Preview command configuration lives in the target repository's `.syrus.yml`:
 
 ```yaml
 preview:
+  setup:
+    - bundle install
   start: bin/rails server -p $PORT -b 0.0.0.0 -e development
   seed: bin/rails db:prepare db:seed
   health_check: /up
@@ -58,22 +60,22 @@ preview:
     - DATABASE_URL
 ```
 
-`start` may use `$PORT` or `${PORT}`; Syrus replaces it with a dynamically allocated port. `seed` runs before the server starts and receives the same preview environment as the server process. `env` sets repository-specific variables and `unset_env` strips inherited variables such as production database URLs. Use these keys for repo-specific preview guardrails rather than hardcoding repository checks into Syrus.
+`start` may use `$PORT` or `${PORT}`; Syrus replaces it with a dynamically allocated port. `setup` runs first in the fresh preview checkout, then `seed` runs before the server starts. Setup, seed, and server commands receive the same preview environment. Any nonzero setup or seed command fails the preview instead of starting a partially prepared app. `env` sets repository-specific variables and `unset_env` strips inherited variables such as production database URLs. Use these keys for repo-specific preview guardrails rather than hardcoding repository checks into Syrus.
 
 ### Preview service process
 
 The `preview` service (`bin/preview`, `Procfile.dev`) is a separate long-running process that manages preview app child processes. It is not involved in request routing.
 
-Preview apps do not reuse workflow workspaces: successful workflow workspaces are cleaned up as part of normal workflow lifecycle. When an operator starts a preview, the preview service materializes a fresh checkout under `$SYRUS_DATA_ROOT/previews/<preview_environment_id>/` at the Job's PR branch, runs the preview seed command there, and starts the app from that checkout.
+Preview apps do not reuse workflow workspaces: successful workflow workspaces are cleaned up as part of normal workflow lifecycle. When an operator starts a preview, the preview service materializes a fresh checkout under `$SYRUS_DATA_ROOT/previews/<preview_environment_id>/` at the Job's PR branch, runs preview setup and seed commands there, and starts the app from that checkout.
 
 Each preview server child process is recorded as a `SpawnedProcess` with `kind=preview`, including `pid`, `pgid`, command, workdir, and preview/job identifiers in `resource_attribution`. This keeps preview processes visible in the admin Spawned Processes UI and lets the normal spawned-process supervisor/audit path detect exits and honor operator kill requests.
 
 ## Lifecycle
 
-- Start: operator clicks "Start Preview" in the Syrus UI → preview service creates a fresh preview checkout, runs seed commands, then spawns the app.
+- Start: operator clicks "Start Preview" in the Syrus UI → preview service creates a fresh preview checkout, runs setup/seed commands, then spawns the app.
 - Inactivity TTL: 10 minutes of no proxied traffic causes the preview service to stop the environment.
 - TTL reset: each proxied request through `PreviewProxyMiddleware` resets `last_activity_at` and extends `expires_at`.
-- Failure: if the checkout, preview command resolution, port allocation, seed/app start, or health check fails, the environment is marked `failed` with an error message. It must not remain indefinitely in `starting`.
+- Failure: if the checkout, preview command resolution, port allocation, setup/seed/app start, or health check fails, the environment is marked `failed` with an error message. It must not remain indefinitely in `starting` or `seeding`.
 
 ## Production setup
 

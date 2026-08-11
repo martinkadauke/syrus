@@ -86,6 +86,7 @@ RSpec.describe PreviewService do
       service = described_class.new
       source = PreviewCommandSource::Config.new(
         start_command_for: ->(port:) { "bin/server -p #{port}" },
+        setup_commands:    [],
         seed_command: nil,
         health_check_path: "/",
         log_paths: [],
@@ -163,6 +164,7 @@ RSpec.describe PreviewService do
       source = instance_double(PreviewCommandSource,
         resolve: PreviewCommandSource::Config.new(
           start_command_for: ->(port:) { "echo #{port}" },
+          setup_commands:    [],
           seed_command: nil,
           health_check_path: "/",
           log_paths: [],
@@ -181,13 +183,58 @@ RSpec.describe PreviewService do
       expect(env.reload.internal_host).to eq("preview")
       expect(env.port).to eq(28_008)
     end
+
+    it "marks the environment failed when seed exits non-zero and does not spawn the app" do
+      env = create_env
+      service = described_class.new
+      source = instance_double(PreviewCommandSource,
+        resolve: PreviewCommandSource::Config.new(
+          start_command_for: ->(port:) { "echo #{port}" },
+          setup_commands: [],
+          seed_command: "bin/seed",
+          health_check_path: "/",
+          log_paths: [],
+          env: {},
+          unset_env: []
+        ))
+
+      allow(PreviewCommandSource).to receive(:new).and_return(source)
+      allow(service).to receive(:allocate_port).and_return(28_008)
+      allow(service).to receive(:system).with({}, "bin/seed", chdir: workspace_path, exception: false).and_return(false)
+      expect(service).not_to receive(:spawn_app)
+
+      service.send(:poll_starting_environments)
+
+      expect(env.reload.state).to eq("failed")
+      expect(env.error_message).to include("preview seed command exited non-zero")
+    end
   end
 
   describe "seed commands" do
+    it "runs configured setup commands before seed/start" do
+      service = described_class.new
+      source = PreviewCommandSource::Config.new(
+        start_command_for: ->(port:) { "bin/server -p #{port}" },
+        setup_commands: [ "bundle install", "npm ci" ],
+        seed_command: nil,
+        health_check_path: "/",
+        log_paths: [],
+        env: { "RAILS_ENV" => "development" },
+        unset_env: []
+      )
+      process_env = { "RAILS_ENV" => "development" }
+
+      expect(service).to receive(:system).with(process_env, "bundle install", chdir: workspace_path, exception: false).and_return(true)
+      expect(service).to receive(:system).with(process_env, "npm ci", chdir: workspace_path, exception: false).and_return(true)
+
+      service.send(:run_setup_commands, source, workspace_path, process_env)
+    end
+
     it "passes preview env to the seed command" do
       service = described_class.new
       source = PreviewCommandSource::Config.new(
         start_command_for: ->(port:) { "bin/server -p #{port}" },
+        setup_commands:    [],
         seed_command: "bin/seed",
         health_check_path: "/",
         log_paths: [],
@@ -199,6 +246,25 @@ RSpec.describe PreviewService do
       expect(service).to receive(:system).with(process_env, "bin/seed", chdir: workspace_path, exception: false).and_return(true)
 
       service.send(:run_seed_command, source, workspace_path, process_env)
+    end
+
+    it "raises when a seed command exits non-zero" do
+      service = described_class.new
+      source = PreviewCommandSource::Config.new(
+        start_command_for: ->(port:) { "bin/server -p #{port}" },
+        setup_commands: [],
+        seed_command: "bin/seed",
+        health_check_path: "/",
+        log_paths: [],
+        env: {},
+        unset_env: []
+      )
+
+      allow(service).to receive(:system).and_return(false)
+
+      expect {
+        service.send(:run_seed_command, source, workspace_path, {})
+      }.to raise_error(RuntimeError, /preview seed command exited non-zero/)
     end
   end
 
@@ -325,6 +391,29 @@ RSpec.describe PreviewService do
   end
 
   describe "spawned process reconciliation" do
+    it "fails startup immediately when the child exits before health check passes" do
+      service = described_class.new
+      env = create_env(state: "seeding", port: 28_009)
+      process = SpawnedProcess.create!(
+        kind: "preview",
+        command: "bin/server",
+        hostname: "preview-host",
+        started_at: Time.current
+      )
+      child = PreviewService::ChildProcess.new(pid: 12_345, environment_id: env.id, port: 28_009, spawned_process_id: process.id)
+      service.instance_variable_get(:@children)[env.id] = child
+      status = instance_double(Process::Status, success?: false, exitstatus: 1)
+
+      allow(Process).to receive(:waitpid2).with(12_345, Process::WNOHANG).and_return([ 12_345, status ])
+
+      expect {
+        service.send(:await_health_check, env, 28_009, "/up")
+      }.to raise_error(RuntimeError, /exited before health check/)
+
+      expect(process.reload.outcome).to eq("failed")
+      expect(service.instance_variable_get(:@children)).not_to have_key(env.id)
+    end
+
     it "fails an active preview when its SpawnedProcess is finalized elsewhere" do
       service = described_class.new
       env = create_env(state: "running", port: 28_009)

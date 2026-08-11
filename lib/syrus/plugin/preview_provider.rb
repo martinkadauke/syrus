@@ -10,6 +10,7 @@ module Syrus
     #
     #     def detect?(repo_path) = File.exist?(File.join(repo_path, "Gemfile"))
     #     def start_command(port:) = "bin/rails server -p #{port}"
+    #     def setup_commands = ["bundle install"]
     #     def seed_command = "bin/rails db:seed"
     #     def health_check_path = "/"
     #     def log_paths = ["log/development.log"]
@@ -91,6 +92,10 @@ module Syrus
 
       def seed_command
         nil
+      end
+
+      def setup_commands
+        []
       end
 
       def health_check_path

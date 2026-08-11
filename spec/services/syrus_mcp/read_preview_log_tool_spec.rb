@@ -7,6 +7,7 @@ RSpec.describe Mcp::Tools::ReadPreviewLogTool do
   let(:preview_config) do
     PreviewCommandSource::Config.new(
       start_command_for: ->(port:) { "bin/rails server -p #{port}" },
+      setup_commands:    [],
       seed_command:      nil,
       health_check_path: "/",
       log_paths:         [ "log/development.log" ],
@@ -99,6 +100,7 @@ RSpec.describe Mcp::Tools::ReadPreviewLogTool do
     let(:preview_config) do
       PreviewCommandSource::Config.new(
         start_command_for: ->(port:) { "bin/rails server -p #{port}" },
+        setup_commands:    [],
         seed_command:      nil,
         health_check_path: "/",
         log_paths:         [],

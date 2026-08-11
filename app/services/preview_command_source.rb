@@ -14,7 +14,7 @@ require "syrus/plugin/preview_provider"
 # can pick a free port and hand it off in one step.
 class PreviewCommandSource
   # `start_command_for` — callable(port:) → String
-  Config = Data.define(:start_command_for, :seed_command, :health_check_path, :log_paths, :env, :unset_env)
+  Config = Data.define(:start_command_for, :setup_commands, :seed_command, :health_check_path, :log_paths, :env, :unset_env)
 
   def initialize(workspace_path)
     @workspace_path = workspace_path
@@ -33,6 +33,7 @@ class PreviewCommandSource
     p = config.preview
     Config.new(
       start_command_for: ->(port:) { p.start.gsub("${PORT}", port.to_s).gsub("$PORT", port.to_s) },
+      setup_commands:    p.setup,
       seed_command:      p.seed,
       health_check_path: p.health_check,
       log_paths:         p.logs,
@@ -49,6 +50,7 @@ class PreviewCommandSource
 
     Config.new(
       start_command_for: ->(port:) { provider.start_command(port: port) },
+      setup_commands:    provider.respond_to?(:setup_commands) ? provider.setup_commands : [],
       seed_command:      provider.seed_command,
       health_check_path: provider.health_check_path,
       log_paths:         provider.log_paths,

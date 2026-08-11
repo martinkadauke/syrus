@@ -19,6 +19,8 @@ RSpec.describe PreviewCommandSource do
         write_syrus_yml(<<~YAML)
           preview:
             start: "bin/server -p $PORT"
+            setup:
+              - "bundle install"
             seed: "bin/seed"
             health_check: "/health"
             logs:
@@ -48,6 +50,11 @@ RSpec.describe PreviewCommandSource do
       it "returns seed_command from yml" do
         result = described_class.new(workspace).resolve
         expect(result.seed_command).to eq("bin/seed")
+      end
+
+      it "returns setup_commands from yml" do
+        result = described_class.new(workspace).resolve
+        expect(result.setup_commands).to eq([ "bundle install" ])
       end
 
       it "returns health_check_path from yml" do
@@ -112,6 +119,7 @@ RSpec.describe PreviewCommandSource do
           "TestPreviewProvider",
           detect?: true,
           start_command: "node server.js",
+          setup_commands: [],
           seed_command: nil,
           health_check_path: "/",
           log_paths: []
@@ -135,6 +143,7 @@ RSpec.describe PreviewCommandSource do
           "MatchingProvider",
           detect?: true,
           start_command: "bin/rails server",
+          setup_commands: [],
           seed_command: nil,
           health_check_path: "/up",
           log_paths: []
@@ -159,6 +168,7 @@ RSpec.describe PreviewCommandSource do
           "EnvPreviewProvider",
           detect?: true,
           start_command: "bin/server",
+          setup_commands: [ "bundle install" ],
           seed_command: nil,
           health_check_path: "/",
           log_paths: [],
@@ -173,6 +183,7 @@ RSpec.describe PreviewCommandSource do
           result = described_class.new(workspace).resolve
           expect(result.env).to eq("RAILS_ENV" => "development")
           expect(result.unset_env).to eq([ "DATABASE_URL" ])
+          expect(result.setup_commands).to eq([ "bundle install" ])
         ensure
           Syrus::Plugin::PreviewProvider.instance_variable_set(:@registry, original_registry)
         end

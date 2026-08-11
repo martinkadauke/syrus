@@ -57,11 +57,12 @@ Include `Syrus::Plugin::PreviewProvider` and implement the interface methods:
 |---|---|---|
 | `detect?` | `(repo_path) → bool` | True if this provider handles the repo |
 | `start_command` | `(port:) → String` | Shell command to start the server |
+| `setup_commands` | `() → Array<String>` | Commands to prepare the fresh preview checkout before seed/start |
 | `seed_command` | `() → String \| nil` | Command to seed the database (nil = skip) |
 | `health_check_path` | `() → String` | URL path polled to determine readiness |
 | `log_paths` | `() → Array<String>` | Log paths (relative to repo root) to tail |
-| `env` | `() → Hash<String, String>` | Environment variables to set for seed and server commands |
-| `unset_env` | `() → Array<String>` | Inherited environment variables to remove for seed and server commands |
+| `env` | `() → Hash<String, String>` | Environment variables to set for setup, seed, and server commands |
+| `unset_env` | `() → Array<String>` | Inherited environment variables to remove for setup, seed, and server commands |
 
 Register an instance using the direct form:
 
