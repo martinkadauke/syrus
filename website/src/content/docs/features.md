@@ -685,8 +685,30 @@ Each user owns their own profile, credentials, defaults, and preferences:
 - **Credentials** stores GitHub PAT fallback, Claude credentials, Codex credentials, and the admin API token panel for admins.
 - **Agent Settings** stores the default agent provider, max-turn setting, and auto-approval fallback.
 - **Preferences** stores account-level toggles such as scheduling pause.
+- **Connected Platforms** links the Syrus account to external messaging platforms (see below).
 - Light or dark app theme is toggled from the account area.
 - **Language** — operators can select their preferred display language from the profile settings page. Supported locales are English (`en`), German (`de`), and Latin (`la`). The preference is stored per-user and applied to all app chrome and shared UI text.
+
+## Connected Platforms
+
+Users can link their Syrus account to external messaging platforms such as
+Telegram via **Settings → Connected Platforms**. Each linked identity stores
+the platform name, the platform's stable user identifier, and an optional
+display handle.
+
+The linking flow uses a short-lived signed token (valid 15 minutes). When the
+operator clicks **Connect** for a configured platform, Syrus generates a token
+and shows instructions — for Telegram, this means messaging the configured bot
+with `/start <token>`. Once the platform polling handler verifies and consumes
+the token, the UI updates automatically via an ActionCable event without
+requiring a page refresh. Operators can **Disconnect** any linked account at
+any time.
+
+Platform buttons show as **Not yet available** when the instance administrator
+has not yet configured that platform integration. For Telegram, administrators
+set the bot handle in the admin settings page; the platform polling handler
+configuration (bot token and polling) is controlled via environment
+configuration for that platform's background worker.
 
 Credentials are stored with Active Record Encryption in the Syrus database,
 so every web, worker, console, and migration context that reads users needs

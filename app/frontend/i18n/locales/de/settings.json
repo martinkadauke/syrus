@@ -10,7 +10,8 @@
     "documents": "Dokumente",
     "memories": "Erinnerungen",
     "templates": "Vorlagen",
-    "tags": "Tags"
+    "tags": "Tags",
+    "connected_platforms": "Verbundene Plattformen"
   },
   "backend_updating": "Das Syrus-Backend wird gerade aktualisiert — der Status der Zugangsdaten kann im Moment nicht geprüft werden. Ihre gespeicherten Zugangsdaten sind davon nicht betroffen; in ein bis zwei Minuten ist es geschafft.",
   "profile": {
@@ -776,6 +777,35 @@
     "passkeys_add_error": "Passkey konnte nicht registriert werden.",
     "passkeys_load_error": "Passkeys konnten nicht geladen werden.",
     "passkeys_remove_error": "Passkey konnte nicht entfernt werden."
+  },
+  "connected_platforms": {
+    "aria": "Connected Platforms",
+    "heading": "Connected Platforms",
+    "description": "Link your Syrus account to external messaging platforms.",
+    "loading": "Loading connected platforms...",
+    "load_error": "Unable to load connected platforms.",
+    "disconnected_notice": "Platform account disconnected.",
+    "connect_error": "Unable to start {{platform}} linking.",
+    "disconnect_confirm": "Disconnect your {{platform}} account?",
+    "connected_as": "Connected as {{handle}} since {{date}}",
+    "connected_since": "Connected since {{date}}",
+    "not_connected": "Not connected",
+    "disconnect": "Disconnect",
+    "disconnecting": "Disconnecting...",
+    "connect": "Connect",
+    "generating_link": "Generating link...",
+    "regenerate_link": "Regenerate link",
+    "not_available": "Not yet available",
+    "not_available_title": "This platform integration is not yet available on this instance",
+    "connected_notice": "{{platform}} account connected.",
+    "instructions_heading": "How to connect",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "expires": "This link expires in 15 minutes. Waiting for you to send the message...",
+    "platforms": {
+      "telegram": "Telegram",
+      "slack": "Slack"
+    }
   },
   "credential_cards": {
     "connected": "Verbunden",

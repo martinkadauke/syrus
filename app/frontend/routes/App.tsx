@@ -58,6 +58,7 @@ import { AdminInsightsRoute } from "./AdminInsights"
 import { Tags } from "./Tags"
 import { TerminalRoute } from "./Terminal"
 import { TeamDirectoryRoute, TeamProfileRoute } from "./Profiles"
+import { ConnectedPlatformsRoute } from "./ConnectedPlatforms"
 import { PluginAdminPageRoute } from "../pluginAdminPages"
 
 type AppRouteDefinition = {
@@ -109,6 +110,7 @@ const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/settings/agent", element: <SettingsSectionRoute><AgentSettingsRoute /></SettingsSectionRoute> },
   { path: "/settings/preferences", element: <SettingsSectionRoute><PreferencesRoute /></SettingsSectionRoute> },
   { path: "/notifications/settings", element: <SettingsSectionRoute><NotificationsSettingsRoute /></SettingsSectionRoute> },
+  { path: "/settings/connected_platforms", element: <SettingsSectionRoute><ConnectedPlatformsRoute /></SettingsSectionRoute> },
   { path: "/profiles", element: <TeamDirectoryRoute /> },
   { path: "/profiles/:id", element: <TeamProfileRoute /> },
   { path: "/documents", element: <SettingsSectionRoute><PersonalDocumentsRoute /></SettingsSectionRoute> },
@@ -561,7 +563,8 @@ function settingsNavigationItems(t: (key: string) => string, simpleMode = false)
     { key: "documents", label: t("nav.documents"), path: "/documents", active: (path) => path === "/documents" },
     { key: "memories", label: t("nav.memories"), path: "/memories", active: (path) => path === "/memories" },
     { key: "templates", label: t("nav.templates"), path: "/cron_templates", active: (path) => path.startsWith("/cron_templates") },
-    { key: "tags", label: t("nav.tags"), path: "/tags", active: (path) => path === "/tags" }
+    { key: "tags", label: t("nav.tags"), path: "/tags", active: (path) => path === "/tags" },
+    { key: "connected_platforms", label: t("nav.connected_platforms"), path: "/settings/connected_platforms", active: (path) => path === "/settings/connected_platforms" }
   ]
 
   return simpleMode ? items.filter((item) => item.key !== "templates") : items

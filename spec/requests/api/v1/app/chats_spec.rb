@@ -4385,6 +4385,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(chat.reload.chat_model).to be_nil
   end
 
+
   describe "participant-based access" do
     let(:owner) { Factories.user(claude_oauth_token: "oat-owner") }
     let(:participant) { Factories.user(claude_oauth_token: "oat-participant") }

@@ -10,7 +10,8 @@
     "documents": "Documents",
     "memories": "Memories",
     "templates": "Templates",
-    "tags": "Tags"
+    "tags": "Tags",
+    "connected_platforms": "Connected Platforms"
   },
   "backend_updating": "The Syrus backend is updating — credential status can't be checked right now. Your saved credentials are unaffected; this closes out in a minute or two.",
   "profile": {
@@ -776,6 +777,35 @@
     "passkeys_add_error": "Failed to register passkey.",
     "passkeys_load_error": "Unable to load passkeys.",
     "passkeys_remove_error": "Unable to remove passkey."
+  },
+  "connected_platforms": {
+    "aria": "Connected Platforms",
+    "heading": "Connected Platforms",
+    "description": "Link your Syrus account to external messaging platforms.",
+    "loading": "Loading connected platforms...",
+    "load_error": "Unable to load connected platforms.",
+    "disconnected_notice": "Platform account disconnected.",
+    "connect_error": "Unable to start {{platform}} linking.",
+    "disconnect_confirm": "Disconnect your {{platform}} account?",
+    "connected_as": "Connected as {{handle}} since {{date}}",
+    "connected_since": "Connected since {{date}}",
+    "not_connected": "Not connected",
+    "disconnect": "Disconnect",
+    "disconnecting": "Disconnecting...",
+    "connect": "Connect",
+    "generating_link": "Generating link...",
+    "regenerate_link": "Regenerate link",
+    "not_available": "Not yet available",
+    "not_available_title": "This platform integration is not yet available on this instance",
+    "connected_notice": "{{platform}} account connected.",
+    "instructions_heading": "How to connect",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "expires": "This link expires in 15 minutes. Waiting for you to send the message...",
+    "platforms": {
+      "telegram": "Telegram",
+      "slack": "Slack"
+    }
   },
   "credential_cards": {
     "connected": "Connected",
