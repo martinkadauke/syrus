@@ -21,10 +21,9 @@ class ReconcileJobStatesJob < ApplicationJob
     attr_reader :job, :target_state, :from_state, :reason
 
     def self.for(job)
-      return nil if job.runaway_protection.present?
-
       latest_wf = job.latest_workflow
       return nil unless latest_wf
+      return nil if job.runaway_protection.present? && !failed_landing_start_blocker_with_ready_pr?(job, latest_wf)
 
       case [ job.state, latest_wf.state ]
       when [ "failed", "succeeded" ]

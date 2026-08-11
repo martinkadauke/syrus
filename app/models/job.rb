@@ -423,7 +423,7 @@ class Job < ApplicationRecord
       transitions from: :implemented, to: :approved
     end
 
-    event :restore_approved_after_landing_start_blocker do
+    event :restore_approved_after_landing_start_blocker, after: :clear_runaway_protection do
       transitions from: :failed, to: :approved
     end
 
@@ -773,9 +773,19 @@ class Job < ApplicationRecord
   def consecutive_failed_workflows_count
     workflows_since_latest_reopen.reorder(created_at: :desc, id: :desc)
              .limit(MAX_CONSECUTIVE_FAILED_WORKFLOWS)
-             .pluck(:state)
-             .take_while { |state| state == "failed" }
+             .select(:id, :state, :failure_reason, :artifacts, :trigger_kind)
+             .take_while { |workflow| workflow.failed? && !landing_start_blocker_workflow?(workflow) }
              .count
+  end
+
+  def landing_start_blocker_workflow?(workflow)
+    return false unless workflow&.landing_workflow?
+
+    LandingQueueReentry.landing_start_blocker?(
+      workflow.failure_reason.presence ||
+        workflow.artifact("failure_reason") ||
+        workflow.artifact("start_blocked_reason")
+    )
   end
 
   def workflows_since_latest_reopen
@@ -1318,6 +1328,11 @@ class Job < ApplicationRecord
     self.approved_by_user = nil
     self.approval_evidence = {}
     job_approvals.destroy_all
+  end
+
+  def clear_runaway_protection
+    self.runaway_protection = nil
+    self.runaway_protection_at = nil
   end
 
   def epic_belongs_to_same_user_and_repository

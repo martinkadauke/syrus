@@ -1589,7 +1589,9 @@ RSpec.describe WorkEngine::Reconciler do
       commits_behind_base: 0,
       approved_at: 2.minutes.ago,
       approved_via: "github_review",
-      landing_failure_reason: "landing start blocked: workflow admission budget"
+      landing_failure_reason: "landing start blocked: workflow admission budget",
+      runaway_protection: "too_many_failed_workflows",
+      runaway_protection_at: 1.minute.ago
     )
     published = Workflows::Retry.instantiate(job: approved_job)
     published.update!(
@@ -1624,6 +1626,8 @@ RSpec.describe WorkEngine::Reconciler do
     )
     expect(approved_job.reload).to be_approved
     expect(approved_job.landing_failure_reason).to eq("landing start blocked: workflow admission budget")
+    expect(approved_job.runaway_protection).to be_nil
+    expect(approved_job.runaway_protection_at).to be_nil
   end
 
   it "clears approved landing-start blockers and wakes the landing queue" do

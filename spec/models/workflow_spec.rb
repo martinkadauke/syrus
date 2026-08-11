@@ -555,6 +555,37 @@ RSpec.describe Workflow do
       expect(guarded_job.consecutive_failed_workflows_count).to eq(Job::MAX_CONSECUTIVE_FAILED_WORKFLOWS)
     end
 
+    it "does not count landing start blockers toward consecutive failed workflow protection" do
+      guarded_job = Factories.job_record(
+        user: job.user,
+        repository: job.repository,
+        state: "approved",
+        approved_at: 1.minute.ago,
+        approved_via: "operator",
+        landing_failure_reason: "landing start blocked: workflow admission budget"
+      )
+      allow(NotificationService).to receive(:create_for)
+
+      Job::MAX_CONSECUTIVE_FAILED_WORKFLOWS.times do
+        workflow = described_class.create!(
+          job: guarded_job,
+          trigger_kind: "merge_train",
+          state: "running",
+          started_at: 1.minute.ago,
+          artifacts: {
+            "failure_reason" => "landing start blocked: workflow admission budget",
+            "start_blocked_reason" => "landing start blocked: workflow admission budget"
+          }
+        )
+        workflow.fail!
+        workflow.save!
+      end
+
+      expect(guarded_job.reload).to be_approved
+      expect(guarded_job.runaway_protection).to be_nil
+      expect(guarded_job.consecutive_failed_workflows_count).to eq(0)
+    end
+
     it "does not re-trigger the guard when runaway_protection is already set" do
       guarded_job = Factories.job_record(user: job.user, repository: job.repository, state: "failed")
       guarded_job.update_columns(runaway_protection: "too_many_workflows")
