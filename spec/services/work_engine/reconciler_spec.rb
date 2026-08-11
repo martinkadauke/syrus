@@ -1474,7 +1474,7 @@ RSpec.describe WorkEngine::Reconciler do
     expect(job.reload).to be_approved
   end
 
-  it "classifies and repairs landing workflows queued without a first Run by admission blocking" do
+  it "waits for landing workflows queued without a first Run while admission backoff is active" do
     landing_job = Factories.job_record(
       user: job.user,
       repository: job.repository,
@@ -1510,8 +1510,9 @@ RSpec.describe WorkEngine::Reconciler do
     issue = kind(result, :landing_start_blocked)
 
     expect(issue).to have_attributes(
-      safe_to_auto_repair: true,
-      recommended_repair_action: "defer_landing_start_blocked_workflow"
+      severity: "info",
+      safe_to_auto_repair: false,
+      recommended_repair_action: "wait_for_landing_start_block_to_clear"
     )
     expect(issue.evidence).to include(
       "start_blocked_reason" => StepDispatcher::ADMISSION_BLOCK_REASON,
@@ -1519,15 +1520,110 @@ RSpec.describe WorkEngine::Reconciler do
     )
     expect(kind(result, :main_health_start_block)).to be_nil
     expect(kind(result, :queued_workflow_without_first_run)).to be_nil
-    expect(plan(result, :defer_landing_start_blocked_workflow)).to have_attributes(auto_executable: true, target_id: auto_merge.id)
+    expect(plan(result, :wait_for_landing_start_block_to_clear)).to have_attributes(auto_executable: false, target_id: auto_merge.id)
 
     executed = reconcile_and_execute(workflow_id: auto_merge.id)
 
-    expect(plan(executed, :defer_landing_start_blocked_workflow)).to be_present
-    expect(auto_merge.reload).to be_failed
-    expect(auto_merge.failure_reason).to eq("landing start blocked: workflow admission budget")
-    expect(landing_job.reload).to be_approved
-    expect(landing_job.landing_failure_reason).to eq("landing start blocked: workflow admission budget")
+    expect(plan(executed, :wait_for_landing_start_block_to_clear)).to be_present
+    expect(executed.repair_executions.map(&:status)).to all(eq("skipped"))
+    expect(auto_merge.reload).to be_queued
+    expect(auto_merge.failure_reason).to be_nil
+    expect(landing_job.reload).to be_landing
+    expect(landing_job.landing_failure_reason).to be_nil
+  end
+
+  it "retries a landing workflow queued without a first Run once admission backoff is due" do
+    landing_job = Factories.job_record(
+      user: job.user,
+      repository: job.repository,
+      state: "landing",
+      issue_number: 2242,
+      pr_number: 2181,
+      branch_name: "syrus/issue-2242",
+      pr_checks_state: "passing",
+      github_mergeable_state: "clean",
+      github_mergeable: true,
+      local_mergeable: true,
+      local_mergeable_state: "clean",
+      commits_behind_base: 0,
+      approved_at: 2.minutes.ago,
+      approved_via: "operator"
+    )
+    auto_merge = Workflows::AutoMerge.instantiate(job: landing_job)
+    auto_merge.update_columns(
+      state: "queued",
+      created_at: 5.minutes.ago,
+      updated_at: 5.minutes.ago,
+      artifacts: {
+        "start_blocked_reason" => StepDispatcher::ADMISSION_BLOCK_REASON,
+        "start_blocked_details" => {
+          "action" => "delay_until",
+          "reason" => "predicted_budget_pressure_high"
+        },
+        "start_blocked_next_check_at" => 1.minute.ago.iso8601
+      }
+    )
+
+    result = reconcile_and_execute(workflow_id: auto_merge.id)
+
+    expect(plan(result, :start_workflow)).to have_attributes(auto_executable: true, target_id: auto_merge.id)
+    expect(auto_merge.first_step.runs.count).to eq(1)
+    expect(auto_merge.reload).to be_queued
+    expect(landing_job.reload).to be_landing
+    expect(landing_job.landing_failure_reason).to be_nil
+  end
+
+  it "restores approved ready PRs after a later merge-train start blocker failed the job" do
+    approved_job = Factories.job_record(
+      user: job.user,
+      repository: job.repository,
+      state: "failed",
+      issue_number: 2242,
+      pr_number: 2181,
+      branch_name: "syrus/issue-2242",
+      pr_checks_state: nil,
+      github_mergeable_state: "clean",
+      github_mergeable: true,
+      local_mergeable: true,
+      local_mergeable_state: "clean",
+      commits_behind_base: 0,
+      approved_at: 2.minutes.ago,
+      approved_via: "github_review",
+      landing_failure_reason: "landing start blocked: workflow admission budget"
+    )
+    published = Workflows::Retry.instantiate(job: approved_job)
+    published.update!(
+      state: "succeeded",
+      started_at: 10.minutes.ago,
+      finished_at: 5.minutes.ago,
+      artifacts: { "publication_branch" => approved_job.branch_name }
+    )
+    failed_train = Workflows::MergeTrain.instantiate(
+      job: approved_job,
+      artifacts: {
+        "merge_train_id" => 123,
+        "failure_reason" => "landing start blocked: workflow admission budget",
+        "start_blocked_reason" => "landing start blocked: workflow admission budget"
+      }
+    )
+    failed_train.update!(
+      state: "failed",
+      failure_reason: "landing start blocked: workflow admission budget",
+      started_at: nil,
+      finished_at: 1.minute.ago
+    )
+
+    result = reconcile_and_execute(job_id: approved_job.id)
+
+    expect(plan(result, :reconcile_job_state)).to have_attributes(
+      auto_executable: true,
+      target_id: approved_job.id
+    )
+    expect(kind(result, :unambiguous_job_state_drift).evidence).to include(
+      "target_state" => "approved"
+    )
+    expect(approved_job.reload).to be_approved
+    expect(approved_job.landing_failure_reason).to eq("landing start blocked: workflow admission budget")
   end
 
   it "clears approved landing-start blockers and wakes the landing queue" do

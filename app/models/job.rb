@@ -423,6 +423,10 @@ class Job < ApplicationRecord
       transitions from: :implemented, to: :approved
     end
 
+    event :restore_approved_after_landing_start_blocker do
+      transitions from: :failed, to: :approved
+    end
+
     event :unapprove, after: :clear_approval_metadata do
       transitions from: :approved, to: :implemented
     end

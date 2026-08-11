@@ -64,6 +64,12 @@ class ReconcileJobStatesJob < ApplicationJob
                   steps: %i[ retry_after_failure! ])
 
       when [ "failed", "failed" ]
+        if failed_landing_start_blocker_with_ready_pr?(job, latest_wf)
+          return new(job, target_state: "approved",
+                    reason: "latest workflow :failed only because landing start was blocked, but approved ready PR publication remains valid",
+                    steps: %i[ restore_approved_after_landing_start_blocker! ])
+        end
+
         # A branch-diverged pr_open failure can be repaired by adopting or
         # discarding in favor of the current PR branch. If that recovery is
         # already recorded on the latest failed workflow, the PR is the source
@@ -158,6 +164,21 @@ class ReconcileJobStatesJob < ApplicationJob
       return false unless job.github_mergeable_state == "clean"
       return true if workflow_published_ready_pr?(job, latest_wf)
       return false unless job.pr_checks_state == "passing"
+
+      successful_publication_for_branch?(job, latest_wf)
+    end
+
+    def self.failed_landing_start_blocker_with_ready_pr?(job, latest_wf)
+      return false unless latest_wf&.failed?
+      return false unless latest_wf.landing_workflow?
+      return false unless LandingQueueReentry.landing_start_blocker?(latest_wf.failure_reason.presence || latest_wf.artifact("failure_reason") || latest_wf.artifact("start_blocked_reason"))
+      return false unless LandingQueueReentry.landing_start_blocker?(job.landing_failure_reason)
+      return false unless job.approved_at.present?
+      return false unless job.pr_number.present?
+      return false unless job.branch_name.present?
+      return false unless job.commits_behind_base.to_i.zero?
+      return false unless job.github_mergeable_state == "clean"
+      return true if job.pr_checks_state == "passing"
 
       successful_publication_for_branch?(job, latest_wf)
     end

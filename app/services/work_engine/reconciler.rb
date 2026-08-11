@@ -492,13 +492,15 @@ module WorkEngine
         if workflow.queued? && older_than?(workflow.created_at, ORPHAN_RUN_GRACE_PERIOD) && queued_without_first_run?(workflow)
           if landing_start_blocked_workflow?(workflow)
             reason = workflow.artifact("start_blocked_reason")
+            check_after = parse_time(workflow.artifact("start_blocked_next_check_at"))
+            wait_for_retry = check_after.present? && check_after.future?
             next issue(
               kind: :landing_start_blocked,
-              severity: :warning,
+              severity: wait_for_retry ? :info : :warning,
               affected_ids: ids_for(workflow),
-              safe_to_auto_repair: workflow.job.may_defer_landing?,
-              recommended_repair_action: "defer_landing_start_blocked_workflow",
-              check_after: parse_time(workflow.artifact("start_blocked_next_check_at")),
+              safe_to_auto_repair: !wait_for_retry,
+              recommended_repair_action: wait_for_retry ? "wait_for_landing_start_block_to_clear" : "start_workflow",
+              check_after: check_after,
               evidence: workflow_evidence(workflow).merge(
                 first_step_id: workflow.first_step&.id,
                 start_blocked_reason: reason,
@@ -506,7 +508,7 @@ module WorkEngine
                 landing_failure_reason: workflow.failure_reason.presence || workflow.artifact("failure_reason"),
                 landing_queue_entry: landing_queue_evidence(workflow.job)
               ),
-              explanation: "Landing Workflow ##{workflow.id} is queued with no first Run and is blocking the repository landing slot: #{reason}."
+              explanation: "Landing Workflow ##{workflow.id} is queued with no first Run because start is intentionally blocked: #{reason}."
             )
           end
 
