@@ -67,6 +67,59 @@ RSpec.describe Tailscale::DaemonManager do
     end
   end
 
+  describe "#run_tailscale_up!" do
+    before do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("TS_AUTHKEY").and_return("tskey-auth-abc123")
+      allow(manager).to receive(:system)
+    end
+
+    def config(hash)
+      record = instance_double(PluginRecord, config: hash)
+      allow(PluginRecord).to receive(:find_by).with(name: "tailscale").and_return(record)
+    end
+
+    it "does not advertise as an exit node by default" do
+      config({})
+      manager.send(:run_tailscale_up!)
+
+      expect(manager).to have_received(:system).with(
+        "tailscale", "--socket=#{Tailscale::DaemonManager::SOCKET_PATH}", "up",
+        "--authkey=tskey-auth-abc123"
+      )
+    end
+
+    it "advertises as an exit node when the exit_node setting is true" do
+      config({ "settings" => { "exit_node" => true } })
+      manager.send(:run_tailscale_up!)
+
+      expect(manager).to have_received(:system).with(
+        "tailscale", "--socket=#{Tailscale::DaemonManager::SOCKET_PATH}", "up",
+        "--authkey=tskey-auth-abc123", "--advertise-exit-node"
+      )
+    end
+
+    it "does not advertise as an exit node when the setting is false" do
+      config({ "settings" => { "exit_node" => false } })
+      manager.send(:run_tailscale_up!)
+
+      expect(manager).to have_received(:system).with(
+        "tailscale", "--socket=#{Tailscale::DaemonManager::SOCKET_PATH}", "up",
+        "--authkey=tskey-auth-abc123"
+      )
+    end
+
+    it "reads the hostname override from the nested settings, not the config root" do
+      config({ "settings" => { "hostname" => "syrus-home" }, "manifest" => { "version" => "1.0.0" } })
+      manager.send(:run_tailscale_up!)
+
+      expect(manager).to have_received(:system).with(
+        "tailscale", "--socket=#{Tailscale::DaemonManager::SOCKET_PATH}", "up",
+        "--authkey=tskey-auth-abc123", "--hostname=syrus-home"
+      )
+    end
+  end
+
   describe "#alive?" do
     context "when @pid is nil" do
       it "returns false" do

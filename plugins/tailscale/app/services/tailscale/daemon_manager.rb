@@ -88,6 +88,7 @@ module Tailscale
                "--authkey=#{ENV['TS_AUTHKEY']}" ]
       hostname = plugin_config("hostname")
       args << "--hostname=#{hostname}" if hostname.present?
+      args << "--advertise-exit-node" if ActiveModel::Type::Boolean.new.cast(plugin_config("exit_node"))
       system(*args)
     end
 
@@ -103,7 +104,7 @@ module Tailscale
     end
 
     def plugin_config(key)
-      PluginRecord.find_by(name: "tailscale")&.config&.dig(key)
+      PluginRecord.find_by(name: "tailscale")&.config&.dig("settings", key)
     rescue StandardError
       nil
     end
