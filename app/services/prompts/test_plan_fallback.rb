@@ -19,14 +19,16 @@ module Prompts
         durable context instead.
 
         Produce a concise reviewer-facing test plan by calling the
-        `submit_test_plan` MCP tool:
+        `submit_test_plan` MCP tool. If your tool list shows a prefixed
+        MCP name, call the exact prefixed name shown there; do not call
+        bare `submit_test_plan` unless that exact bare name is available.
 
         - `steps`: an array of exact user flows to exercise, URLs or
           commands where relevant, and edge cases suggested by the diff.
         - `notes`: optional short context for reviewers.
 
-        Do not edit files, run commands, or make commits. Just call
-        `submit_test_plan` and exit.
+        Do not edit files, run commands, or make commits. Just call the
+        available `submit_test_plan` tool name and exit.
 
         # Original job
         Title: #{@issue.title}

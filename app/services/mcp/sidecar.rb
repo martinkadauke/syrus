@@ -216,7 +216,9 @@ module Mcp
 
     def tool_names(tools)
       Array(tools).map do |tool|
-        raw = if tool.respond_to?(:name) && tool.name.present?
+        raw = if tool.respond_to?(:tool_name) && tool.tool_name.present?
+          tool.tool_name
+        elsif tool.respond_to?(:name) && tool.name.present? && tool.name != "Class"
           tool.name
         elsif tool.class.name.present?
           tool.class.name

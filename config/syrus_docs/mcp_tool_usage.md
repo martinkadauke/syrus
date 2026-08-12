@@ -43,6 +43,13 @@ forwarded env key names, sidecar startup/tool advertisement, Claude's init-time
 tool list, transcript evidence for whether the required tool was available or
 called, and the sidecar stderr tail.
 
+Different agents expose workflow-sidecar tools with different fully qualified
+names, such as `mcp__syrus-mcp-sidecar__submit_summary` for Claude and
+`syrus-mcp-sidecar.submit_summary` for Codex. Required-tool prompts should tell
+the agent to call the exact name shown in its tool list; a bare call such as
+`submit_summary` can fail when the sidecar is connected but the tool was
+advertised under a prefixed name.
+
 Tool implementations live under `Mcp::Tools`, and the stdio server processes
 are built through the shared `Mcp::Sidecar` infrastructure. Protocol-visible
 server names remain stable: `syrus-chat-sidecar`,

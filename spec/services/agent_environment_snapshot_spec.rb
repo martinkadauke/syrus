@@ -39,6 +39,31 @@ RSpec.describe AgentEnvironmentSnapshot do
       expect(snapshot).to include('Package scripts: test="vitest"; build="vite build"')
       expect(snapshot).to include("`git fetch` is allowed")
     end
+
+    it "renders Claude-visible names for required workflow MCP tools" do
+      repo = repository(owner: "rome", name: "aqueduct", default_branch: "main")
+      job = Factories.job(repository: repo)
+      workflow = job.workflows.last
+      step = workflow.steps.find_by!(kind: "summarize")
+      run = step.runs.create!(job: job, trigger_kind: workflow.trigger_kind, agent_provider: "claude", iteration: 1)
+
+      snapshot = described_class.for_run(run, workspace_path: @workspace_path)
+
+      expect(snapshot).to include("`submit_summary` / `mcp__syrus-mcp-sidecar__submit_summary`")
+      expect(snapshot).to include("Use the exact tool name shown in the agent's tool list.")
+    end
+
+    it "renders Codex-visible names for required workflow MCP tools" do
+      repo = repository(owner: "rome", name: "aqueduct", default_branch: "main")
+      job = Factories.job(repository: repo)
+      workflow = job.workflows.last
+      step = workflow.steps.find_by!(kind: "summarize")
+      run = step.runs.create!(job: job, trigger_kind: workflow.trigger_kind, agent_provider: "codex", iteration: 1)
+
+      snapshot = described_class.for_run(run, workspace_path: @workspace_path)
+
+      expect(snapshot).to include("`submit_summary` / `syrus-mcp-sidecar.submit_summary`")
+    end
   end
 
   describe "coverage section" do

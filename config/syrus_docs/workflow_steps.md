@@ -79,7 +79,7 @@ Agentic. Operator-triggered free-form step; prompt is supplied at dispatch time.
 
 ### adversarial_review
 
-Agentic. An independent reviewer agent critiques the implementation, calls `submit_adversarial_review` with a verdict and findings, and any workspace changes it makes are discarded. Runs in a bounded loop before graders when `adversarial_review.rounds > 0`.
+Agentic. An independent reviewer agent critiques the implementation, calls the available `submit_adversarial_review` MCP tool name with a verdict and findings, and any workspace changes it makes are discarded. Runs in a bounded loop before graders when `adversarial_review.rounds > 0`.
 
 ### grader_fanout
 
@@ -126,7 +126,7 @@ Non-agentic. Legacy single-grader step; prefer `grader_fanout`/`grader`/`grader_
 
 ### summarize
 
-Agentic. Asks the agent to call `submit_summary` with a PR title, body, and operator-facing summary. Skipped if `implement` already called `submit_summary`.
+Agentic. Asks the agent to call the available `submit_summary` MCP tool name with a PR title, body, and operator-facing summary. Skipped if `implement` already called `submit_summary`.
 
 ### summarize_amend
 
@@ -138,7 +138,7 @@ Agentic. Runs after successful `pr_comment` and `chat_feedback` workflows. Asks 
 
 ### test_plan
 
-Agentic. Asks the agent to call `submit_test_plan` with reviewer-facing test steps. Skipped if `implement` already called `submit_test_plan`. Follows `summarize` in initial workflows.
+Agentic. Asks the agent to call the available `submit_test_plan` MCP tool name with reviewer-facing test steps. Skipped if `implement` already called `submit_test_plan`. Follows `summarize` in initial workflows.
 
 ### pr_open
 

@@ -19,7 +19,9 @@ module Prompts
         context instead.
 
         Produce the PR copy by calling the `submit_summary` MCP tool with
-        three fields:
+        three fields. If your tool list shows a prefixed MCP name, call the
+        exact prefixed name shown there; do not call bare `submit_summary`
+        unless that exact bare name is available.
 
         - `pr_title`: 50-72 chars, imperative mood ("Add greeting helper",
           not "Adds..." or "This PR adds..."). No leading prefix or repo slug.
@@ -27,8 +29,8 @@ module Prompts
           mention what changed. No headings, no "This PR..." preamble.
         - `summary`: 1-2 sentences, operator-facing, shown on the Syrus job page.
 
-        Do not edit files, run commands, or make commits. Just call
-        `submit_summary` and exit.
+        Do not edit files, run commands, or make commits. Just call the
+        available `submit_summary` tool name and exit.
 
         # Original job
         Title: #{@issue.title}

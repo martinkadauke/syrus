@@ -6,6 +6,8 @@ RSpec.describe Prompts::SubmitSummaryInstructions do
   it "instructs the agent to call the submit_summary MCP tool" do
     expect(text).to include("submit_summary")
     expect(text).to match(/CALL THE `submit_summary` MCP TOOL/)
+    expect(text).to match(/exact\s+prefixed name/)
+    expect(text).to include("do not call bare")
   end
 
   it "documents all three required fields" do

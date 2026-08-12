@@ -264,6 +264,9 @@ RSpec.describe Mcp::Sidecar do
       response = jsonrpc(server_for(run), "tools/list", id: 1)
       tool_names = response[:result][:tools].map { |t| t[:name] }
       expect(tool_names).to include("stub_ping")
+      build_log = run.job_logs.where("chunk LIKE ?", "%[mcp_sidecar] build%").order(:sequence).last.chunk
+      expect(build_log).to include("stub_ping")
+      expect(build_log).not_to include("class")
 
       response = jsonrpc(server_for(run), "tools/call", params: {
         name: "stub_ping",

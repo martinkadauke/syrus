@@ -13,7 +13,9 @@ module Prompts
         committed.
 
         Now produce the PR copy by calling the `submit_summary` MCP
-        tool with three fields:
+        tool with three fields. If your tool list shows a prefixed MCP
+        name, call the exact prefixed name shown there; do not call bare
+        `submit_summary` unless that exact bare name is available.
 
         - `pr_title`: 50–72 chars, imperative mood ("Add greeting
           helper", not "Adds…" or "This PR adds…"). No leading
@@ -26,7 +28,7 @@ module Prompts
 
         Don't recap the whole conversation in your reply. Don't
         re-read files. Don't make additional commits — that phase
-        is done. Just call `submit_summary` and exit.
+        is done. Just call the available `submit_summary` tool name and exit.
       PROMPT
     end
   end

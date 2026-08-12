@@ -105,7 +105,7 @@ module Prompts
 
     def submission_instructions
       <<~TEXT.strip
-        When finished, call the `submit_adversarial_review` MCP tool exposed by `syrus-mcp-sidecar` with:
+        When finished, call the `submit_adversarial_review` MCP tool exposed by `syrus-mcp-sidecar` with the exact name shown in your tool list. Do not call bare `submit_adversarial_review` unless that exact bare name is available.
         - critique: concise Markdown describing concrete findings, or a short note that you found no blocking issues.
         - verdict: "needs_work" when implementation changes are needed, otherwise "approved".
 

@@ -13,7 +13,9 @@ module Prompts
         for this Job already exists; this is a *follow-up
         commit*, not a new PR.
 
-        Call the `submit_summary` MCP tool with:
+        Call the `submit_summary` MCP tool with the exact name shown in
+        your tool list. Do not call bare `submit_summary` unless that
+        exact bare name is available.
 
         - `pr_title`: a one-line commit message describing
           what changed *in this revision*, not the whole PR.
@@ -27,8 +29,8 @@ module Prompts
         - `summary`: 1 sentence operator-facing.
 
         Don't re-read files. Don't make new commits. The
-        previous step already committed your work. Just call
-        `submit_summary` and exit.
+        previous step already committed your work. Just call the available
+        `submit_summary` tool name and exit.
       PROMPT
     end
   end

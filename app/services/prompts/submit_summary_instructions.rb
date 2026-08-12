@@ -8,7 +8,9 @@ module Prompts
       ---
 
       When you finish, CALL THE `submit_summary` MCP TOOL with three
-      fields:
+      fields. If your tool list shows a prefixed MCP name, call the exact
+      prefixed name shown there; do not call bare `submit_summary` unless
+      that exact bare name is available.
 
       - `pr_title`: 50–72 chars, imperative mood ("Add greeting helper",
         not "Adds greeting helper" or "This PR adds…"). No leading prefix

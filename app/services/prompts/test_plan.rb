@@ -14,7 +14,9 @@ module Prompts
         Review that implementation context and produce a concise,
         actionable test plan for a human reviewer or operator to follow,
         not instructions for another agent. Call the `submit_test_plan`
-        MCP tool:
+        MCP tool. If your tool list shows a prefixed MCP name, call the
+        exact prefixed name shown there; do not call bare `submit_test_plan`
+        unless that exact bare name is available.
 
         - `steps`: an array of exact user flows to exercise, URLs or
           commands where relevant, and edge cases you know about from
@@ -22,7 +24,8 @@ module Prompts
         - `notes`: optional short context for reviewers.
 
         Don't recap the whole conversation in your reply. Don't make
-        additional commits. Just call `submit_test_plan` and exit.
+        additional commits. Just call the available `submit_test_plan` tool
+        name and exit.
       PROMPT
     end
   end

@@ -19,12 +19,12 @@ The loop runs for the configured number of rounds. After all rounds complete, th
 
 ## Verdicts
 
-The reviewer agent must call `submit_adversarial_review` with one of two verdicts:
+The reviewer agent must call the available `submit_adversarial_review` MCP tool name with one of two verdicts:
 
 - **`approved`** — the implementation is acceptable. The loop records the findings and continues to the next step (or exits the loop if rounds are exhausted).
 - **`needs_work`** — the implementation has problems. Findings are stored and fed back to the `implement` agent on the next iteration.
 
-If the agent does not call `submit_adversarial_review`, the step fails with "agent didn't call submit_adversarial_review".
+If the agent does not call the required `submit_adversarial_review` tool, the step fails with "agent didn't call submit_adversarial_review".
 
 ## Findings carry-forward
 

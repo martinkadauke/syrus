@@ -9,6 +9,7 @@ RSpec.describe Prompts::SummarizeFallback do
 
     expect(out).to include("original agent session was too large to resume")
     expect(out).to include("submit_summary")
+    expect(out).to include("exact prefixed name")
     expect(out).to include("Do not edit files, run commands, or make commits")
   end
 

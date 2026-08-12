@@ -17,7 +17,7 @@ RSpec.describe Prompts::ScheduledTask do
     output = described_class.new(scheduled_task: task, fired_at: fired_at).to_s
     expect(output).to include("scheduled maintenance task")
     expect(output).to match(/only commit changes if there's something\s+genuinely\s+worth changing/i)
-    expect(output).to match(/run\s+`submit_summary`/)
+    expect(output).to include("the available `submit_summary` MCP tool name")
     expect(output).to include(repository.slug)
   end
 

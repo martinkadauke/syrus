@@ -56,10 +56,10 @@ module Prompts
         worth changing. Survey the relevant area first; if the codebase
         is already in good shape with respect to this instruction,
         DO NOT manufacture changes to justify a run. Instead, run
-        `submit_summary` with a one-line note explaining what you
-        checked and that you found nothing to do, then exit without
-        committing anything. Syrus will record the no-op run for the
-        operator's audit trail.
+        the available `submit_summary` MCP tool name with a one-line note
+        explaining what you checked and that you found nothing to do, then
+        exit without committing anything. Syrus will record the no-op run
+        for the operator's audit trail.
       TXT
     end
 

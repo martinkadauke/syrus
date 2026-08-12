@@ -5,6 +5,7 @@ RSpec.describe Prompts::TestPlan do
     text = described_class.new.to_s
 
     expect(text).to include("submit_test_plan")
+    expect(text).to include("exact prefixed name")
     expect(text).to include("human reviewer or operator")
     expect(text).to include("not instructions for another agent")
     expect(text).to include("steps")

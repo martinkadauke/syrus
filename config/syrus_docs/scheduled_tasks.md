@@ -44,7 +44,7 @@ When `consecutive_failure_count` reaches `AppSetting.max_job_failures` (default:
 
 ## The "no changes" happy path
 
-Cron tasks should be written so the agent can succeed even if there's nothing to do. The canonical pattern: the agent surveys the repo state, calls `submit_summary` with a one-line note like "No changes needed," and the Job closes with reason `no_changes`. This is counted as a success and does not increment `consecutive_failure_count`.
+Cron tasks should be written so the agent can succeed even if there's nothing to do. The canonical pattern: the agent surveys the repo state, calls the available `submit_summary` MCP tool name with a one-line note like "No changes needed," and the Job closes with reason `no_changes`. This is counted as a success and does not increment `consecutive_failure_count`.
 
 ## CronTemplate
 

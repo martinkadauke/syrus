@@ -111,11 +111,18 @@ class AgentEnvironmentSnapshot
   def mcp_tool_summary(step)
     required_tools = required_mcp_tools_for(step)
     if required_tools.any?
-      tool_list = required_tools.map { |tool| "`#{tool}`" }.join(", ")
-      "run sidecar `syrus-mcp-sidecar` must be connected; this step must call #{tool_list}."
+      tool_list = required_tools.map { |tool| required_tool_label(tool) }.join(", ")
+      "run sidecar `syrus-mcp-sidecar` must be connected; this step must call #{tool_list}. Use the exact tool name shown in the agent's tool list."
     else
       "run sidecar `syrus-mcp-sidecar` is configured; this step has no required MCP submission tool."
     end
+  end
+
+  def required_tool_label(tool)
+    exact = Prompts::WorkflowMcpToolInstructions.tool_name_for(run&.agent_provider || run&.workflow&.agent_provider || run&.job&.agent_provider, tool)
+    return "`#{tool}`" if exact.blank?
+
+    "`#{tool}` / `#{exact}`"
   end
 
   def required_mcp_tools_for(step)
