@@ -132,26 +132,44 @@ module ChatSerialization
   end
 
   def bookmarks_json(chat_session)
+    message_rows = bookmark_message_rows(chat_session.id)
+    return [] if message_rows.empty?
+
+    message_positions = {}
+    message_roles = {}
+    message_ids = []
+    message_rows.each_with_index do |(id, role), index|
+      message_ids << id
+      message_roles[id] = role
+      message_positions[id] = index
+    end
+
     rows = ChatBookmark
-      .joins(:chat_message)
-      .where(chat_messages: { chat_session_id: chat_session.id })
-      .order("chat_messages.created_at ASC", "chat_messages.id ASC", "chat_bookmarks.id ASC")
+      .where(chat_message_id: message_ids)
+      .order(:chat_message_id, :id)
       .pluck(
         "chat_bookmarks.id",
         "chat_bookmarks.label",
-        "chat_bookmarks.chat_message_id",
-        "chat_messages.role"
+        "chat_bookmarks.chat_message_id"
       )
+      .sort_by { |id, _label, chat_message_id| [ message_positions.fetch(chat_message_id), id ] }
     anchor_resolver = bookmark_anchor_resolver(chat_session.id, rows)
 
-    rows.map do |id, label, chat_message_id, role|
+    rows.map do |id, label, chat_message_id|
       {
         id: id,
         label: label,
         chat_message_id: chat_message_id,
-        anchor_message_id: anchor_resolver.call(chat_message_id, role)
+        anchor_message_id: anchor_resolver.call(chat_message_id, message_roles[chat_message_id])
       }
     end
+  end
+
+  def bookmark_message_rows(chat_session_id)
+    ChatMessage
+      .where(chat_session_id: chat_session_id)
+      .order(:created_at, :id)
+      .pluck(:id, :role)
   end
 
   def whiteboard_state_for_payload(chat_session)

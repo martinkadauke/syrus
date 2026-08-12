@@ -2565,6 +2565,21 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(queries.grep(/chat_messages.*id < .*ORDER BY.*created_at/i)).to be_empty
   end
 
+  it "loads bookmarks without joining and sorting chat messages through chat_bookmarks" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+    first = chat.messages.create!(role: "assistant", content: { "text" => "First" }, created_at: 2.minutes.ago)
+    second = chat.messages.create!(role: "assistant", content: { "text" => "Second" }, created_at: 1.minute.ago)
+    second.bookmarks.create!(label: "Second topic", kind: "topic")
+    first.bookmarks.create!(label: "First topic", kind: "topic")
+
+    queries = capture_sql { get "/api/v1/app/chats/#{chat.id}" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["bookmarks"].map { |bookmark| bookmark["label"] }).to eq([ "First topic", "Second topic" ])
+    expect(queries.grep(/FROM [`"]?chat_bookmarks[`"]?.*JOIN [`"]?chat_messages[`"]?.*ORDER BY .*chat_messages.*created_at/i)).to be_empty
+  end
+
   it "does not embed chat navigation in the chat detail payload" do
     sign_in_as(user)
     current_chat = ChatSession.create!(
