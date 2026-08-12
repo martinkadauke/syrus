@@ -10,5 +10,12 @@ class PollInputSourceJob < ApplicationJob
     return unless force || source.provider_enabled?
 
     source.poll!
+  rescue Regexp::TimeoutError => e
+    Rails.logger.error(
+      "[PollInputSourceJob] regexp timeout source_id=#{source_id} " \
+      "source_type=#{source&.type || 'unknown'} " \
+      "repository=#{source&.repository&.slug || 'unknown'}: #{e.message}"
+    )
+    raise
   end
 end

@@ -31,4 +31,21 @@ RSpec.describe PollInputSourceJob do
     expect(source).to receive(:poll!)
     described_class.perform_now(source.id, force: true)
   end
+
+  it "logs source context when polling hits a regexp timeout" do
+    allow(source).to receive(:poll!).and_raise(Regexp::TimeoutError, "regexp timed out")
+    allow(InputSource).to receive(:find_by).with(id: source.id).and_return(source)
+    allow(Rails.logger).to receive(:error).and_call_original
+
+    expect { described_class.perform_now(source.id) }.to raise_error(Regexp::TimeoutError)
+
+    expect(Rails.logger).to have_received(:error).with(
+      include(
+        "[PollInputSourceJob] regexp timeout",
+        "source_id=#{source.id}",
+        "source_type=InputSources::Github",
+        "repository=#{repository.slug}"
+      )
+    )
+  end
 end

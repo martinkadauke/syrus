@@ -65,4 +65,15 @@ RSpec.describe EpicMarkerParser do
   it "returns nil for numeric-only values" do
     expect(marker("Epic: 447")).to be_nil
   end
+
+  it "does not run a whole-body regex over long non-marker issue text" do
+    expect(marker("x" * 100_000)).to be_nil
+  end
+
+  it "bounds absurd marker values" do
+    expect(marker("Epic: #{'x' * 100_000}")).to eq({
+      kind: :epic_declaration,
+      name: "x" * described_class::MAX_MARKER_VALUE_BYTES
+    })
+  end
 end

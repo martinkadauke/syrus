@@ -20,4 +20,10 @@ RSpec.describe IssueImageExtractor do
 
     expect(described_class.urls(markdown)).to be_empty
   end
+
+  it "does not run an unbounded regex over huge single-line markdown" do
+    markdown = "![broken](#{'a' * 100_000}"
+
+    expect(described_class.urls(markdown)).to be_empty
+  end
 end
