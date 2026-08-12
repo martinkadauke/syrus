@@ -3,12 +3,13 @@ require "net/http"
 class PreviewProxyMiddleware
   PREVIEW_CSP = [
     "default-src 'self' http: https: data: blob:",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https: blob:",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https: data: blob:",
     "style-src 'self' 'unsafe-inline' http: https:",
     "img-src 'self' http: https: data: blob:",
     "font-src 'self' http: https: data:",
-    "connect-src 'self' http: https: ws: wss:",
-    "frame-src 'self' http: https:",
+    "connect-src 'self' http: https: data: blob: ws: wss:",
+    "frame-src 'self' http: https: data: blob:",
+    "child-src 'self' http: https: data: blob:",
     "worker-src 'self' blob:"
   ].join("; ").freeze
 

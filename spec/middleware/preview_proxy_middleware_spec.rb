@@ -128,10 +128,11 @@ RSpec.describe PreviewProxyMiddleware do
       expect(headers).not_to have_key("content-security-policy-report-only")
       expect(headers).not_to have_key("x-frame-options")
       expect(headers).not_to have_key("permissions-policy")
-      expect(headers["Content-Security-Policy"]).to include("script-src 'self' 'unsafe-inline' 'unsafe-eval'")
+      expect(headers["Content-Security-Policy"]).to include("script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https: data: blob:")
       expect(headers["Content-Security-Policy"]).to include("style-src 'self' 'unsafe-inline'")
-      expect(headers["Content-Security-Policy"]).to include("connect-src 'self' http: https: ws: wss:")
-      expect(headers["Content-Security-Policy"]).to include("frame-src 'self'")
+      expect(headers["Content-Security-Policy"]).to include("connect-src 'self' http: https: data: blob: ws: wss:")
+      expect(headers["Content-Security-Policy"]).to include("frame-src 'self' http: https: data: blob:")
+      expect(headers["Content-Security-Policy"]).to include("child-src 'self' http: https: data: blob:")
     end
 
     it "resets last_activity_at on each proxied request" do
