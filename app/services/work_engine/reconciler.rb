@@ -169,7 +169,7 @@ module WorkEngine
       issues.concat(classify_queued_runs)
       issues.concat(classify_paused_queues)
       issues.concat(classify_running_runs)
-      issues.concat(classify_running_steps_with_terminal_runs)
+      issues.concat(classify_active_steps_with_terminal_runs)
       issues.concat(classify_queued_steps_without_runs)
       issues.concat(classify_workflows)
       issues.concat(classify_stale_auto_retry_workflows)
@@ -428,8 +428,10 @@ module WorkEngine
       end
     end
 
-    def classify_running_steps_with_terminal_runs
-      steps.select(&:running?).filter_map do |step|
+    def classify_active_steps_with_terminal_runs
+      steps.select { |step| step.running? || step.queued? }.filter_map do |step|
+        next unless step.workflow&.running?
+
         step_runs = runs_for_step_reconciliation(step)
         next if step_runs.empty?
         next if step_runs.any? { |run| run.queued? || run.running? }
@@ -452,7 +454,7 @@ module WorkEngine
             terminal_run_state: terminal_run.state,
             terminal_run_finished_at: terminal_run.finished_at&.iso8601
           ),
-          explanation: "Step ##{step.id} is running but all of its Runs are terminal, so no worker can advance it."
+          explanation: "Step ##{step.id} is #{step.state} but all of its Runs are terminal, so no worker can advance it."
         )
       end
     end
@@ -1391,7 +1393,7 @@ module WorkEngine
     end
 
     def step_needs_terminal_run_reconciliation?(step)
-      return false unless step&.running?
+      return false unless step&.running? || (step&.queued? && step.workflow&.running?)
 
       step_runs = runs.select { |run| run.step_id == step.id }
       step_runs.any? && step_runs.all?(&:terminal?)

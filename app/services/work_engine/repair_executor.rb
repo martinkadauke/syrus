@@ -432,7 +432,8 @@ module WorkEngine
         def perform
           step = target_step
           return skipped("Step no longer exists") unless step
-          return skipped("Step is #{step.state}, not running") unless step.running?
+          return skipped("Step is #{step.state}, not active") unless step.running? || step.queued?
+          return skipped("Workflow is not running") unless step.workflow&.running?
 
           step_runs = step.runs.to_a
           return skipped("Step has no Runs") if step_runs.empty?

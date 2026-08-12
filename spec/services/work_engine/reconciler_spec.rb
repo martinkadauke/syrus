@@ -1075,6 +1075,45 @@ RSpec.describe WorkEngine::Reconciler do
     expect(result.repair_executions.map(&:message)).to include("reconciled Step ##{step.id} to failed from Run ##{run.id}")
   end
 
+  it "reconciles a queued Step whose Run failed before the Step could start" do
+    next_step = Step.create!(workflow: workflow, kind: "agent_rebase", position: 1)
+    step.update!(kind: "auto_rebase", next_step: next_step)
+    job.update_columns(state: "running", started_at: 30.minutes.ago)
+    workflow.update_columns(trigger_kind: "rebase", state: "running", started_at: 30.minutes.ago)
+    step.update_columns(state: "queued", started_at: nil, finished_at: nil)
+    next_step.update_columns(state: "queued", started_at: nil, finished_at: nil)
+    run.update_columns(
+      state: "failed",
+      started_at: nil,
+      last_heartbeat_at: nil,
+      finished_at: 20.minutes.ago
+    )
+    RunFailureClassification.create!(
+      run: run,
+      classification: "database_lock",
+      retryable: true,
+      confidence: 0.95,
+      reason: "connection exhaustion: Too many connections",
+      classified_at: 20.minutes.ago
+    )
+
+    result = reconcile_and_execute(workflow_id: workflow.id)
+
+    issue = kind(result, :running_step_with_terminal_runs)
+    expect(issue).to be_present
+    expect(issue.explanation).to include("is queued but all of its Runs are terminal")
+    expect(kind(result, :retryable_run_failure)).to be_nil
+    expect(plan(result, :reconcile_step_from_terminal_run)).to have_attributes(
+      auto_executable: true,
+      target_type: "Step",
+      target_id: step.id
+    )
+    expect(step.reload).to be_failed
+    expect(workflow.reload).to be_failed
+    expect(job.reload).to be_failed
+    expect(result.repair_executions.map(&:message)).to include("reconciled Step ##{step.id} to failed from Run ##{run.id}")
+  end
+
   it "fails a running workflow that already has a failed step and a queued tail" do
     pr_open = Step.create!(workflow: workflow, kind: "pr_open", position: 1)
     step.update!(kind: "test_plan", next_step: pr_open)
