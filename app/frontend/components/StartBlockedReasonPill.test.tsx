@@ -94,6 +94,26 @@ describe("StartBlockedReasonPill", () => {
     expect(title).not.toContain("delay_until")
   })
 
+  it("notes when an admission delay was decided without worker telemetry", () => {
+    render(
+      <StartBlockedReasonPill
+        details={{
+          action: "delay_until",
+          reason: "predicted_budget_pressure_high",
+          pressure: {
+            host: {
+              telemetry_state: "absent"
+            }
+          }
+        }}
+        reason="workflow_admission_budget"
+      />
+    )
+
+    const title = screen.getByText("Workflow admission delayed").closest("[data-status-pill]")?.getAttribute("title")
+    expect(title).toContain("No worker telemetry has been recorded; this decision used step-profile pressure only.")
+  })
+
   it("does not leak unknown machine action keys into generic tooltips", () => {
     render(
       <StartBlockedReasonPill
@@ -152,5 +172,23 @@ describe("StartBlockedReasonPill", () => {
 
     const pill = screen.getByText("Urgent job in progress").closest("[data-status-pill]")
     expect(pill?.getAttribute("title")).not.toContain("Refused")
+  })
+
+  it("links out to diagnostics when a path is provided for an admission budget block", () => {
+    render(<StartBlockedReasonPill diagnosticsPath="/admin/resource_admission" reason="workflow_admission_budget" />)
+
+    expect(screen.getByRole("link", { name: "View pressure diagnostics" })).toHaveAttribute("href", "/admin/resource_admission")
+  })
+
+  it("does not render a diagnostics link when no path is provided", () => {
+    render(<StartBlockedReasonPill reason="workflow_admission_budget" />)
+
+    expect(screen.queryByRole("link", { name: "View pressure diagnostics" })).not.toBeInTheDocument()
+  })
+
+  it("does not render a diagnostics link for non-admission block reasons even with a path", () => {
+    render(<StartBlockedReasonPill diagnosticsPath="/admin/resource_admission" reason="urgent_job_active" />)
+
+    expect(screen.queryByRole("link", { name: "View pressure diagnostics" })).not.toBeInTheDocument()
   })
 })

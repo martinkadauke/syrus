@@ -143,6 +143,30 @@ swallows sampler failures so worker liveness is never destabilized by metrics.
 Rows are retained for `WorkerHostHealthSample::RETAIN_AFTER` (7 days, matching
 `RunHealthSnapshot::RETAIN_AFTER`) and pruned daily by
 `WorkerHostHealthSamplePruneJob`.
+
+The heartbeat Thread is a single per-process code path: if it never starts
+(role/env misconfigured on that process) or dies, that host's samples go
+silent with no direct signal until `WorkflowAdmissionBudget` eventually falls
+back to its neutral "absent" telemetry reading (see the admission-control
+section below). Two recurring Solid Queue jobs backstop this:
+`WorkerHostHealthSampleJob` (`sample_worker_host_health`, every minute, queue
+`cleanup`) independently records a sample for whichever worker process
+executes it, using Solid Queue's normal job-execution threads rather than the
+heartbeat Thread — so a dead/never-started heartbeat on that same process
+still gets sampled here, and it self-heals the process's `InstanceVersion` row
+if registration itself never happened. `WorkerHostHealthTelemetryCheckJob`
+(`check_worker_host_health_telemetry_gap`, every 5 minutes, queue `cleanup`)
+compares live (fresh-heartbeat) worker `InstanceVersion` hostnames against
+hosts with a `WorkerHostHealthSample` in the last 5 minutes and logs a warning
+naming any host with a live heartbeat but no recent sample, so the gap is
+visible immediately instead of only manifesting days later as a start-blocked
+Workflow. In the single-node/Compose deployment (`config/queue.yml`, one
+worker consuming every queue) this fully covers that worker; in a split
+multi-node deployment (`config/queue.home.yml` /
+`config/queue.compute.yml`) the `cleanup` queue is home-tier only, so these
+two jobs sample and audit the home pod but not compute pods — compute pods
+still rely primarily on their own heartbeat Thread, with the telemetry-gap
+warning as the visible signal if that thread goes dark.
 The current admin overview, `/api/v1/admin/version`, and the admin queue
 workers payload include worker health snapshots alongside the existing
 data-root disk fields. Freshness follows `InstanceVersion` worker heartbeat
@@ -264,6 +288,42 @@ estimates. Hard worker memory/disk exhaustion and the non-admission blockers
 above still win. Admission artifacts include the healthy worker count, active
 agentic run count, floor capacity, whether the floor override was used, and the
 soft gates that were present.
+
+Every admission decision also records `pressure.host.telemetry_state` (and a
+copy under `details.telemetry_state`): `"present"` when fresh
+`WorkerHostHealthSample` rows landed inside the sampling window, `"stale"` when
+samples exist but none are recent (a monitoring gap, e.g. a missed heartbeat
+tick), or `"absent"` when no worker host health samples have ever been
+recorded (e.g. the per-worker heartbeat thread never started). A `"stale"` or
+`"absent"` state reports an explicit, documented neutral/zero-pressure host
+reading — full headroom, not a synthesized worst case — so a total telemetry
+outage cannot masquerade as maxed-out hosts. It only changes what the
+host-pressure gate itself can see; step-level `WorkflowStepResourceProfile`
+predictions still fall back to `WorkflowStepResourceProfile::CONSERVATIVE_DEFAULTS`
+when a profile is genuinely missing, independent of host telemetry
+availability. Admin and dashboard surfaces reading `start_blocked_details` or
+`workflow_admission_decision` should treat `telemetry_state` as the source of
+truth for "no data" versus "data says busy" rather than inferring it from a
+0% pressure reading.
+
+**Operator-facing visibility.** The full diagnostics view lives at
+`/admin/resource_admission` (admin-only), backed by
+`Admin::ResourceAdmissionDiagnosticsPayload`. For an admission-blocked Job,
+the Job detail page also renders a pressure breakdown directly — which
+dimension tripped (hard host pressure, soft ambient host pressure, or
+predicted step-profile pressure), its current value versus the threshold
+that tripped it, and the telemetry state behind the reading — via
+`App::JobDetailPayload#job_json`'s `start_blocked_breakdown` field. Both
+surfaces format the same recorded `WorkflowAdmissionBudget::Decision#artifact`
+through the shared `AdmissionDiagnostics::Breakdown` service (never
+re-running the admission decision) so the numbers can't drift between them.
+`telemetry_state` of `"stale"` or `"absent"` renders as a distinct callout
+("no telemetry recorded — treating conservatively") so operators can tell a
+monitoring gap from a genuinely busy host. Admin users additionally get a
+"View pressure diagnostics" link (via `StartBlockedReasonPill`'s optional
+`diagnosticsPath` prop) out to the full admin page; the Job payload only
+includes the link's path when `Job::actions.can_view_resource_admission_diagnostics`
+is true (i.e. the requesting user is an admin).
 
 `AppSetting.workflow_admission_policy` chooses how far that admission decision
 extends:
