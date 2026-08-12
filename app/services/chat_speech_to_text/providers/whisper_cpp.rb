@@ -11,9 +11,16 @@ module ChatSpeechToText
       # shared libs and to give it a sane scratch/home dir.
       ENV_FORWARD = %w[ PATH HOME TMPDIR LD_LIBRARY_PATH ].freeze
 
+      # Baked into the app image by the whisper-build Dockerfile stage (see
+      # Dockerfile:136-174). Only used when the corresponding env var is unset,
+      # and only if the file actually exists — bare-metal/non-bundled installs
+      # without these paths still fall through to nil (browser dictation).
+      BUNDLED_EXECUTABLE_PATH = "/opt/whisper.cpp/whisper-cli"
+      BUNDLED_MODEL_PATH = "/opt/whisper.cpp/models/ggml-base.en.bin"
+
       def self.from_env
-        executable = ENV["SYRUS_STT_WHISPER_CPP_EXECUTABLE"].to_s.strip.presence
-        model = ENV["SYRUS_STT_WHISPER_CPP_MODEL"].to_s.strip.presence
+        executable = ENV["SYRUS_STT_WHISPER_CPP_EXECUTABLE"].to_s.strip.presence || bundled_path(BUNDLED_EXECUTABLE_PATH)
+        model = ENV["SYRUS_STT_WHISPER_CPP_MODEL"].to_s.strip.presence || bundled_path(BUNDLED_MODEL_PATH)
         return unless executable && model
 
         new(
@@ -21,6 +28,11 @@ module ChatSpeechToText
           model: model
         )
       end
+
+      def self.bundled_path(path)
+        path if File.exist?(path)
+      end
+      private_class_method :bundled_path
 
       def initialize(executable:, model:)
         @executable = executable

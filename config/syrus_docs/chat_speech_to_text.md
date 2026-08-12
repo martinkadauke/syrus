@@ -19,11 +19,19 @@ the frontend keeps the buffered audio blob while streaming so an `error` frame's
 ## Backend deployment
 
 Chat dictation is feature-gated by `chat_speech_to_text`. With the flag off,
-all modes are reported unavailable. With the flag on and no backend provider
-configured, the composer falls back to browser speech recognition when the
-browser supports it.
+all modes are reported unavailable. With the flag on, the official
+`syrus-backend` image works with zero extra env configuration: it bundles a
+CPU-only whisper.cpp build and a default model at fixed paths
+(`/opt/whisper.cpp/whisper-cli` and `/opt/whisper.cpp/models/ggml-base.en.bin`),
+and `ChatSpeechToText::Providers.configured` uses those paths automatically
+when `SYRUS_STT_PROVIDER`/`SYRUS_STT_WHISPER_CPP_EXECUTABLE`/
+`SYRUS_STT_WHISPER_CPP_MODEL` are unset — but only if the baked-in files
+actually exist, so bare-metal/non-bundled installs still correctly fall
+through to browser speech recognition when the browser supports it.
 
-The local/free backend provider is `whisper_cpp`:
+The backend provider is `whisper_cpp`. All three env vars are optional
+overrides, not required setup — set them to point at a different
+binary/model (e.g. bare-metal installs or a custom model):
 
 ```
 SYRUS_STT_PROVIDER=whisper_cpp
@@ -32,10 +40,43 @@ SYRUS_STT_WHISPER_CPP_MODEL=/models/ggml-base.en.bin
 SYRUS_STT_BACKEND_STREAMING=false
 ```
 
+Explicit env vars always take precedence over the baked-in defaults. To use a
+different model than the bundled `ggml-base.en.bin` (a larger model for
+accuracy, a smaller one for speed, or a non-English model), download the
+desired `ggml-*.bin` into the running container/volume and point
+`SYRUS_STT_WHISPER_CPP_MODEL` at that path — the executable does not need to
+change.
+
 CPU-only deployments can use batch transcription, but latency depends heavily on
 host CPU and model size. The bundled `whisper_cpp` adapter uses the CLI batch
 path only; keep `SYRUS_STT_BACKEND_STREAMING=false` unless the configured
 provider implements `stream_transcription` and can keep up with live audio.
+
+### Building without the bundled binary/model
+
+The Dockerfile's `whisper-build` stage compiles whisper.cpp from source and
+downloads the default model, which adds build time and ~148MB to the image.
+Operators building a custom, lean image that doesn't need local dictation
+(e.g. they only use browser speech recognition, or plan to supply their own
+`whisper_cpp` binary/model via the env vars above) can skip that stage with
+the `SYRUS_SKIP_WHISPER_BUILD=1` build arg:
+
+```
+docker build --build-arg SYRUS_SKIP_WHISPER_BUILD=1 -t syrus-backend:lean .
+```
+
+This produces a stub `whisper-cli` that always fails, so
+`ChatSpeechToText::Providers.configured` correctly falls back to browser
+speech recognition (or a manually configured provider) instead of reporting a
+broken backend as available. `bin/publish-image` and `bin/deploy` never set
+this arg, so published/deployed images always bundle the real build; it's
+meant for local dev loops (`bin/build-local-image`, `bin/compose-up` default
+to it) and custom lean builds only.
+
+### License note
+
+The bundled whisper.cpp build (https://github.com/ggml-org/whisper.cpp) and
+the ggml/OpenAI Whisper models it downloads are MIT-licensed.
 
 The chat payload includes sanitized backend availability metadata:
 `feature_disabled`, `provider_unset`, or no reason when the backend is usable.
