@@ -41,7 +41,7 @@ For each incoming request:
 4. If not found (environment not running, never started, or expired): a 503 response is returned with a message directing the user to the Syrus UI.
 5. If the host doesn't match the preview pattern: the request falls through to the normal Rails application.
 
-The proxy sends `Host: localhost:<port>` to the preview app and preserves the browser-facing hostname in `X-Forwarded-Host`. Rails apps running in development mode accept `localhost` without app-specific preview host allowlists, while apps that care about public URL generation can still inspect the forwarded host.
+The proxy sends `Host: localhost:<port>` and `X-Forwarded-Host: localhost:<port>` to the preview app so frameworks such as Rails running in development mode accept the request without app-specific preview host allowlists. Syrus preserves the browser-facing hostname separately in `X-Syrus-Preview-Host` / `X-Syrus-Preview-Proto` for apps that explicitly want to inspect the public preview URL.
 
 Preview command configuration lives in the target repository's `.syrus.yml`:
 

@@ -65,8 +65,10 @@ class PreviewProxyMiddleware
 
     copy_request_headers(env, proxy_req)
     proxy_req["Host"] = "localhost:#{target_port}"
-    proxy_req["X-Forwarded-Host"] = request.host_with_port
-    proxy_req["X-Forwarded-Proto"] = request.scheme
+    proxy_req["X-Forwarded-Host"] = "localhost:#{target_port}"
+    proxy_req["X-Forwarded-Proto"] = "http"
+    proxy_req["X-Syrus-Preview-Host"] = request.host_with_port
+    proxy_req["X-Syrus-Preview-Proto"] = request.scheme
 
     if request.body
       body = request.body.read
