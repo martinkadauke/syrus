@@ -22,10 +22,29 @@ RSpec.describe Mcp::Sidecar do
     it "records the tool list when the workflow sidecar builds" do
       server_for(run)
 
-      expect(run.job_logs.order(:sequence).last.chunk).to include(
+      logs = run.job_logs.order(:sequence).map(&:chunk)
+      expect(logs).to include(a_string_including(
+        "[mcp_sidecar] build starting server=syrus-mcp-sidecar"
+      ))
+      expect(logs.last).to include(
         "[mcp_sidecar] build server=syrus-mcp-sidecar",
+        "duration_ms=",
         "submit_summary"
       )
+    end
+
+    it "does not misclassify process termination during build as a build failure" do
+      sidecar = described_class.new(
+        server_name: described_class::WORKFLOW_SERVER,
+        tools: -> { raise SystemExit.new(0) },
+        server_context: -> { { run_id: run.id } }
+      )
+
+      expect { sidecar.build_server }.to raise_error(SystemExit)
+
+      logs = run.job_logs.order(:sequence).map(&:chunk)
+      expect(logs).to include(a_string_including("[mcp_sidecar] build starting server=syrus-mcp-sidecar"))
+      expect(logs).not_to include(a_string_including("[mcp_sidecar] build failed"))
     end
 
     it "responds to `initialize` with serverInfo and a negotiated protocol version" do

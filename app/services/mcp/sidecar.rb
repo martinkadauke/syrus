@@ -178,18 +178,29 @@ module Mcp
     end
 
     def build_server
-      tools = @tools.call
-      context = @server_context.call
+      @sidecar_phase = "build"
+      started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      context = safe_server_context
       @built_server_context = context
       log_workflow_sidecar_event!(
         context,
-        "[mcp_sidecar] build server=#{@server_name} pid=#{Process.pid} tools=#{tool_names(tools).join(',')}"
+        "[mcp_sidecar] build starting server=#{@server_name} pid=#{Process.pid}"
+      )
+      tools = @tools.call
+      context = @server_context.call
+      @built_server_context = context
+      duration_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000).round
+      log_workflow_sidecar_event!(
+        context,
+        "[mcp_sidecar] build server=#{@server_name} pid=#{Process.pid} duration_ms=#{duration_ms} tools=#{tool_names(tools).join(',')}"
       )
       MCP::Server.new(
         name: @server_name,
         tools: tools,
         server_context: context
       )
+    rescue SystemExit
+      raise
     rescue Exception => e # rubocop:disable Lint/RescueException
       context = safe_server_context
       log_workflow_sidecar_event!(
@@ -200,15 +211,40 @@ module Mcp
     end
 
     def run
-      at_exit { Tools::AgentPreviewRegistry.kill_all }
+      @sidecar_phase = "boot"
+      @sidecar_sigterm = false
+      @sidecar_sigterm_phase = nil
+      transport = nil
+
+      at_exit do
+        if @sidecar_sigterm
+          log_workflow_sidecar_event!(
+            safe_server_context,
+            "[mcp_sidecar] terminated server=#{@server_name} pid=#{Process.pid} signal=SIGTERM phase=#{@sidecar_sigterm_phase || @sidecar_phase || 'unknown'}"
+          )
+        end
+        Tools::AgentPreviewRegistry.kill_all
+      end
+
+      Signal.trap("TERM") do
+        @sidecar_sigterm = true
+        @sidecar_sigterm_phase = @sidecar_phase
+        begin
+          transport&.close
+        rescue StandardError
+          nil
+        end
+        exit 0
+      end
 
       server = build_server
       transport = MCP::Server::Transports::StdioTransport.new(server)
 
-      Signal.trap("TERM") { transport.close; exit 0 }
-
+      @sidecar_phase = "transport"
       log_workflow_sidecar_event!(@built_server_context, "[mcp_sidecar] transport opening server=#{@server_name} pid=#{Process.pid}")
       transport.open
+    rescue SystemExit
+      raise
     rescue Exception => e # rubocop:disable Lint/RescueException
       log_workflow_sidecar_event!(safe_server_context, "[mcp_sidecar] transport failed server=#{@server_name} pid=#{Process.pid} error=#{e.class}: #{e.message}")
       raise
