@@ -308,6 +308,8 @@ Rails.application.routes.draw do
           get "plugins", to: "plugins#index"
           post "plugins/:name/enable", to: "plugins#enable", constraints: { name: /[^\/]+/ }
           post "plugins/:name/disable", to: "plugins#disable", constraints: { name: /[^\/]+/ }
+          get "plugins/:name/config", to: "plugins#show_config", constraints: { name: /[^\/]+/ }
+          patch "plugins/:name/config", to: "plugins#update_config", constraints: { name: /[^\/]+/ }
           get "plugin_pages", to: "plugin_pages#index"
           get "queue/:tab", to: "queue#show", as: :queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
           post "queue/reap_stale_runs", to: "queue#reap_stale_runs"
@@ -408,6 +410,8 @@ Rails.application.routes.draw do
         get "plugins",  to: "plugins#index"
         post "plugins/:name/enable", to: "plugins#enable", constraints: { name: /[^\/]+/ }
         post "plugins/:name/disable", to: "plugins#disable", constraints: { name: /[^\/]+/ }
+        get "plugins/:name/config", to: "plugins#show_config", constraints: { name: /[^\/]+/ }
+        patch "plugins/:name/config", to: "plugins#update_config", constraints: { name: /[^\/]+/ }
         # Operator console kill switches.
         get  "console",                 to: "console#show"
         post "console/pause_polling",   to: "console#pause_polling"
@@ -542,6 +546,7 @@ Rails.application.routes.draw do
   get "admin/plugins", to: "spa#show", as: :admin_plugins
   get "admin/insights", to: "spa#show", as: :admin_insights
   get "admin/performance", to: "spa#show", as: :admin_performance
+  get "admin/tailscale", to: "spa#show", as: :admin_tailscale
   get "admin/console", to: "spa#show", as: :admin_console
   get "admin/installations", to: "spa#show", as: :admin_installations
   get "admin/github_app/register", to: "spa#show", as: :admin_github_app_register

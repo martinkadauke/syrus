@@ -1,10 +1,29 @@
 require "rails_helper"
+require "tmpdir"
 
 
 RSpec.describe Mcp::Tools::ExplainStuckJobTool do
   let(:user) { Factories.user }
   let(:repository) { Factories.repository(user: user) }
   let(:chat_session) { ChatSession.create!(user: user, repository: repository) }
+
+  # RepairPlanner#workspace_available? falls back to a real
+  # File.directory? check against WorkflowWorkspace.path_for when no
+  # reconciler snapshot evidence is present. Without pinning
+  # SYRUS_DATA_ROOT to an empty tmpdir, that check reads whatever the
+  # process's real ~/.syrus happens to contain, which makes this spec's
+  # expected repair action depend on unrelated filesystem state.
+  around do |example|
+    Dir.mktmpdir("syrus-explain-stuck-job") do |dir|
+      original = ENV["SYRUS_DATA_ROOT"]
+      ENV["SYRUS_DATA_ROOT"] = dir
+      begin
+        example.run
+      ensure
+        ENV["SYRUS_DATA_ROOT"] = original
+      end
+    end
+  end
 
   def server
     MCP::Server.new(
