@@ -11,6 +11,7 @@ module Discord
 
     def self.platform_key = "discord"
     def self.connector_job_class = Discord::GatewayConnectionJob
+    def self.platform_config_class = Discord::PlatformConfig
 
     def deliver(message:, platform_identity:)
       text = extract_text(message.content)

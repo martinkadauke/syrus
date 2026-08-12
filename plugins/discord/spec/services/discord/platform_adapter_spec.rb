@@ -21,6 +21,12 @@ RSpec.describe Discord::PlatformAdapter do
     end
   end
 
+  describe ".platform_config_class" do
+    it "is Discord::PlatformConfig" do
+      expect(described_class.platform_config_class).to eq(Discord::PlatformConfig)
+    end
+  end
+
   describe "#deliver" do
     context "with a text message" do
       let(:message) { ChatMessage.new(chat_session: session, role: "assistant", content: { "text" => "Hello from Syrus" }) }

@@ -38,6 +38,15 @@ module Syrus
         def connector_job_class
           nil
         end
+
+        # Optional: a PlatformIdentity::PlatformConfig::Base subclass that
+        # supplies this platform's `configured?` check and linking
+        # `instructions`. Return nil to fall back to
+        # PlatformIdentity::PlatformConfig::Unconfigured (the platform shows
+        # up in Settings but is not yet connectable).
+        def platform_config_class
+          nil
+        end
       end
 
       def deliver(message:, platform_identity:)

@@ -15,6 +15,10 @@ RSpec.describe Syrus::Plugin::PlatformDelivery do
       expect(concrete_class.connector_job_class).to be_nil
     end
 
+    it "defaults platform_config_class to nil" do
+      expect(concrete_class.platform_config_class).to be_nil
+    end
+
     it "raises NotImplementedError when #deliver is not overridden" do
       instance = concrete_class.allocate
       expect {
@@ -35,9 +39,11 @@ RSpec.describe Syrus::Plugin::PlatformDelivery do
       include Syrus::Plugin::PlatformDelivery
       def self.platform_key = "discord"
       def self.connector_job_class = String
+      def self.platform_config_class = Integer
     end
 
     expect(klass.platform_key).to eq("discord")
     expect(klass.connector_job_class).to eq(String)
+    expect(klass.platform_config_class).to eq(Integer)
   end
 end

@@ -11,7 +11,17 @@ RSpec.describe PlatformIdentity::PlatformConfig::Base do
     end
 
     it "returns Unconfigured for a platform with no dedicated config class" do
+      expect(described_class.for("made_up_platform")).to be_a(PlatformIdentity::PlatformConfig::Unconfigured)
+    end
+
+    it "returns Unconfigured for a plugin platform whose plugin is disabled" do
       expect(described_class.for("discord")).to be_a(PlatformIdentity::PlatformConfig::Unconfigured)
+    end
+
+    it "returns the plugin's platform_config_class once the plugin is enabled" do
+      PluginRecord.find_by!(name: "discord").update!(enabled: true)
+
+      expect(described_class.for("discord")).to be_a(Discord::PlatformConfig)
     end
   end
 
