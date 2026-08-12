@@ -47,7 +47,7 @@ module ChatSerialization
         has_more_older: has_more_older,
         pending_proposal_count: PerformanceLogging.phase("chat_payload.pending_proposal_count", chat_id: chat_session.id) { chat_session.proposals.where(state: "proposed").count },
         messages: PerformanceLogging.phase("chat_payload.messages_json", chat_id: chat_session.id, message_count: messages.size) { messages_json(messages, repository: repository) },
-        bookmarks: PerformanceLogging.phase("chat_payload.bookmarks", chat_id: chat_session.id) { bookmarks_json(chat_session) },
+        bookmarks: preload_bookmarks_in_chat_payload?(chat_session) ? PerformanceLogging.phase("chat_payload.bookmarks", chat_id: chat_session.id) { bookmarks_json(chat_session) } : [],
         recent_chats: [],
         pending_actions: PerformanceLogging.phase("chat_payload.pending_actions", chat_id: chat_session.id) { pending_actions_json(chat_session) },
         agent_questions: PerformanceLogging.phase("chat_payload.agent_questions", chat_id: chat_session.id) { chat_session.agent_questions_payload },
@@ -79,6 +79,7 @@ module ChatSerialization
           app_daemon_connection_path: "/api/v1/app/chats/#{chat_session.id}/daemon_connection",
           app_switch_provider_path: "/api/v1/app/chats/#{chat_session.id}/switch_provider",
           app_bookmarks_path: "/api/v1/app/chats/#{chat_session.id}/bookmarks",
+          app_bookmarks_index_path: "/api/v1/app/chats/#{chat_session.id}/bookmarks",
           app_attachments_path: "/api/v1/app/chats/#{chat_session.id}/attachments",
           app_whiteboard_path: "/api/v1/app/chats/#{chat_session.id}/whiteboard",
           app_scratchpad_reorder_path: "/api/v1/app/chats/#{chat_session.id}/scratchpad_items/reorder",
@@ -104,6 +105,10 @@ module ChatSerialization
         local_tunnel_connected: Feature.local_mode_enabled? && LocalDaemonSession.connected.exists?(chat_session_id: chat_session.id)
       }
     end
+  end
+
+  def preload_bookmarks_in_chat_payload?(chat_session)
+    !chat_session.enabled_supervisor_chat?
   end
 
   def preload_chat_payload_associations(chat_session)

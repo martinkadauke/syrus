@@ -515,6 +515,7 @@ export type ChatPayload = {
     app_daemon_connection_path: string
     app_switch_provider_path: string
     app_bookmarks_path: string
+    app_bookmarks_index_path?: string
     app_attachments_path: string
     app_video_walkthroughs_path: string
     app_speech_to_text_batch_path?: string
@@ -596,6 +597,10 @@ export type ChatSearchMessagesPayload = {
 
 export function fetchChat(id: string, search = "") {
   return getJson<ChatPayload>(`/api/v1/app/chats/${id}${search}`)
+}
+
+export function fetchChatBookmarks(path: string, options: { signal?: AbortSignal } = {}) {
+  return getJson<{ bookmarks: ChatBookmark[] }>(path, options)
 }
 
 export function fetchSharedChat(token: string) {

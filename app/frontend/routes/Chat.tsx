@@ -39,6 +39,7 @@ import {
   reorderScratchpadItems,
   updateScratchpadItem,
   fetchChat,
+  fetchChatBookmarks,
   fetchChatMessages,
   fetchSharedChat,
   markChatRead,
@@ -828,7 +829,7 @@ function ChatWorkspace({
             <ChatSettingsDialog payload={payload} prefix={prefix} queryKey={queryKey} onClose={() => onSettingsOpenChange(false)} />
           </Suspense>
         ) : null}
-        {bookmarkPickerOpen ? <BookmarkPickerModal bookmarks={payload.bookmarks} onClose={() => setBookmarkPickerOpen(false)} onSelect={selectBookmark} /> : null}
+        {bookmarkPickerOpen ? <BookmarkPickerModal payload={payload} queryKey={queryKey} onClose={() => setBookmarkPickerOpen(false)} onSelect={selectBookmark} /> : null}
       </div>
     )
   }
@@ -895,13 +896,21 @@ function ChatWorkspace({
           <ChatSettingsDialog payload={payload} prefix={prefix} queryKey={queryKey} onClose={() => onSettingsOpenChange(false)} />
         </Suspense>
       ) : null}
-      {bookmarkPickerOpen ? <BookmarkPickerModal bookmarks={payload.bookmarks} onClose={() => setBookmarkPickerOpen(false)} onSelect={selectBookmark} /> : null}
+      {bookmarkPickerOpen ? <BookmarkPickerModal payload={payload} queryKey={queryKey} onClose={() => setBookmarkPickerOpen(false)} onSelect={selectBookmark} /> : null}
     </div>
   )
 }
 
-function BookmarkPickerModal({ bookmarks, onClose, onSelect }: { bookmarks: ChatBookmark[]; onClose: () => void; onSelect: (messageId: number) => void }) {
+function BookmarkPickerModal({ payload, queryKey, onClose, onSelect }: { payload: ChatPayload; queryKey: ChatQueryKey; onClose: () => void; onSelect: (messageId: number) => void }) {
   const { t } = useT("chat")
+  const bookmarksPath = payload.paths.app_bookmarks_index_path || payload.paths.app_bookmarks_path
+  const bookmarksQuery = useQuery({
+    queryKey: ["chat-bookmarks", String(payload.chat.id), queryKey[2]],
+    queryFn: ({ signal }) => fetchChatBookmarks(appendSearch(bookmarksPath, queryKey[2]), { signal }),
+    initialData: payload.bookmarks.length > 0 ? { bookmarks: payload.bookmarks } : undefined
+  })
+  const bookmarks = bookmarksQuery.data?.bookmarks ?? []
+
   function selectBookmark(bookmark: ChatBookmark) {
     onSelect(bookmark.anchor_message_id ?? bookmark.chat_message_id)
     onClose()
@@ -922,7 +931,9 @@ function BookmarkPickerModal({ bookmarks, onClose, onSelect }: { bookmarks: Chat
           </button>
         </header>
         <div className="max-h-[min(24rem,calc(100dvh-10rem))] overflow-y-auto p-2">
-          {bookmarks.length === 0 ? (
+          {bookmarksQuery.isPending ? (
+            <div className="px-2 py-6 text-center text-sm text-gray-500 dark:text-gray-400">{t("loading_bookmarks")}</div>
+          ) : bookmarks.length === 0 ? (
             <div className="px-2 py-6 text-center text-sm text-gray-500 dark:text-gray-400">{t("no_bookmarks")}</div>
           ) : (
             <div className="space-y-1">

@@ -1027,6 +1027,34 @@ describe("chat bookmark picker command", () => {
     expect(within(dialog).getByText("Canal follow-up")).toBeInTheDocument()
   })
 
+  it("loads bookmark labels on demand when the chat payload did not preload them", async () => {
+    const fetchMock = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/mark_read" && init?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      if (path === "/api/v1/app/chats/8/bookmarks") {
+        return Promise.resolve(jsonResponse({
+          bookmarks: [
+            { id: 1, label: "Lazy aqueduct marker", chat_message_id: 9, anchor_message_id: 9 }
+          ]
+        }))
+      }
+
+      return Promise.resolve(jsonResponse(chatPayload({ bookmarks: [] })))
+    })
+
+    renderRoute()
+
+    const textarea = await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.change(textarea, { target: { value: "/bookmarks" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }))
+
+    const dialog = await screen.findByRole("dialog", { name: "Bookmarks" })
+    expect(await within(dialog).findByText("Lazy aqueduct marker")).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/app/chats/8/bookmarks", expect.anything())
+  })
+
   it("jumps to the selected bookmark and closes the picker", async () => {
     const scrollIntoView = vi.fn()
     vi.spyOn(window, "fetch").mockImplementation((input, init) => {
@@ -1078,7 +1106,7 @@ describe("chat bookmark picker command", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send message" }))
 
     expect(await screen.findByRole("dialog", { name: "Bookmarks" })).toBeInTheDocument()
-    expect(screen.getByText("No bookmarks yet")).toBeInTheDocument()
+    expect(await screen.findByText("No bookmarks yet")).toBeInTheDocument()
   })
 
   it("closes from the backdrop and close button without navigating", async () => {
@@ -3827,6 +3855,7 @@ function chatPayload(overrides: { chat?: Record<string, unknown>; messages?: Arr
       app_scheduled_messages_path: "/api/v1/app/chats/8/scheduled_messages",
       app_stop_path: "/api/v1/app/chats/8/stop",
       app_bookmarks_path: "/api/v1/app/chats/8/bookmarks",
+      app_bookmarks_index_path: "/api/v1/app/chats/8/bookmarks",
       app_attachments_path: "/api/v1/app/chats/8/attachments",
       app_whiteboard_path: "/api/v1/app/chats/8/whiteboard",
       app_scratchpad_reorder_path: "/api/v1/app/chats/8/scratchpad_items/reorder"

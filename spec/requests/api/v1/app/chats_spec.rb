@@ -2580,6 +2580,34 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(queries.grep(/FROM [`"]?chat_bookmarks[`"]?.*JOIN [`"]?chat_messages[`"]?.*ORDER BY .*chat_messages.*created_at/i)).to be_empty
   end
 
+  it "does not preload bookmarks in enabled supervisor chat payloads" do
+    set_supervisor_feature(true)
+    admin = Factories.user(admin: true)
+    sign_in_as(admin)
+    chat = ChatSession.create!(user: admin, system_kind: "supervisor", title: "Supervisor", pinned: true, last_message_at: Time.current)
+    message = chat.messages.create!(role: "assistant", content: { "text" => "Operational note." })
+    message.bookmarks.create!(label: "Slow query", kind: "topic")
+
+    queries = capture_sql { get "/api/v1/app/chats/#{chat.id}" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["bookmarks"]).to eq([])
+    expect(parse_body.dig("paths", "app_bookmarks_index_path")).to eq("/api/v1/app/chats/#{chat.id}/bookmarks")
+    expect(queries.grep(/FROM [`"]?chat_bookmarks[`"]?/i)).to be_empty
+  end
+
+  it "loads bookmarks on demand through the bookmarks endpoint" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+    message = chat.messages.create!(role: "assistant", content: { "text" => "Discuss **aqueducts**." })
+    message.bookmarks.create!(label: "Aqueducts", kind: "topic")
+
+    get "/api/v1/app/chats/#{chat.id}/bookmarks"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["bookmarks"]).to contain_exactly(include("label" => "Aqueducts", "chat_message_id" => message.id, "anchor_message_id" => message.id))
+  end
+
   it "does not embed chat navigation in the chat detail payload" do
     sign_in_as(user)
     current_chat = ChatSession.create!(

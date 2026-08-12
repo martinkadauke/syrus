@@ -711,6 +711,13 @@ module Api
           render_error("validation_failed", e.record.errors.full_messages.to_sentence, status: :unprocessable_content)
         end
 
+        def bookmarks
+          chat_session = find_chat_session
+          render json: {
+            bookmarks: PerformanceLogging.phase("chat_bookmarks_payload", chat_id: chat_session.id) { bookmarks_json(chat_session) }
+          }
+        end
+
         def confirm_pending_action
           chat_session = find_chat_session
           pending_action = find_pending_action(chat_session)
