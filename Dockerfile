@@ -34,7 +34,9 @@ WORKDIR /rails
 ARG NODE_MAJOR=22
 ARG CLAUDE_CODE_VERSION=2.1.226
 ARG CODEX_CLI_VERSION=0.147.0
-RUN apt-get update -qq && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update -qq && \
     apt-get install --no-install-recommends -y \
       ca-certificates curl default-mysql-client ffmpeg git gnupg libjemalloc2 libvips && \
     ln -s /usr/lib/$(uname -m)-linux-gnu/libjemalloc.so.2 /usr/local/lib/libjemalloc.so && \
@@ -42,7 +44,7 @@ RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y nodejs && \
     npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} @openai/codex@${CODEX_CLI_VERSION} && \
     npm cache clean --force && \
-    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # Set production environment variables and enable jemalloc for reduced memory usage and latency.
 # BUNDLE_WITHOUT excludes both groups so test-only gems (capybara, vcr,
@@ -68,9 +70,11 @@ RUN groupadd --system --gid 1000 rails && \
 FROM base AS build
 
 # Install packages needed to build gems
-RUN apt-get update -qq && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential default-libmysqlclient-dev git libvips libyaml-dev pkg-config && \
-    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # Install application gems
 COPY vendor/* ./vendor/
@@ -173,14 +177,16 @@ FROM docker.io/library/debian:bookworm-slim AS runtime-base
 ENV DEBIAN_FRONTEND=noninteractive \
     MISE_DATA_DIR=/opt/mise
 
-RUN apt-get update -qq && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update -qq && \
     apt-get install --no-install-recommends -y \
       ca-certificates curl \
       build-essential pkg-config \
       libffi-dev libssl-dev libyaml-dev \
       libxml2-dev libxslt-dev \
       zlib1g-dev libreadline-dev && \
-    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # Pinned: unpinned installs broke when mise v2026.7.0 moved to a glibc 2.39
 # baseline — newer than bookworm's 2.36 — so every cold rebuild of this stage
@@ -267,7 +273,9 @@ ARG MISE_GO_VERSION="1.26.5"
 # without sudo apt-get in `prepare:` (the worker runs as uid 1000 with
 # no sudo capability). Keep GitHub mutation tools like `gh` out of the
 # worker image; PR operations should go through Syrus service code.
-RUN apt-get update -qq && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update -qq && \
     apt-get install --no-install-recommends -y \
       build-essential clang clang-format clang-tidy pkg-config \
       libffi-dev libssl-dev libyaml-dev \
@@ -281,17 +289,19 @@ RUN apt-get update -qq && \
       cmake ninja-build \
       qt6-base-dev qt6-declarative-dev libgl1-mesa-dev xvfb xauth \
       doxygen graphviz lcov gcovr \
-    && rm -rf /var/lib/apt/lists /var/cache/apt/archives
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # Tailscale — connectivity plugin runs the daemon in the worker container.
 # The web pod uses the `app` stage and does not need the binaries.
-RUN curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg \
       | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null && \
     curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list \
       | tee /etc/apt/sources.list.d/tailscale.list && \
     apt-get update -qq && \
     apt-get install --no-install-recommends -y tailscale && \
-    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # Pull pre-compiled runtimes + the mise binary from the runtime-cache
 # stage. This is the layer that previously ran `mise install ...` and

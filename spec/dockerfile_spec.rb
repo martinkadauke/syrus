@@ -84,6 +84,14 @@ RSpec.describe "Dockerfile" do
     expect(worker_dev).to include("RUN go version")
   end
 
+  it "keeps apt archives on BuildKit cache mounts to avoid layer space exhaustion" do
+    dockerfile.scan(/RUN(?<body>.*?apt-get install.*?)(?=\n\n|FROM|\z)/m).flatten.each do |body|
+      expect(body).to include("--mount=type=cache,target=/var/cache/apt,sharing=locked")
+      expect(body).to include("--mount=type=cache,target=/var/lib/apt/lists,sharing=locked")
+      expect(body).to include("rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*")
+    end
+  end
+
   it "seeds /opt/mise from /opt/mise-seed on first boot via the entrypoint" do
     worker_deps = worker_deps_stage
     entrypoint = Rails.root.join("bin/docker-entrypoint").read
