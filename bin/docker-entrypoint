@@ -8,6 +8,13 @@ if [ -d /opt/mise-seed ] && [ -z "$(ls -A /opt/mise/installs 2>/dev/null)" ]; th
   /usr/local/bin/mise reshim
 fi
 
+# Older persisted /opt/mise volumes may have the Go runtime installed but no
+# global mise version, which leaves the go shim unusable.
+if [ -n "${SYRUS_MISE_GO_VERSION:-}" ] && [ -d "/opt/mise/installs/go/${SYRUS_MISE_GO_VERSION}" ]; then
+  /usr/local/bin/mise use --global "go@${SYRUS_MISE_GO_VERSION}" >/dev/null
+  /usr/local/bin/mise reshim go >/dev/null
+fi
+
 # If running the rails server then create or migrate existing database
 if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
   ./bin/rails db:prepare

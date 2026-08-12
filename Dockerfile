@@ -175,7 +175,8 @@ CMD ["./bin/thrust", "./bin/rails", "server"]
 FROM docker.io/library/debian:bookworm-slim AS runtime-base
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    MISE_DATA_DIR=/opt/mise
+    MISE_DATA_DIR=/opt/mise \
+    MISE_GLOBAL_CONFIG_FILE=/opt/mise/config.toml
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -229,6 +230,8 @@ FROM runtime-base AS runtime-go-cache
 
 ARG MISE_GO_VERSION="1.26.5"
 RUN /usr/local/bin/mise install go@$MISE_GO_VERSION && \
+    /usr/local/bin/mise use --global go@$MISE_GO_VERSION && \
+    /usr/local/bin/mise reshim go && \
     rm -rf /opt/mise/cache /opt/mise/tmp
 
 FROM runtime-base AS runtime-cache
@@ -325,7 +328,9 @@ RUN npm install -g yarn pnpm && npm cache clean --force && \
     ln -s /opt/python-tools/bin/uv /usr/local/bin/uv
 
 ENV PATH="/opt/python-tools/bin:/opt/mise/shims:${PATH}" \
-    MISE_DATA_DIR=/opt/mise
+    MISE_DATA_DIR=/opt/mise \
+    MISE_GLOBAL_CONFIG_FILE=/opt/mise/config.toml \
+    SYRUS_MISE_GO_VERSION=${MISE_GO_VERSION}
 
 # ============================================================================
 # Worker dev stage — `worker-deps` plus the same rails code + bundle

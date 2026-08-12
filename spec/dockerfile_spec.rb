@@ -79,8 +79,12 @@ RSpec.describe "Dockerfile" do
 
     expect(runtime_stage).to include("ARG MISE_GO_VERSION=\"1.26.5\"")
     expect(runtime_stage).to include("/usr/local/bin/mise install go@$MISE_GO_VERSION")
+    expect(runtime_stage).to include("/usr/local/bin/mise use --global go@$MISE_GO_VERSION")
+    expect(runtime_stage).to include("/usr/local/bin/mise reshim go")
     expect(worker_deps).to include("ARG MISE_GO_VERSION=\"1.26.5\"")
     expect(worker_deps).to include("PATH=\"/opt/python-tools/bin:/opt/mise/shims:${PATH}\"")
+    expect(worker_deps).to include("MISE_GLOBAL_CONFIG_FILE=/opt/mise/config.toml")
+    expect(worker_deps).to include("SYRUS_MISE_GO_VERSION=${MISE_GO_VERSION}")
     expect(worker_dev).to include("RUN go version")
   end
 
@@ -103,5 +107,7 @@ RSpec.describe "Dockerfile" do
     expect(entrypoint).to include("[ -d /opt/mise-seed ]")
     expect(entrypoint).to include("cp -rn /opt/mise-seed/. /opt/mise/")
     expect(entrypoint).to include("mise reshim")
+    expect(entrypoint).to include("/opt/mise/installs/go/${SYRUS_MISE_GO_VERSION}")
+    expect(entrypoint).to include("mise use --global \"go@${SYRUS_MISE_GO_VERSION}\"")
   end
 end
