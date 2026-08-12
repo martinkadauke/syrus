@@ -116,6 +116,11 @@ RSpec.configure do |config|
           },
           {
             verb: "GET",
+            path: "/api/v1/admin/operational_logs",
+            controller: "api/v1/admin/operational_logs#index"
+          },
+          {
+            verb: "GET",
             path: "/admin/performance",
             controller: "spa#show"
           },
