@@ -1641,6 +1641,36 @@ RSpec.describe ChatTurnJob do
     )
   end
 
+  it "skips oversized optional normalized session metadata" do
+    huge_transcript = {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "text",
+            text: "x" * 300.kilobytes
+          }
+        ]
+      }
+    }.to_json
+
+    ChatTurnJob.agent_runner = ->(**_) {
+      result_fixture(
+        session_id: "chat-session-1",
+        transcript_jsonl: "#{huge_transcript}\n"
+      )
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(chat.reload.provider_session).to have_attributes(
+      provider: "claude",
+      session_id: "chat-session-1",
+      transcript_jsonl: "#{huge_transcript}\n",
+      normalized_messages: nil
+    )
+  end
+
   it "passes effort_level to the agent runner when chat_effort is set" do
     chat.update!(chat_effort: "high")
     received = {}

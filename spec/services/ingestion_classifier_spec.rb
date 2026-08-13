@@ -152,4 +152,21 @@ RSpec.describe IngestionClassifier do
     expect(job.triaging_reason).to eq("classifier_uncertain")
     expect(job.runs).to be_empty
   end
+
+  it "bounds duplicate tokenization for huge issue bodies" do
+    job = Job.create!(
+      user: user,
+      repository: repository,
+      issue_number: 16,
+      issue_title: "Huge ingest payload",
+      issue_body: ("alpha " * 600) + ("tailtoken " * 10_000)
+    )
+    classifier = described_class.new(job: job, agent: agent_returning({}), github_client: github_client)
+
+    tokens = classifier.send(:job_text, job)
+
+    expect(tokens.size).to eq(described_class::DUPLICATE_TOKEN_LIMIT)
+    expect(tokens).to all(eq("alpha").or(eq("huge")).or(eq("ingest")).or(eq("payload")))
+    expect(tokens).not_to include("tailtoken")
+  end
 end

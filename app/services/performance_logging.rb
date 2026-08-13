@@ -195,15 +195,15 @@ module PerformanceLogging
     attrs = payload.to_h
     duration_ms = rounded_duration(attrs[:duration_ms] || attrs["duration_ms"])
     event = base_event(BROWSER_TRACE_EVENT).merge(
-        request_context,
-        "duration_ms" => duration_ms,
-        "trace_id" => safe_string(attrs[:trace_id] || attrs["trace_id"], 100),
-        "name" => safe_string(attrs[:name] || attrs["name"], 200),
-        "path" => safe_string(attrs[:path] || attrs["path"], 500),
-        "visibility_state" => safe_string(attrs[:visibility_state] || attrs["visibility_state"], 50),
-        "api_requests" => safe_api_requests(attrs[:api_requests] || attrs["api_requests"]),
-        "metadata" => safe_metadata(attrs[:metadata] || attrs["metadata"] || {})
-      ).compact
+      request_context,
+      "duration_ms" => duration_ms,
+      "trace_id" => safe_string(attrs[:trace_id] || attrs["trace_id"], 100),
+      "name" => safe_string(attrs[:name] || attrs["name"], 200),
+      "path" => safe_string(attrs[:path] || attrs["path"], 500),
+      "visibility_state" => safe_string(attrs[:visibility_state] || attrs["visibility_state"], 50),
+      "api_requests" => safe_api_requests(attrs[:api_requests] || attrs["api_requests"]),
+      "metadata" => safe_metadata(attrs[:metadata] || attrs["metadata"] || {})
+    ).compact
     emit(event, flush: false)
   end
 

@@ -26,6 +26,7 @@ RSpec.describe "API: /api/v1/app/performance_events", type: :request do
 
   it "records sanitized browser traces in the shared performance store" do
     sign_in_as(user)
+    allow(PerformanceLogging::Store).to receive(:append).and_call_original
 
     post "/api/v1/app/performance_events", params: {
       performance_event: {
@@ -53,6 +54,7 @@ RSpec.describe "API: /api/v1/app/performance_events", type: :request do
     }
 
     expect(response).to have_http_status(:accepted)
+    expect(PerformanceLogging::Store).not_to have_received(:append)
     event = PerformanceLogging::Store.recent(limit: 1).first
     expect(event).to include(
       "event" => PerformanceLogging::BROWSER_TRACE_EVENT,
