@@ -833,7 +833,7 @@ class ChatTurnJob < ApplicationJob
 
   def persist_optional_session_metadata(session, capture)
     return unless provider_session_has_attribute?(:normalized_messages)
-    return if capture.normalized_messages.blank?
+    return if capture.normalized_messages.nil?
 
     if JSON.generate(capture.normalized_messages).bytesize > 256.kilobytes
       Rails.logger.info(

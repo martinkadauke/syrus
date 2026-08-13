@@ -81,6 +81,7 @@ module App
       @cache_mutex.synchronize do
         @process_cache = {}
       end
+      ProviderCircuitBreaker.clear_read_cache!
     end
 
     def initialize(user:, provider:, now: Time.current)

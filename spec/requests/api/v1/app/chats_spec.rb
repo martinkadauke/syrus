@@ -1005,7 +1005,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     chat.messages.create!(role: "user", content: { "text" => "Keep this provider" })
 
     user.update!(chat_provider: "codex")
-    get "/api/v1/app/chats/#{chat.id}"
+    get "/api/v1/app/chats/#{chat.id}/bookmarks"
 
     expect(response).to have_http_status(:ok)
     expect(chat.reload.chat_provider).to eq("claude")
@@ -1372,7 +1372,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body["chat_available"]).to eq(true)
     expect(body["turn_in_flight"]).to eq(false)
     expect(body["agent_busy"]).to eq(false)
-    expect(body["bookmarks"]).to contain_exactly(include("label" => "Aqueducts", "chat_message_id" => message.id, "anchor_message_id" => message.id))
+    expect(body["bookmarks"]).to eq([])
     expect(body["agent_questions"]).to contain_exactly(include(
       "id" => question.id,
       "question" => "Which path?",
@@ -2322,6 +2322,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       command: "claude --print",
       workdir: chat.workspace_root.to_s,
       hostname: "worker-1",
+      pid: 12345,
       started_at: Time.current
     )
 
@@ -2485,6 +2486,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       command: "claude --print",
       workdir: chat.workspace_root.to_s,
       hostname: "worker-1",
+      pid: 12345,
       started_at: Time.current
     )
     attachment = {
@@ -2569,7 +2571,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     proposal_message = chat.messages.create!(role: "assistant", content: { "text" => "Epic proposal proposed." })
     tool_message.bookmarks.create!(label: "Wisdom App Epic", kind: "epic_origin")
 
-    get "/api/v1/app/chats/#{chat.id}"
+    get "/api/v1/app/chats/#{chat.id}/bookmarks"
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["bookmarks"]).to contain_exactly(
@@ -2591,7 +2593,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     tool_a.bookmarks.create!(label: "First tool", kind: "topic")
     tool_b.bookmarks.create!(label: "Second tool", kind: "topic")
 
-    queries = capture_sql { get "/api/v1/app/chats/#{chat.id}" }
+    queries = capture_sql { get "/api/v1/app/chats/#{chat.id}/bookmarks" }
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["bookmarks"]).to contain_exactly(
@@ -2610,7 +2612,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     second.bookmarks.create!(label: "Second topic", kind: "topic")
     first.bookmarks.create!(label: "First topic", kind: "topic")
 
-    queries = capture_sql { get "/api/v1/app/chats/#{chat.id}" }
+    queries = capture_sql { get "/api/v1/app/chats/#{chat.id}/bookmarks" }
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["bookmarks"].map { |bookmark| bookmark["label"] }).to eq([ "First topic", "Second topic" ])
@@ -3211,6 +3213,8 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["message"]).to eq("Bookmarked Aqueducts.")
+    get "/api/v1/app/chats/#{chat.id}/bookmarks"
+
     expect(parse_body["bookmarks"]).to contain_exactly(include("label" => "Aqueducts", "chat_message_id" => message.id, "anchor_message_id" => message.id))
   end
 
@@ -3226,6 +3230,8 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["message"]).to eq("Bookmarked Arch plan.")
+    get "/api/v1/app/chats/#{chat.id}/bookmarks"
+
     expect(parse_body["bookmarks"]).to contain_exactly(include("label" => "Arch plan", "chat_message_id" => latest.id, "anchor_message_id" => latest.id))
   end
 
