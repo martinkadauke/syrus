@@ -833,6 +833,15 @@ class ChatTurnJob < ApplicationJob
 
   def persist_optional_session_metadata(session, capture)
     return unless provider_session_has_attribute?(:normalized_messages)
+    return if capture.normalized_messages.blank?
+
+    if JSON.generate(capture.normalized_messages).bytesize > 256.kilobytes
+      Rails.logger.info(
+        "[chat_session] skipping oversized normalized metadata " \
+        "chat_id=#{@chat.id} session_id=#{capture.session_id}"
+      )
+      return
+    end
 
     session.update!(normalized_messages: capture.normalized_messages)
   rescue StandardError => e
