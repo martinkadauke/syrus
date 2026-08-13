@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_11_201912) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_13_143000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -214,7 +214,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_201912) do
     t.bigint "pending_action_id"
     t.integer "proposal_id"
     t.string "role", null: false
-    t.integer "sender_user_id"
+    t.bigint "sender_user_id"
     t.string "tool_name"
     t.string "tool_use_id"
     t.datetime "updated_at", null: false
@@ -1335,6 +1335,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_201912) do
     t.integer "user_id", null: false
     t.index ["chat_message_id"], name: "index_provider_availability_evidences_on_chat_message_id"
     t.index ["chat_session_id"], name: "index_provider_availability_evidences_on_chat_session_id"
+    t.index ["provider", "status", "observed_at"], name: "idx_provider_evidence_provider_status_observed"
     t.index ["provider", "status", "observed_at"], name: "idx_provider_evidence_status_observed"
     t.index ["provider", "status", "repair_status", "observed_at"], name: "idx_provider_evidence_circuit_repair"
     t.index ["repaired_by_user_id"], name: "index_provider_availability_evidences_on_repaired_by_user_id"
@@ -1342,6 +1343,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_201912) do
     t.index ["user_id", "provider", "account_id", "model", "observed_at"], name: "idx_provider_evidence_scope_observed"
     t.index ["user_id", "provider", "source", "observed_at", "id"], name: "idx_provider_evidence_user_provider_source_recent"
     t.index ["user_id", "provider", "status", "observed_at", "id"], name: "idx_provider_evidence_user_provider_status_recent"
+    t.index ["user_id", "provider", "status", "observed_at"], name: "idx_provider_evidence_user_provider_status_observed"
     t.index ["user_id"], name: "index_provider_availability_evidences_on_user_id"
   end
 
@@ -1599,6 +1601,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_201912) do
     t.integer "user_id", null: false
     t.index ["agent_provider", "cost_usd"], name: "idx_runs_spending_provider_cost"
     t.index ["agent_provider", "created_at", "cost_usd"], name: "idx_runs_spending_provider_window"
+    t.index ["agent_provider", "state", "finished_at"], name: "idx_runs_provider_state_finished"
     t.index ["cost_usd", "created_at"], name: "idx_runs_spending_top_cost"
     t.index ["created_at", "cost_usd"], name: "index_runs_on_created_at_and_cost_usd"
     t.index ["created_at", "job_id", "cost_usd"], name: "idx_runs_spending_window_jobs"
@@ -1617,6 +1620,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_11_201912) do
     t.index ["step_id"], name: "index_runs_on_step_id"
     t.index ["user_id", "agent_provider", "finished_at", "updated_at", "id"], name: "idx_runs_provider_latest_finished"
     t.index ["user_id", "agent_provider", "state", "finished_at", "updated_at", "id"], name: "idx_runs_user_provider_state_recent"
+    t.index ["user_id", "agent_provider", "state", "finished_at"], name: "idx_runs_user_provider_state_finished"
     t.index ["user_id", "created_at", "cost_usd"], name: "idx_runs_spending_user_window"
     t.index ["user_id", "state", "agent_provider", "finished_at", "updated_at", "id"], name: "idx_runs_user_state_provider_recent"
     t.index ["user_id"], name: "index_runs_on_user_id"
