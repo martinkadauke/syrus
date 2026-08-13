@@ -953,7 +953,7 @@ RSpec.describe SyrusYml do
       expect(config.visual_review.seed_notes).to eq("Log in as demo@example.com / password to reach the dashboard.")
     end
 
-    it "defaults enabled to nil (defers to the instance-wide Feature default), rounds to 1, when_files_changed to nil, and seed_notes to nil when omitted" do
+    it "defaults enabled to nil (defers to the instance-wide AppSetting default), rounds to 1, when_files_changed to nil, and seed_notes to nil when omitted" do
       config = parse(<<~YAML)
         visual_review: {}
       YAML
