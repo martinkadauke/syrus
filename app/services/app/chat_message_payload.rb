@@ -34,27 +34,33 @@ module App
         records: messages,
         associations: [
           :chat_session,
-          :pending_action,
-          {
-            proposal: [
+          :pending_action
+        ]
+      ).call
+      proposal_messages = messages.select(&:proposal_id)
+      return if proposal_messages.empty?
+
+      ActiveRecord::Associations::Preloader.new(
+        records: proposal_messages,
+        associations: {
+          proposal: [
+            :chat_session,
+            :repository,
+            :job,
+            :epic,
+            :target_epic,
+            :messages,
+            { dependencies: [ :chat_session, :repository, :job, :epic, :messages ] },
+            { child_proposals: [
               :chat_session,
               :repository,
               :job,
               :epic,
-              :target_epic,
               :messages,
-              { dependencies: [ :chat_session, :repository, :job, :epic, :messages ] },
-              { child_proposals: [
-                :chat_session,
-                :repository,
-                :job,
-                :epic,
-                :messages,
-                { dependencies: [ :chat_session, :repository, :job, :epic, :messages ] }
-              ] }
-            ]
-          }
-        ]
+              { dependencies: [ :chat_session, :repository, :job, :epic, :messages ] }
+            ] }
+          ]
+        }
       ).call
     end
 

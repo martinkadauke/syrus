@@ -53,6 +53,14 @@ RSpec.describe App::ChatMessagePayload do
     expect(Time.iso8601(payload.fetch(:created_at))).to be_within(1.second).of(message.created_at)
   end
 
+  it "does not preload proposal graphs for messages without proposals" do
+    messages = Array.new(3) { |index| chat.messages.create!(role: "assistant", content: { "text" => "Plain message #{index}" }) }
+
+    queries = capture_sql { described_class.messages(messages, repository: repository) }
+
+    expect(queries.grep(/FROM ["`]?chat_proposals["`]?/i)).to be_empty
+  end
+
   it "returns materialized job details for a confirmed job proposal" do
     job = Factories.job_record(user: user, repository: repository, issue_title: "Add inspection tools", state: "open")
     proposal = chat.proposals.create!(
@@ -554,5 +562,16 @@ RSpec.describe App::ChatMessagePayload do
     payload = described_class.messages([ message ], repository: repository).first.fetch(:proposal)
 
     expect(payload.fetch(:media_ids)).to eq([])
+  end
+
+  def capture_sql
+    queries = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _started, _finished, _id, payload|
+      queries << payload[:sql] unless payload[:name].to_s.match?(/\ASCHEMA|TRANSACTION\z/)
+    end
+    yield
+    queries
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
   end
 end
