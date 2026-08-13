@@ -6,6 +6,8 @@ class IngestionClassifier
   DEFAULT_TIMEOUT_SECONDS = 30
   DEFAULT_MAX_TURNS = 3
   DUPLICATE_CANDIDATE_LIMIT = 5
+  DUPLICATE_TEXT_BYTES = 20_000
+  DUPLICATE_TOKEN_LIMIT = 400
 
   Result = Data.define(:epic_id, :invalid_kind, :reason, :evidence_urls, :error) do
     def success? = error.nil?
@@ -172,6 +174,7 @@ class IngestionClassifier
   end
 
   def duplicate_candidate_index
+    job_tokens = job_text(job)
     candidates = repository.jobs
                            .open_threads
                            .where.not(id: job.id)
@@ -180,7 +183,7 @@ class IngestionClassifier
                            .order(created_at: :desc)
                            .limit(100)
 
-    candidates.map { |candidate| [ text_similarity(job_text(job), job_text(candidate)), candidate ] }
+    candidates.map { |candidate| [ text_similarity(job_tokens, job_text(candidate)), candidate ] }
               .select { |score, _candidate| score.positive? }
               .sort_by { |score, candidate| [ -score, -candidate.created_at.to_i ] }
               .first(DUPLICATE_CANDIDATE_LIMIT)
@@ -198,7 +201,8 @@ class IngestionClassifier
   end
 
   def job_text(record)
-    "#{record.issue_title} #{record.issue_body}".downcase.scan(/[a-z0-9]+/)
+    text = "#{record.issue_title} #{record.issue_body}".downcase.safe_byteslice(0, DUPLICATE_TEXT_BYTES)
+    text.to_s.split(/[^a-z0-9]+/).reject(&:blank?).first(DUPLICATE_TOKEN_LIMIT)
   end
 
   def text_similarity(left_tokens, right_tokens)
