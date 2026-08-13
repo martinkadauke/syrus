@@ -194,8 +194,7 @@ module PerformanceLogging
 
     attrs = payload.to_h
     duration_ms = rounded_duration(attrs[:duration_ms] || attrs["duration_ms"])
-    emit(
-      base_event(BROWSER_TRACE_EVENT).merge(
+    event = base_event(BROWSER_TRACE_EVENT).merge(
         request_context,
         "duration_ms" => duration_ms,
         "trace_id" => safe_string(attrs[:trace_id] || attrs["trace_id"], 100),
@@ -205,7 +204,7 @@ module PerformanceLogging
         "api_requests" => safe_api_requests(attrs[:api_requests] || attrs["api_requests"]),
         "metadata" => safe_metadata(attrs[:metadata] || attrs["metadata"] || {})
       ).compact
-    )
+    emit(event, flush: false)
   end
 
   def slow_request_threshold_ms
@@ -269,9 +268,9 @@ module PerformanceLogging
     path.start_with?("/api/v1/admin/performance", "/api/v1/app/admin/performance", "/api/v1/app/performance_events")
   end
 
-  def emit(event)
+  def emit(event, flush: true)
     Rails.logger.info(event.to_json)
-    Store.append(event)
+    flush ? Store.append(event) : Store.buffer_event(event)
   rescue StandardError
     nil
   end
