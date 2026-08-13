@@ -79,7 +79,7 @@ module Admin
     end
 
     def workflows_payload
-      workflows = job.workflows.includes(steps: [ runs: [ :run_diagnostic, :run_failure_classification, :job_logs ] ])
+      workflows = job.workflows.includes(steps: [ runs: [ :run_diagnostic, :run_failure_classification ] ])
                      .reorder(created_at: :asc, id: :asc)
                      .to_a
       active = workflows.select { |workflow| workflow.state.in?(%w[queued running]) }
@@ -138,7 +138,7 @@ module Admin
     end
 
     def runs_payload
-      runs = job.runs.includes(:run_diagnostic, :run_failure_classification, :job_logs, step: :workflow)
+      runs = job.runs.includes(:run_diagnostic, :run_failure_classification, step: :workflow)
                 .order(:created_at)
                 .to_a
       active = runs.select { |run| run.state.in?(%w[queued running]) }

@@ -30,7 +30,7 @@ module Mcp::Tools
           :parent_job,
           :epic,
           { dependencies: [ :depends_on_epic, { depends_on_job: [ :repository, :dependencies ] } ] },
-          { workflows: { steps: { runs: [ :run_diagnostic, :run_failure_classification, :job_logs ] } } }
+          { workflows: { steps: { runs: [ :run_diagnostic, :run_failure_classification ] } } }
         ).find_by(id: job_id)
         return Mcp::Tools.unauthorized("Admin access required") unless job
 

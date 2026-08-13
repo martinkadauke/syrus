@@ -30,7 +30,7 @@ module Mcp::Tools
             :repository,
             :deployment_stage_statuses,
             { dependencies: [ { depends_on_job: :repository }, :depends_on_epic ] },
-            { workflows: { steps: { runs: :job_logs } } }
+            { workflows: { steps: :runs } }
           ]
         )
 
@@ -53,13 +53,20 @@ module Mcp::Tools
       def transcript_payload(workflow)
         return nil unless workflow
 
-        transcript = workflow.steps.flat_map do |step|
-          step.runs.flat_map do |run|
-            run.job_logs.map { |log| log.chunk.to_s }
-          end
-        end.join
+        run_ids = workflow.steps.flat_map { |step| step.runs.map(&:id) }.compact
+        return Mcp::Tools.head_tail("") if run_ids.empty?
 
-        Mcp::Tools.head_tail(transcript)
+        logs = JobLog.where(run_id: run_ids).order(:sequence, :id)
+        total_chunks = logs.count
+        sample_chunks = logs.limit(20).pluck(:chunk)
+        tail_chunks = total_chunks > 20 ? logs.offset([ total_chunks - 20, 0 ].max).limit(20).pluck(:chunk) : []
+        text = (sample_chunks + tail_chunks).join
+        payload = Mcp::Tools.head_tail(text)
+        payload[:total_chunks] = total_chunks
+        payload[:sampled_chunks] = sample_chunks.size + tail_chunks.size
+        payload[:truncated] = total_chunks > payload[:sampled_chunks]
+        payload[:read_run_transcript_hint] = "Use read_run_transcript(run_id, page, per) for full paginated logs."
+        payload
       end
     end
   end

@@ -22,6 +22,18 @@ RSpec.describe Mcp::Tools::ReadJobTool do
     JSON.parse(response.fetch(:result).fetch(:content).first.fetch(:text), symbolize_names: true)
   end
 
+  def capture_sql
+    queries = []
+    callback = lambda do |_name, _started, _finished, _id, payload|
+      next if payload[:cached] || payload[:name] == "SCHEMA"
+
+      queries << payload[:sql]
+    end
+
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { yield }
+    queries
+  end
+
   it "returns metadata, latest workflow summary, and transcript head/tail" do
     job = Factories.job(repository: repository, issue_number: 123, issue_title: "Fix the aqueduct", branch_name: "syrus/issue-123", pr_number: 9)
     upstream = Factories.job_record(user: user, repository: repository, issue_title: "Survey the aqueduct", state: "closed")
@@ -52,9 +64,23 @@ RSpec.describe Mcp::Tools::ReadJobTool do
     expect(payload[:workflow_count]).to eq(1)
     expect(payload[:workflows_index]).to contain_exactly(a_hash_including(id: workflow.id, trigger_kind: "initial", summary: "Raised the aqueduct by one cubit.", run_count: 1))
     expect(payload[:latest_workflow]).to include(id: workflow.id, trigger_kind: "initial", summary: "Raised the aqueduct by one cubit.")
-    expect(payload[:transcript]).to include(truncated: true)
+    expect(payload[:transcript]).to include(
+      total_chunks: 2,
+      sampled_chunks: 2,
+      read_run_transcript_hint: "Use read_run_transcript(run_id, page, per) for full paginated logs."
+    )
     expect(payload[:transcript][:head]).to start_with("head-")
     expect(payload[:transcript][:tail]).to include("tail")
+  end
+
+  it "does not preload every job log row through the workflow graph" do
+    job = Factories.job(repository: repository)
+    run = job.initial_run
+    50.times { |index| run.job_logs.create!(sequence: index, kind: "stdout", chunk: "chunk-#{index}") }
+
+    queries = capture_sql { call_tool(job_id: job.id) }
+
+    expect(queries.grep(/SELECT [`"]?job_logs[`"]?\\.\\* FROM [`"]?job_logs[`"]? WHERE [`"]?job_logs[`"]?\\.[`"]?run_id[`"]? IN/i)).to be_empty
   end
 
   it "includes commits_behind_base when the job has a known staleness distance" do
