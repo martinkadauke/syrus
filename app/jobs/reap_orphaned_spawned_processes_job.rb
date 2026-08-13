@@ -18,11 +18,24 @@ class ReapOrphanedSpawnedProcessesJob < ApplicationJob
 
   def perform
     live_hosts = live_process_hostnames
+    reap_pidless_processes
     reap_cross_host_orphans(live_hosts) if live_hosts # SQ unreachable — single-DB dev/test
     reap_stale_chat_turns
   end
 
   private
+
+  def reap_pidless_processes
+    SpawnedProcess.pidless_running.find_each do |sp|
+      finished_at = Time.current
+      rows = SpawnedProcess.where(id: sp.id, finished_at: nil, pid: nil)
+                           .update_all(finished_at: finished_at, outcome: "orphaned")
+      next if rows.zero?
+
+      Rails.logger.info("[ReapOrphanedSpawnedProcessesJob] finalized pidless SpawnedProcess ##{sp.id} on #{sp.hostname} (kind #{sp.kind})")
+      ChatStopReconciler.reconcile_spawned_process!(sp, finished_at: finished_at)
+    end
+  end
 
   def reap_cross_host_orphans(live_hosts)
     SpawnedProcess.running

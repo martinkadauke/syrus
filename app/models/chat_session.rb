@@ -270,8 +270,8 @@ class ChatSession < ApplicationRecord
   end
 
   def agent_busy?
-    SpawnedProcess.running
-                  .where(kind: "agent", workdir: workspace_root.to_s)
+    SpawnedProcess.live_agent
+                  .where(workdir: workspace_root.to_s)
                   .exists?
   end
 

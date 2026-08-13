@@ -46,6 +46,17 @@ RSpec.describe ReapOrphanedSpawnedProcessesJob do
     expect(live).to be_running
   end
 
+  it "finalizes old pidless rows even when their hostname is still live" do
+    pidless = fixture(hostname: "live-pod-abc", pid: nil, started_at: 2.minutes.ago)
+    stub_live_hosts("live-pod-abc")
+
+    described_class.perform_now
+
+    pidless.reload
+    expect(pidless).to be_finished
+    expect(pidless.outcome).to eq("orphaned")
+  end
+
   it "leaves preview rows whose hostname has a fresh InstanceVersion heartbeat alone" do
     preview = fixture(kind: "preview", hostname: "syrus-preview-abc")
     allow_any_instance_of(described_class)

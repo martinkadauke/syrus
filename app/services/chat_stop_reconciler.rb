@@ -137,8 +137,8 @@ class ChatStopReconciler
   end
 
   def live_agent_process?(chat)
-    SpawnedProcess.running
-                  .where(kind: "agent", workdir: chat.workspace_root.to_s)
+    SpawnedProcess.live_agent
+                  .where(workdir: chat.workspace_root.to_s)
                   .exists?
   end
 

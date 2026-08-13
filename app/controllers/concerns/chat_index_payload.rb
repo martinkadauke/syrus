@@ -165,7 +165,7 @@ module ChatIndexPayload
     busy_workdirs = if workdirs_by_id.empty?
       []
     else
-      SpawnedProcess.running.where(kind: "agent", workdir: workdirs_by_id.values).pluck(:workdir)
+      SpawnedProcess.live_agent.where(workdir: workdirs_by_id.values).pluck(:workdir)
     end
     providers = chat_sessions.map(&:effective_chat_provider).compact.uniq
 

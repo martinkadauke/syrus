@@ -30,7 +30,8 @@ RSpec.describe ChatStopReconciler do
       command: "claude --print",
       workdir: chat.workspace_root.to_s,
       hostname: "worker-1",
-      started_at: 15.seconds.ago
+      started_at: 15.seconds.ago,
+      pid: 1234
     )
 
     expect {

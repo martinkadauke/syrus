@@ -303,13 +303,16 @@ RSpec.describe ChatSession do
     session = described_class.create!(repository: repo, user: repo.user)
     expect(session).not_to be_agent_busy
 
-    SpawnedProcess.create!(
+    pidless = SpawnedProcess.create!(
       kind: "agent",
       command: "claude --print",
       workdir: session.workspace_root.to_s,
       hostname: "worker-1",
       started_at: Time.current
     )
+    expect(session).not_to be_agent_busy
+
+    pidless.update!(pid: 1234)
 
     expect(session).to be_agent_busy
   end

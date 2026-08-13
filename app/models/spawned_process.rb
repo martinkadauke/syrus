@@ -36,6 +36,12 @@ class SpawnedProcess < ApplicationRecord
   scope :stale, ->(threshold = STALE_THRESHOLD) {
     running.where("(last_chunk_at IS NULL AND started_at < :t) OR last_chunk_at < :t", t: threshold.ago)
   }
+  scope :live_agent, -> {
+    running.where(kind: "agent").where.not(pid: nil)
+  }
+  scope :pidless_running, ->(threshold = 1.minute) {
+    running.where(pid: nil).where("started_at < ?", threshold.ago)
+  }
   scope :recent_or_active, ->(window = 1.hour) {
     where("finished_at IS NULL OR finished_at >= ?", window.ago)
   }

@@ -250,8 +250,8 @@ module Mcp::Tools
       return { message_counts: {}, pending_action_counts: {}, busy_chat_ids: Set.new } if chat_ids.empty?
 
       workdirs_by_chat_id = chats.to_h { |chat| [ chat.id, chat.workspace_root.to_s ] }
-      busy_workdirs = SpawnedProcess.running
-                                  .where(kind: "agent", workdir: workdirs_by_chat_id.values)
+      busy_workdirs = SpawnedProcess.live_agent
+                                  .where(workdir: workdirs_by_chat_id.values)
                                   .distinct
                                   .pluck(:workdir)
                                   .to_set
