@@ -121,7 +121,7 @@ module InputSources
         Epic.find_or_create_by!(
           user: user,
           repository: repository,
-          github_issue_url: nil
+          github_issue_url: linear_epic_url(issue)
         ) do |epic|
           epic.title = marker[:name]
           epic.description = issue_body
@@ -149,6 +149,17 @@ module InputSources
 
     def issue_url_for_reference(reference)
       "https://github.com/#{reference[:owner]}/#{reference[:repo]}/issues/#{reference[:number]}"
+    end
+
+    # `Epic#github_issue_url` doubles as the model's dedup key (see
+    # InputSources::Github#ingest_epic_marker!). A Linear issue has no
+    # GitHub URL, so a constant nil here would make every Linear-declared
+    # Epic for a given user/repository collide with the first one via
+    # find_or_create_by!. Use a synthetic, per-issue-unique identifier
+    # instead — clearly not a real URL, so it can't be mistaken for a
+    # clickable GitHub link.
+    def linear_epic_url(issue)
+      "linear:issue:#{issue['id']}"
     end
   end
 end
