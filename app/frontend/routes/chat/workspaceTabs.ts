@@ -15,7 +15,6 @@ import {
   CHAT_WORKSPACE_WIDTH_KEY
 } from "./constants"
 import { codingFilesTabVisible, jobsTabVisible } from "./utils"
-import { whiteboardElements } from "./whiteboardScene"
 
 export type WorkspaceTab = "whiteboard" | "context" | "media" | "files" | "diff" | "jobs"
 export type MobileChatTab = "chat" | WorkspaceTab
@@ -52,7 +51,7 @@ export function availableWorkspaceTabs(payload: ChatPayload, simpleMode = false)
 
 export function defaultWorkspaceTab(payload: ChatPayload, simpleMode = false): WorkspaceTab {
   const tabs = availableWorkspaceTabs(payload, simpleMode)
-  const preferred = whiteboardElements(payload).length > 0 ? "whiteboard" : "context"
+  const preferred = payload.whiteboard.loaded && payload.whiteboard.elements.length > 0 ? "whiteboard" : "context"
   return tabs.includes(preferred) ? preferred : tabs[0]
 }
 

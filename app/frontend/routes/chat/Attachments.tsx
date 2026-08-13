@@ -1,8 +1,8 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { useEffect, useRef, useState } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import "@excalidraw/excalidraw/index.css"
-import { addChatAttachment, deleteChatAttachment, type ChatAttachmentResult, type ChatAttachmentRow, type ChatPayload } from "../../api/chats"
+import { addChatAttachment, deleteChatAttachment, fetchChatContext, type ChatAttachmentResult, type ChatAttachmentRow, type ChatContextPayload, type ChatPayload } from "../../api/chats"
 import { useT } from "../../hooks/useT"
 import { errorMessage } from "../../lib/errorMessage"
 import { type ChatQueryKey } from "./constants"
@@ -22,6 +22,7 @@ const SUPERVISOR_ATTACHMENT_TYPES = ["Document"] as const
 
 export function Attachments({ payload, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const { t } = useT("chat")
+  const contextPayload = useChatContextPayload(payload, queryKey)
   const supervisorChat = isSupervisorChat(payload)
   return (
     <>
@@ -31,18 +32,18 @@ export function Attachments({ payload, queryKey, onNotice }: { payload: ChatPayl
       <div className="space-y-4">
         {supervisorChat ? null : (
           <>
-            <AttachmentGroup label="Repos" rows={payload.attachment_groups.repositories} queryKey={queryKey} onNotice={onNotice} />
-            <AttachmentGroup label="Epics" rows={payload.attachment_groups.epics} queryKey={queryKey} onNotice={onNotice} />
-            <AttachmentGroup label="Jobs" rows={payload.attachment_groups.jobs} queryKey={queryKey} onNotice={onNotice} />
+            <AttachmentGroup label="Repos" rows={contextPayload.attachment_groups.repositories} queryKey={queryKey} onNotice={onNotice} />
+            <AttachmentGroup label="Epics" rows={contextPayload.attachment_groups.epics} queryKey={queryKey} onNotice={onNotice} />
+            <AttachmentGroup label="Jobs" rows={contextPayload.attachment_groups.jobs} queryKey={queryKey} onNotice={onNotice} />
           </>
         )}
-        <AttachmentGroup label="Documents" rows={payload.attachment_groups.documents} queryKey={queryKey} onNotice={onNotice} />
+        <AttachmentGroup label="Documents" rows={contextPayload.attachment_groups.documents} queryKey={queryKey} onNotice={onNotice} />
       </div>
       <section>
         <div className="mb-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">In-scope documents</div>
-        {(payload.documents_in_scope ?? []).length > 0 ? (
+        {(contextPayload.documents_in_scope ?? []).length > 0 ? (
           <div className="space-y-1">
-            {(payload.documents_in_scope ?? []).map((document) => (
+            {(contextPayload.documents_in_scope ?? []).map((document) => (
               <div className="rounded border border-gray-200 px-2 py-1.5 text-xs dark:border-gray-700" key={document.id}>
                 <div className="font-medium text-gray-800 dark:text-gray-100">{document.title}</div>
                 <div className="font-mono text-[0.7rem] text-gray-500 dark:text-gray-400">{document.repository_slug}</div>
@@ -53,6 +54,48 @@ export function Attachments({ payload, queryKey, onNotice }: { payload: ChatPayl
       </section>
     </>
   )
+}
+
+function useChatContextPayload(payload: ChatPayload, queryKey: ChatQueryKey): ChatContextPayload {
+  const contextPath = chatContextPath(payload)
+  const queryClient = useQueryClient()
+  const context = useQuery({
+    queryKey: ["chat-context", String(payload.chat.id), queryKey[2]],
+    queryFn: ({ signal }) => fetchChatContext(appendSearch(contextPath, queryKey[2]), { signal }),
+    initialData: hasContextPayload(payload) ? {
+      attachment_groups: payload.attachment_groups,
+      documents_in_scope: payload.documents_in_scope,
+      attachment_results: payload.attachment_results
+    } : undefined
+  })
+
+  useEffect(() => {
+    const data = context.data
+    if (!data) return
+
+    queryClient.setQueriesData<ChatPayload>({ queryKey: ["chats", String(payload.chat.id)] }, (current) => current ? {
+      ...current,
+      attachment_groups: data.attachment_groups,
+      documents_in_scope: data.documents_in_scope,
+      attachment_results: data.attachment_results
+    } : current)
+  }, [context.data, payload.chat.id, queryClient])
+
+  return context.data ?? emptyContextPayload()
+}
+
+function hasContextPayload(payload: ChatPayload) {
+  return (payload.documents_in_scope ?? []).length > 0 ||
+    (payload.attachment_results ?? []).length > 0 ||
+    Object.values(payload.attachment_groups).some((rows) => rows.length > 0)
+}
+
+function emptyContextPayload(): ChatContextPayload {
+  return {
+    attachment_groups: { repositories: [], epics: [], jobs: [], documents: [] },
+    documents_in_scope: [],
+    attachment_results: []
+  }
 }
 
 function AttachmentGroup({ label, rows, queryKey, onNotice }: { label: string; rows: ChatAttachmentRow[]; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
@@ -122,9 +165,21 @@ export function AddAttachment({ payload, prefix, queryKey, onAttached, onNotice 
   const attachmentTypes = isSupervisorChat(payload) ? SUPERVISOR_ATTACHMENT_TYPES : DEFAULT_ATTACHMENT_TYPES
   type AttachmentType = typeof attachmentTypes[number]
   const initialType = normalizeAttachmentType(params.get("attachment_type"), attachmentTypes)
-  const attachmentResults = (payload.attachment_results ?? []).filter((record) => attachmentTypes.some((attachmentType) => attachmentType === record.type))
   const [type, setType] = useState<AttachmentType>(initialType)
   const [query, setQuery] = useState(params.get("attachment_query") || "")
+  const contextPath = chatContextPath(payload)
+  const contextSearch = useMemo(() => {
+    const next = new URLSearchParams(location.search)
+    next.set("attachment_type", type)
+    if (query.trim()) next.set("attachment_query", query.trim())
+    return `?${next.toString()}`
+  }, [location.search, query, type])
+  const context = useQuery({
+    queryKey: ["chat-context", String(payload.chat.id), contextSearch],
+    queryFn: ({ signal }) => fetchChatContext(appendSearch(contextPath, contextSearch), { signal }),
+    enabled: true
+  })
+  const attachmentResults = (context.data?.attachment_results ?? payload.attachment_results ?? []).filter((record) => attachmentTypes.some((attachmentType) => attachmentType === record.type))
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const submitTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const add = useMutation({
@@ -236,6 +291,10 @@ export function AddAttachment({ payload, prefix, queryKey, onAttached, onNotice 
       </div>
     </div>
   )
+}
+
+function chatContextPath(payload: ChatPayload) {
+  return payload.paths.app_context_path || `/api/v1/app/chats/${payload.chat.id}/context`
 }
 
 function normalizeAttachmentType<T extends readonly string[]>(candidate: string | null, allowed: T): T[number] {

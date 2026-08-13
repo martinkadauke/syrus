@@ -581,11 +581,13 @@ describe("chat attachment popup", () => {
       if (path === "/api/v1/app/chats/8/mark_read" && init?.method === "PATCH") {
         return Promise.resolve(new Response(null, { status: 204 }))
       }
-      if (path === "/api/v1/app/chats/8?attachment_type=Epic") {
+      if (path === "/api/v1/app/chats/8/context?attachment_type=Epic") {
         return new Promise((resolve) => {
-          resolveEpicSearch = () => resolve(jsonResponse(chatPayload({
+          resolveEpicSearch = () => resolve(jsonResponse({
+            attachment_groups: { repositories: [], epics: [], jobs: [], documents: [] },
+            documents_in_scope: [],
             attachment_results: [{ type: "Epic", id: 2, label: "Release planning" }]
-          })))
+          }))
         })
       }
 
@@ -3619,9 +3621,20 @@ function mockChatPayload(payload: unknown) {
     if (path === "/api/v1/app/chats/8/mark_read" && init?.method === "PATCH") {
       return Promise.resolve(new Response(null, { status: 204 }))
     }
+    if (path.startsWith("/api/v1/app/chats/8/context")) {
+      return Promise.resolve(jsonResponse(emptyChatContextPayload()))
+    }
 
     return Promise.resolve(jsonResponse(payload))
   })
+}
+
+function emptyChatContextPayload() {
+  return {
+    attachment_groups: { repositories: [], epics: [], jobs: [], documents: [] },
+    documents_in_scope: [],
+    attachment_results: []
+  }
 }
 
 function mockDesktopViewport() {
@@ -3663,6 +3676,19 @@ function mockChatAttachmentFetch() {
     const path = String(input)
     if (path === "/api/v1/app/chats/8/mark_read" && init?.method === "PATCH") {
       return Promise.resolve(new Response(null, { status: 204 }))
+    }
+    if (path.startsWith("/api/v1/app/chats/8/context")) {
+      return Promise.resolve(jsonResponse({
+        ...emptyChatContextPayload(),
+        attachment_groups: {
+          repositories: [],
+          epics: [],
+          jobs: [],
+          documents: [
+            { id: 31, label: "Runbook.md", app_detach_path: "/api/v1/app/chats/8/attachments/31" }
+          ]
+        }
+      }))
     }
 
     return Promise.resolve(jsonResponse(chatPayload({
@@ -3856,6 +3882,7 @@ function chatPayload(overrides: { chat?: Record<string, unknown>; messages?: Arr
       app_stop_path: "/api/v1/app/chats/8/stop",
       app_bookmarks_path: "/api/v1/app/chats/8/bookmarks",
       app_bookmarks_index_path: "/api/v1/app/chats/8/bookmarks",
+      app_context_path: "/api/v1/app/chats/8/context",
       app_attachments_path: "/api/v1/app/chats/8/attachments",
       app_whiteboard_path: "/api/v1/app/chats/8/whiteboard",
       app_scratchpad_reorder_path: "/api/v1/app/chats/8/scratchpad_items/reorder"

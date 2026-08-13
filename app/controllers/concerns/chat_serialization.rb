@@ -10,7 +10,7 @@ module ChatSerialization
   private
 
   def video_walkthroughs_json(chat_session)
-    chat_session.video_walkthroughs.newest_first.map do |walkthrough|
+    chat_session.video_walkthroughs.with_attached_file.newest_first.map do |walkthrough|
       {
         id: walkthrough.id,
         title: walkthrough.display_title,
@@ -29,10 +29,8 @@ module ChatSerialization
       PerformanceLogging.phase("chat_payload.preload", chat_id: chat_session.id) { preload_chat_payload_associations(chat_session) }
       messages, has_more_older = PerformanceLogging.phase("chat_payload.messages_page", chat_id: chat_session.id) { paginated_tail(chat_session) }
       repository = chat_session.repository
-      attachment_groups = PerformanceLogging.phase("chat_payload.attachment_groups", chat_id: chat_session.id) do
-        chat_session.chat_attachments.includes(:attachable).order(:attachable_type, :attached_at, :id).group_by(&:attachable_type)
-      end
-      whiteboard_scene = PerformanceLogging.phase("chat_payload.whiteboard", chat_id: chat_session.id) { whiteboard_state_for_payload(chat_session) }
+      attachment_groups = PerformanceLogging.phase("chat_payload.attachment_groups", chat_id: chat_session.id) { attachment_groups_for_payload(chat_session) }
+      whiteboard_scene = PerformanceLogging.phase("chat_payload.whiteboard", chat_id: chat_session.id) { whiteboard_state_for_payload(chat_session, include_scene: include_whiteboard_in_chat_payload?) }
       speech_to_text = PerformanceLogging.phase("chat_payload.speech_to_text", chat_id: chat_session.id) do
         ChatSpeechToText::Capability.for(user: Current.user).as_json
       end
@@ -55,13 +53,14 @@ module ChatSerialization
         scratchpad_items: PerformanceLogging.phase("chat_payload.scratchpad_items", chat_id: chat_session.id) { chat_session.scratchpad_items_payload },
         video_walkthroughs: PerformanceLogging.phase("chat_payload.video_walkthroughs", chat_id: chat_session.id) { video_walkthroughs_json(chat_session) },
         attachment_groups: PerformanceLogging.phase("chat_payload.attachment_groups_json", chat_id: chat_session.id) { attachment_groups_json(attachment_groups) },
-        documents_in_scope: PerformanceLogging.phase("chat_payload.documents_in_scope", chat_id: chat_session.id) { chat_session.attached_documents_in_scope.includes(:attachable).order(:title, :id).map { |document| document_json(document) } },
-        attachment_results: PerformanceLogging.phase("chat_payload.attachment_results", chat_id: chat_session.id) { attachment_search_results(chat_session).map { |record| attachable_result_json(record) } },
+        documents_in_scope: PerformanceLogging.phase("chat_payload.documents_in_scope", chat_id: chat_session.id) { documents_in_scope_for_payload(chat_session).map { |document| document_json(document) } },
+        attachment_results: PerformanceLogging.phase("chat_payload.attachment_results", chat_id: chat_session.id) { attachment_results_for_payload(chat_session).map { |record| attachable_result_json(record) } },
         whiteboard: {
           version: whiteboard_scene.fetch("version"),
           elements: whiteboard_scene.fetch("elements"),
           appState: whiteboard_scene.fetch("appState"),
-          files: whiteboard_scene.fetch("files")
+          files: whiteboard_scene.fetch("files"),
+          loaded: whiteboard_scene.fetch("loaded")
         },
         paths: {
           credentials_path: "/credentials",
@@ -80,6 +79,7 @@ module ChatSerialization
           app_switch_provider_path: "/api/v1/app/chats/#{chat_session.id}/switch_provider",
           app_bookmarks_path: "/api/v1/app/chats/#{chat_session.id}/bookmarks",
           app_bookmarks_index_path: "/api/v1/app/chats/#{chat_session.id}/bookmarks",
+          app_context_path: "/api/v1/app/chats/#{chat_session.id}/context",
           app_attachments_path: "/api/v1/app/chats/#{chat_session.id}/attachments",
           app_whiteboard_path: "/api/v1/app/chats/#{chat_session.id}/whiteboard",
           app_scratchpad_reorder_path: "/api/v1/app/chats/#{chat_session.id}/scratchpad_items/reorder",
@@ -116,15 +116,37 @@ module ChatSerialization
       records: [ chat_session ],
       associations: [
         :user,
-        :queued_messages,
-        :scratchpad_items,
-        :agent_questions,
-        :repository_attachments,
-        { chat_attachments: :attachable },
-        { pending_actions: [ :message, :tool_call_message, :user, :repository ] },
-        { video_walkthroughs: { file_attachment: :blob } }
+        { repository_attachments: :attachable }
       ]
     ).call
+  end
+
+  def attachment_groups_for_payload(chat_session)
+    chat_session.chat_attachments.includes(:attachable).order(:attachable_type, :attached_at, :id).group_by(&:attachable_type)
+  end
+
+  def documents_in_scope_for_payload(chat_session)
+    return Document.none unless include_context_in_chat_payload?
+
+    chat_session.attached_documents_in_scope.includes(:attachable).order(:title, :id)
+  end
+
+  def attachment_results_for_payload(chat_session)
+    return [] unless attachment_search_requested?
+
+    attachment_search_results(chat_session)
+  end
+
+  def include_context_in_chat_payload?
+    params[:include_context].present?
+  end
+
+  def attachment_search_requested?
+    params[:attachment_type].present? || params[:attachable_type].present? || params[:attachment_query].present?
+  end
+
+  def include_whiteboard_in_chat_payload?
+    params[:include_whiteboard].present?
   end
 
   def bookmark_json(bookmark)
@@ -177,12 +199,14 @@ module ChatSerialization
       .pluck(:id, :role)
   end
 
-  def whiteboard_state_for_payload(chat_session)
+  def whiteboard_state_for_payload(chat_session, include_scene:)
+    return Whiteboard.default_state.merge("loaded" => false) unless include_scene
+
     row = whiteboard_payload_scope(chat_session.id).pick(:scene_json, :version)
-    return Whiteboard.default_state unless row
+    return Whiteboard.default_state.merge("loaded" => true) unless row
 
     scene_json, version = row
-    Whiteboard.normalize_scene!(scene_json).merge("version" => version)
+    Whiteboard.normalize_scene!(scene_json).merge("version" => version, "loaded" => true)
   end
 
   def whiteboard_payload_scope(chat_session_id)

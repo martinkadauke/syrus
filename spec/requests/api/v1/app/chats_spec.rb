@@ -1391,11 +1391,11 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     ))
     expect(body["messages"].first).not_to have_key("html")
     expect(body["messages"].first).not_to have_key("bookmark_path")
-    expect(body["documents_in_scope"]).to contain_exactly(include("title" => document.title, "repository_slug" => "acme/widgets"))
-    expect(body.dig("whiteboard", "version")).to eq(2)
-    expect(body.dig("whiteboard", "elements", 0, "id")).to eq("box-1")
-    expect(body.dig("whiteboard", "appState")).to eq("viewBackgroundColor" => "#ffffff")
-    expect(body.dig("whiteboard", "files", "file-1", "dataURL")).to eq("data:image/png;base64,abc")
+    expect(body["documents_in_scope"]).to eq([])
+    expect(body["attachment_results"]).to eq([])
+    expect(body.dig("whiteboard", "loaded")).to eq(false)
+    expect(body.dig("whiteboard", "version")).to eq(0)
+    expect(body.dig("whiteboard", "elements")).to eq([])
     expect(body.dig("paths", "app_messages_path")).to eq("/api/v1/app/chats/#{chat.id}/messages")
     expect(body.dig("paths", "app_message_path")).to eq("/api/v1/app/chats/#{chat.id}/message")
     expect(body.dig("paths", "app_rename_path")).to eq("/api/v1/app/chats/#{chat.id}/rename")
@@ -1403,12 +1403,42 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body.dig("paths", "app_enqueue_message_path")).to eq("/api/v1/app/chats/#{chat.id}/queued_messages")
     expect(body.dig("paths", "app_rename_path")).to eq("/api/v1/app/chats/#{chat.id}/rename")
     expect(body.dig("paths", "app_attachments_path")).to eq("/api/v1/app/chats/#{chat.id}/attachments")
+    expect(body.dig("paths", "app_context_path")).to eq("/api/v1/app/chats/#{chat.id}/context")
     expect(body.dig("paths", "app_whiteboard_path")).to eq("/api/v1/app/chats/#{chat.id}/whiteboard")
     expect(body.dig("paths", "app_scratchpad_reorder_path")).to eq("/api/v1/app/chats/#{chat.id}/scratchpad_items/reorder")
     expect(body.dig("paths", "app_speech_to_text_batch_path")).to eq("/api/v1/app/chats/#{chat.id}/speech_to_text")
     expect(body.dig("paths", "app_speech_to_text_stream_path")).to eq("/api/v1/app/chats/#{chat.id}/speech_to_text/stream")
     expect(body["queued_messages"]).to eq([])
     expect(body["paths"].keys).not_to include("chat_messages_path", "chat_attachments_path", "chat_whiteboard_path")
+
+    get "/api/v1/app/chats/#{chat.id}", params: { include_whiteboard: true, include_context: true }
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["documents_in_scope"]).to contain_exactly(include("title" => document.title, "repository_slug" => "acme/widgets"))
+    expect(body.dig("whiteboard", "loaded")).to eq(true)
+    expect(body.dig("whiteboard", "version")).to eq(2)
+    expect(body.dig("whiteboard", "elements", 0, "id")).to eq("box-1")
+    expect(body.dig("whiteboard", "appState")).to eq("viewBackgroundColor" => "#ffffff")
+    expect(body.dig("whiteboard", "files", "file-1", "dataURL")).to eq("data:image/png;base64,abc")
+  end
+
+  it "loads chat context data on demand" do
+    sign_in_as(user)
+    document = repository.repository_documents.create!(
+      user: user,
+      kind: "google_doc",
+      title: "Launch notes",
+      google_docs_url: "https://docs.google.com/document/d/launch/edit"
+    )
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+
+    get "/api/v1/app/chats/#{chat.id}/context", params: { attachment_type: "Document", attachment_query: "Launch" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["documents_in_scope"]).to contain_exactly(include("title" => document.title, "repository_slug" => "acme/widgets"))
+    expect(parse_body.dig("attachment_groups", "repositories")).to contain_exactly(include("label" => "acme/widgets"))
+    expect(parse_body["attachment_results"]).to contain_exactly(include("type" => "Document", "id" => document.id, "label" => "Launch notes"))
   end
 
   it "reports speech-to-text disabled by default" do

@@ -718,6 +718,16 @@ module Api
           }
         end
 
+        def context
+          chat_session = find_chat_session
+          attachment_groups = PerformanceLogging.phase("chat_context.attachment_groups", chat_id: chat_session.id) { attachment_groups_for_payload(chat_session) }
+          render json: {
+            attachment_groups: PerformanceLogging.phase("chat_context.attachment_groups_json", chat_id: chat_session.id) { attachment_groups_json(attachment_groups) },
+            documents_in_scope: PerformanceLogging.phase("chat_context.documents_in_scope", chat_id: chat_session.id) { chat_session.attached_documents_in_scope.includes(:attachable).order(:title, :id).map { |document| document_json(document) } },
+            attachment_results: PerformanceLogging.phase("chat_context.attachment_results", chat_id: chat_session.id) { attachment_search_results(chat_session).map { |record| attachable_result_json(record) } }
+          }
+        end
+
         def confirm_pending_action
           chat_session = find_chat_session
           pending_action = find_pending_action(chat_session)

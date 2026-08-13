@@ -497,6 +497,7 @@ export type ChatPayload = {
     elements: ChatWhiteboardElement[]
     appState: ChatWhiteboardAppState
     files: ChatWhiteboardFiles
+    loaded?: boolean
   }
   speech_to_text?: ChatSpeechToTextCapability
   paths: {
@@ -516,6 +517,7 @@ export type ChatPayload = {
     app_switch_provider_path: string
     app_bookmarks_path: string
     app_bookmarks_index_path?: string
+    app_context_path?: string
     app_attachments_path: string
     app_video_walkthroughs_path: string
     app_speech_to_text_batch_path?: string
@@ -536,6 +538,8 @@ export type ChatPayload = {
   local_mode_enabled: boolean
   local_tunnel_connected: boolean
 }
+
+export type ChatContextPayload = Pick<ChatPayload, "attachment_groups" | "documents_in_scope" | "attachment_results">
 
 export type ChatSpeechToTextCapability = {
   enabled: boolean
@@ -601,6 +605,10 @@ export function fetchChat(id: string, search = "") {
 
 export function fetchChatBookmarks(path: string, options: { signal?: AbortSignal } = {}) {
   return getJson<{ bookmarks: ChatBookmark[] }>(path, options)
+}
+
+export function fetchChatContext(path: string, options: { signal?: AbortSignal } = {}) {
+  return getJson<ChatContextPayload>(path, options)
 }
 
 export function fetchSharedChat(token: string) {
