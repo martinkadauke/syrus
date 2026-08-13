@@ -1,8 +1,11 @@
 class AddRunJobCostIndex < ActiveRecord::Migration[8.1]
   def change
-    add_index :runs,
-              [ :job_id, :cost_usd ],
-              name: "idx_runs_job_cost",
-              if_not_exists: true
+    columns = [ :job_id, :cost_usd ]
+
+    unless index_exists?(:runs, columns, name: "idx_runs_job_cost")
+      add_index :runs,
+                columns,
+                name: "idx_runs_job_cost"
+    end
   end
 end
