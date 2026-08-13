@@ -25,6 +25,12 @@ RSpec.describe ReapOrphanedSpawnedProcessesJob do
       .and_return(Set.new)
   end
 
+  def stub_fresh_worker_start(hostname, started_at)
+    allow_any_instance_of(described_class)
+      .to receive(:fresh_worker_starts_by_host)
+      .and_return({ hostname => started_at })
+  end
+
   it "finalizes rows whose hostname is not in the live SolidQueue process set" do
     dead = fixture(hostname: "dead-pod-xyz")
     stub_live_hosts("some-other-live-pod")
@@ -55,6 +61,31 @@ RSpec.describe ReapOrphanedSpawnedProcessesJob do
     pidless.reload
     expect(pidless).to be_finished
     expect(pidless.outcome).to eq("orphaned")
+  end
+
+  it "finalizes rows from a previous worker process on a live hostname" do
+    old = fixture(hostname: "live-pod-abc", pid: 1234, started_at: 10.minutes.ago)
+    fresh_started_at = 5.minutes.ago
+    stub_live_hosts("live-pod-abc")
+    stub_fresh_worker_start("live-pod-abc", fresh_started_at)
+
+    described_class.perform_now
+
+    old.reload
+    expect(old).to be_finished
+    expect(old.outcome).to eq("orphaned")
+  end
+
+  it "leaves rows from the current worker process alone" do
+    current = fixture(hostname: "live-pod-abc", pid: 1234, started_at: 1.minute.ago)
+    fresh_started_at = 5.minutes.ago
+    stub_live_hosts("live-pod-abc")
+    stub_fresh_worker_start("live-pod-abc", fresh_started_at)
+
+    described_class.perform_now
+
+    current.reload
+    expect(current).to be_running
   end
 
   it "leaves preview rows whose hostname has a fresh InstanceVersion heartbeat alone" do
