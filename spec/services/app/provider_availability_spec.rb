@@ -500,13 +500,13 @@ RSpec.describe App::ProviderAvailability do
     expect(queries).to be_empty
   end
 
-  it "forces the provider run index for MySQL provider availability hot-path lookups" do
+  it "lets the database optimizer choose the provider run index" do
     availability = described_class.new(user: user, provider: "codex", now: now)
-    allow(availability).to receive(:mysql_adapter?).and_return(true)
 
     sql = availability.send(:provider_run_scope).where(state: "failed").to_sql
 
-    expect(sql).to include("FORCE INDEX (idx_runs_user_provider_state_recent)")
+    expect(sql).to include("user_id")
+    expect(sql).not_to include("FORCE INDEX")
   end
 
   it "caches provider availability outside the request-local cache" do

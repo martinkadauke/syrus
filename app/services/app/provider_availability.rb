@@ -313,13 +313,7 @@ module App
     end
 
     def provider_run_scope
-      scope = Run.all
-      scope = scope.from(Arel.sql("#{Run.quoted_table_name} FORCE INDEX (idx_runs_user_provider_state_recent)")) if mysql_adapter?
-      scope.where(user_id: user.id, agent_provider: provider)
-    end
-
-    def mysql_adapter?
-      ActiveRecord::Base.connection.adapter_name.match?(/mysql/i)
+      Run.where(user_id: user.id, agent_provider: provider)
     end
 
     def usage_limit?(run, text)
