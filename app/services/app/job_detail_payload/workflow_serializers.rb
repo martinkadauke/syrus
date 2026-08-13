@@ -110,6 +110,10 @@ module App
         step.runs.to_a.sort_by { |run| [ run.created_at || Time.zone.at(0), run.id || 0 ] }
       end
 
+      def ordered_command_spans_for(run)
+        run.command_spans.to_a.sort_by { |span| [ span.sequence || 0, span.id || 0 ] }
+      end
+
       def step_json(step, workflow:, latest_step:)
         PerformanceLogging.phase("job_detail.step.serialize", job_id: @job.id, workflow_id: workflow.id, step_id: step.id, kind: step.kind) do
           runs = ordered_runs_for(step)
@@ -152,7 +156,7 @@ module App
       def run_json(run, workflow:)
         session = run.provider_session
         command_spans = PerformanceLogging.phase("job_detail.run.command_spans", job_id: @job.id, run_id: run.id) do
-          run.command_spans.ordered.map { |span| command_span_json(span) }
+          ordered_command_spans_for(run).map { |span| command_span_json(span) }
         end
         worker_health_correlation = PerformanceLogging.phase("job_detail.run.worker_health_correlation", job_id: @job.id, run_id: run.id) do
           WorkerHealthRunCorrelation.for_run(run, sample_limit: 0)

@@ -8,6 +8,18 @@ RSpec.describe App::JobDetailPayload do
     described_class.build(job: job, user: user)
   end
 
+  def capture_sql
+    queries = []
+    callback = lambda do |_name, _started, _finished, _id, payload|
+      next if payload[:cached] || payload[:name] == "SCHEMA"
+
+      queries << payload[:sql]
+    end
+
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { yield }
+    queries
+  end
+
   describe "#attachments" do
     it "uses the authenticated app proxy URL for uploaded files" do
       job = Factories.job_record(user: user, repository: repo)
@@ -466,6 +478,47 @@ RSpec.describe App::JobDetailPayload do
   end
 
   describe "#workflows_json" do
+    it "does not query command spans or spawned processes once per run" do
+      job = Factories.job_record(repository: repo)
+      workflow = Workflow.create!(job: job, trigger_kind: "initial", state: "running")
+
+      3.times do |index|
+        step = Step.create!(workflow: workflow, kind: "grader", position: index, state: "running")
+        run = Run.create!(
+          job: job,
+          step: step,
+          trigger_kind: "initial",
+          agent_provider: "claude",
+          state: "running",
+          started_at: (index + 2).minutes.ago
+        )
+        SpawnedProcess.create!(
+          kind: "grader",
+          command: "bin/rspec",
+          workdir: "/tmp/repo",
+          hostname: "worker-#{index}",
+          started_at: (index + 1).minutes.ago,
+          run: run,
+          workflow: workflow
+        )
+        run.command_spans.create!(
+          job: job,
+          workflow: workflow,
+          step: step,
+          sequence: index + 1,
+          name: "rspec #{index}",
+          command_excerpt: "bin/rspec",
+          started_at: (index + 1).minutes.ago,
+          hostname: "worker-#{index}"
+        )
+      end
+
+      queries = capture_sql { payload_for(job) }
+
+      expect(queries.grep(/FROM [`"]?command_spans[`"]? WHERE [`"]?command_spans[`"]?.[`"]?run_id[`"]? =/i)).to be_empty
+      expect(queries.grep(/FROM [`"]?spawned_processes[`"]? WHERE [`"]?spawned_processes[`"]?.[`"]?run_id[`"]? =/i)).to be_empty
+    end
+
     it "includes the active spawned process for running runs" do
       job = Factories.job_record(repository: repo)
       workflow = Workflow.create!(job: job, trigger_kind: "initial", state: "running")

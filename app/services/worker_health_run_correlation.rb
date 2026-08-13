@@ -127,7 +127,7 @@ class WorkerHealthRunCorrelation
   end
 
   def command_span_payloads
-    run.command_spans.ordered.map do |span|
+    command_spans.map do |span|
       SpanCorrelation.new(span: span, sample_limit: 0, now: now).as_json
     end
   end
@@ -169,7 +169,23 @@ class WorkerHealthRunCorrelation
   end
 
   def processes
-    @processes ||= run.spawned_processes.order(:started_at, :id).to_a
+    @processes ||= begin
+      if run.association(:spawned_processes).loaded?
+        run.spawned_processes.to_a.sort_by { |process| [ process.started_at || Time.zone.at(0), process.id || 0 ] }
+      else
+        run.spawned_processes.order(:started_at, :id).to_a
+      end
+    end
+  end
+
+  def command_spans
+    @command_spans ||= begin
+      if run.association(:command_spans).loaded?
+        run.command_spans.to_a.sort_by { |span| [ span.sequence || 0, span.id || 0 ] }
+      else
+        run.command_spans.ordered.to_a
+      end
+    end
   end
 
   def range_start
