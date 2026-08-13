@@ -16,10 +16,14 @@ export function whiteboardElements(payload: ChatPayload): ChatWhiteboardElement[
 }
 
 export function whiteboardScene(payload: ChatPayload): ChatWhiteboardScene {
+  return normalizeWhiteboardScene(payload.whiteboard)
+}
+
+export function normalizeWhiteboardScene(scene: Partial<ChatWhiteboardScene> | null | undefined): ChatWhiteboardScene {
   return {
-    elements: Array.isArray(payload.whiteboard.elements) ? payload.whiteboard.elements : [],
-    appState: cleanWhiteboardAppState(payload.whiteboard.appState),
-    files: isPlainObject(payload.whiteboard.files) ? payload.whiteboard.files as ChatWhiteboardScene["files"] : {}
+    elements: Array.isArray(scene?.elements) ? scene.elements : [],
+    appState: cleanWhiteboardAppState(scene?.appState),
+    files: isPlainObject(scene?.files) ? scene.files as ChatWhiteboardScene["files"] : {}
   }
 }
 

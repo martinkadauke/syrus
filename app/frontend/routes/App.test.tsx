@@ -74,6 +74,18 @@ vi.mock("html2canvas-pro", () => ({
 
 let restoreClipboardMock: (() => void) | null = null
 
+async function openWhiteboardPanel() {
+  await clickWhiteboardTab()
+  await screen.findByRole("button", { name: "Draw on whiteboard" }, { timeout: 5000 })
+}
+
+async function clickWhiteboardTab() {
+  await screen.findByText("Discuss aqueducts.")
+  const workspaceTabs = await screen.findByRole("navigation", { name: "Chat workspace tabs" }, { timeout: 5000 })
+  fireEvent.click(within(workspaceTabs).getByRole("button", { name: "Whiteboard" }))
+  await vi.dynamicImportSettled()
+}
+
 describe("App", () => {
   beforeEach(() => {
     document.getElementById("syrus-bootstrap-data")?.remove()
@@ -11310,6 +11322,9 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Reset workspace" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "acme/widgets" })).not.toBeInTheDocument()
     expect(screen.queryByText(/^Version \d+$/)).not.toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Whiteboard" }))
+    })
     fireEvent.click(screen.getByRole("button", { name: "Fullscreen" }))
     expect(screen.getByRole("button", { name: "Exit fullscreen" })).toHaveAttribute("aria-pressed", "true")
     expect(screen.queryByTestId("chat-message-stream")).not.toBeInTheDocument()
@@ -12979,6 +12994,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
+    await openWhiteboardPanel()
     fireEvent.click(await screen.findByRole("button", { name: "Draw on whiteboard" }))
 
     await waitFor(() => {
@@ -13130,7 +13146,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("button", { name: "Draw on whiteboard" })).toBeInTheDocument()
+    await openWhiteboardPanel()
     expect(excalidrawMock.updateScene).not.toHaveBeenCalled()
   })
 
@@ -13153,7 +13169,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("button", { name: "Draw on whiteboard" })).toBeInTheDocument()
+    await openWhiteboardPanel()
     expect(excalidrawMock.lastInitialData?.appState).toEqual({ viewBackgroundColor: "#ffffff" })
   })
 
@@ -13175,7 +13191,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("button", { name: "Draw on whiteboard" })).toBeInTheDocument()
+    await openWhiteboardPanel()
     expect(excalidrawMock.lastInitialData?.appState).toEqual({ viewBackgroundColor: "#ffffff" })
   })
 
@@ -13204,6 +13220,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
+    await openWhiteboardPanel()
     fireEvent.click(await screen.findByRole("button", { name: "Draw on whiteboard" }))
 
     await waitFor(() => {
@@ -13234,6 +13251,7 @@ describe("App", () => {
         </QueryClientProvider>
       )
 
+      await clickWhiteboardTab()
       expect(await screen.findByText("Discuss aqueducts.")).toBeInTheDocument()
       expect(await screen.findByText("Whiteboard unavailable.")).toBeInTheDocument()
       expect(screen.getByPlaceholderText("Ask about this repository...")).toBeInTheDocument()

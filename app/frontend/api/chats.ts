@@ -484,14 +484,14 @@ export type ChatPayload = {
   queued_messages: ChatQueuedMessage[]
   scratchpad_items: ChatScratchpadItem[]
   video_walkthroughs: ChatWalkthroughMedia[]
-  attachment_groups: {
+  attachment_groups?: {
     repositories: ChatAttachmentRow[]
     epics: ChatAttachmentRow[]
     jobs: ChatAttachmentRow[]
     documents: ChatAttachmentRow[]
   }
-  documents_in_scope: ChatDocumentScope[]
-  attachment_results: ChatAttachmentResult[]
+  documents_in_scope?: ChatDocumentScope[]
+  attachment_results?: ChatAttachmentResult[]
   whiteboard: {
     version: number
     elements: ChatWhiteboardElement[]

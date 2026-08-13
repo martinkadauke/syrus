@@ -17,7 +17,7 @@ import { useT } from "../../hooks/useT"
 import { ChatJobStatusPanel } from "../ChatJobStatusPanel"
 import { errorMessage } from "../../lib/errorMessage"
 import { highlightCode, inferToolResultLanguage } from "../../lib/syntaxHighlight"
-import { asExcalidrawElements, asExcalidrawFiles, cleanWhiteboardAppState, cleanWhiteboardFiles, cloneWhiteboardScene, signatureForScene, whiteboardScene, withFreshElementIds } from "./whiteboardScene"
+import { asExcalidrawElements, asExcalidrawFiles, cleanWhiteboardAppState, cleanWhiteboardFiles, cloneWhiteboardScene, normalizeWhiteboardScene, signatureForScene, whiteboardScene, withFreshElementIds } from "./whiteboardScene"
 import { type ChatQueryKey, WHITEBOARD_MAX_ELEMENTS, WHITEBOARD_SAVE_DEBOUNCE_MS } from "./constants"
 import { chatDisplayTitle, snapshotKindLabel, diffLineClass, secondaryButton, errorAsError, formatCurrency, formatTokenCount, truncateSnapshotName, withRoutePrefix } from "./utils"
 import { ImageLightbox } from "./MessageCards"
@@ -251,9 +251,9 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
     setLoadingSnapshotId(snapshot.id)
     try {
       const fullSnapshot = await fetchWhiteboardSnapshot(payload.chat.id, snapshot.id)
-      const snapshotScene = cloneWhiteboardScene(fullSnapshot.scene_json || { elements: [], appState: {}, files: {} })
+      const snapshotScene = cloneWhiteboardScene(normalizeWhiteboardScene(fullSnapshot.scene_json))
       const current = await fetchChatWhiteboard(payload.paths.app_whiteboard_path)
-      const currentScene = cloneWhiteboardScene(current.scene_json)
+      const currentScene = cloneWhiteboardScene(normalizeWhiteboardScene(current.scene_json))
       const nextElements = [
         ...currentScene.elements,
         ...withFreshElementIds(snapshotScene.elements)
@@ -289,9 +289,8 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
           ...currentPayload,
           whiteboard: {
             version: result.payload.version,
-            elements: result.payload.scene_json.elements,
-            appState: result.payload.scene_json.appState,
-            files: result.payload.scene_json.files
+            ...normalizeWhiteboardScene(result.payload.scene_json),
+            loaded: true
           }
         }
       })
@@ -612,11 +611,13 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
   const retryingConflictRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
   const versionRef = useRef(payload.whiteboard.version)
+  const whiteboardLoaded = payload.whiteboard.loaded ?? payload.whiteboard.elements.length > 0
   const whiteboard = useQuery({
     queryKey: ["chat_whiteboard", String(payload.chat.id)],
     queryFn: () => fetchChatWhiteboard(payload.paths.app_whiteboard_path),
-    enabled: payload.chat.id != null && payload.whiteboard.loaded !== true
+    enabled: payload.chat.id != null && !whiteboardLoaded
   })
+  const whiteboardLoading = !whiteboardLoaded && whiteboard.isPending
 
   const clearPendingSave = useCallback(() => {
     if (saveTimerRef.current == null) return
@@ -647,14 +648,14 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
     retryingConflictRef.current = true
     try {
       const current = await fetchChatWhiteboard(pathRef.current)
-      applyRemoteScene(current.scene_json, current.version)
+      applyRemoteScene(normalizeWhiteboardScene(current.scene_json), current.version)
       const retry = await patchChatWhiteboard(pathRef.current, {
         ...originalScene,
         expected_version: current.version
       })
       if (retry.status === 409) throw new ApiError("Whiteboard changed again before the retry completed.", { status: 409 })
 
-      applyRemoteScene(retry.payload.scene_json, retry.payload.version)
+      applyRemoteScene(normalizeWhiteboardScene(retry.payload.scene_json), retry.payload.version)
     } finally {
       retryingConflictRef.current = false
     }
@@ -676,7 +677,7 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
         return
       }
 
-      applyRemoteScene(result.payload.scene_json, result.payload.version)
+      applyRemoteScene(normalizeWhiteboardScene(result.payload.scene_json), result.payload.version)
     } catch (error) {
       setSaveError(errorMessage(errorAsError(error), "Whiteboard save failed."))
     }
@@ -718,13 +719,11 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
       ...currentPayload,
       whiteboard: {
         version: data.version,
-        elements: data.scene_json.elements,
-        appState: data.scene_json.appState,
-        files: data.scene_json.files,
+        ...normalizeWhiteboardScene(data.scene_json),
         loaded: true
       }
     } : currentPayload)
-    applyRemoteScene(data.scene_json, data.version)
+    applyRemoteScene(normalizeWhiteboardScene(data.scene_json), data.version)
   }, [applyRemoteScene, payload.chat.id, queryClient, whiteboard.data])
 
   useEffect(() => () => {
@@ -774,7 +773,7 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
         </div>
       </div>
       <div className="relative min-h-0 flex-1 overflow-hidden rounded border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-950">
-        {whiteboard.isPending && payload.whiteboard.loaded !== true ? (
+        {whiteboardLoading ? (
           <div className="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">{t("loading_chat")}</div>
         ) : whiteboard.isError ? (
           <div className="p-3 text-sm text-red-700 dark:text-red-300">{errorMessage(whiteboard.error, t("whiteboard_unavailable"))}</div>

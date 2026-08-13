@@ -19,11 +19,13 @@ import { appendSearch, isSupervisorChat, withRoutePrefix } from "./utils"
 
 const DEFAULT_ATTACHMENT_TYPES = ["Repository", "Epic", "Job", "Document"] as const
 const SUPERVISOR_ATTACHMENT_TYPES = ["Document"] as const
+const EMPTY_ATTACHMENT_GROUPS = { repositories: [], epics: [], jobs: [], documents: [] } satisfies NonNullable<ChatPayload["attachment_groups"]>
 
 export function Attachments({ payload, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const { t } = useT("chat")
   const contextPayload = useChatContextPayload(payload, queryKey)
   const supervisorChat = isSupervisorChat(payload)
+  const attachmentGroups = contextPayload.attachment_groups ?? EMPTY_ATTACHMENT_GROUPS
   return (
     <>
       <div className="flex items-center justify-between gap-3">
@@ -32,12 +34,12 @@ export function Attachments({ payload, queryKey, onNotice }: { payload: ChatPayl
       <div className="space-y-4">
         {supervisorChat ? null : (
           <>
-            <AttachmentGroup label="Repos" rows={contextPayload.attachment_groups.repositories} queryKey={queryKey} onNotice={onNotice} />
-            <AttachmentGroup label="Epics" rows={contextPayload.attachment_groups.epics} queryKey={queryKey} onNotice={onNotice} />
-            <AttachmentGroup label="Jobs" rows={contextPayload.attachment_groups.jobs} queryKey={queryKey} onNotice={onNotice} />
+            <AttachmentGroup label="Repos" rows={attachmentGroups.repositories} queryKey={queryKey} onNotice={onNotice} />
+            <AttachmentGroup label="Epics" rows={attachmentGroups.epics} queryKey={queryKey} onNotice={onNotice} />
+            <AttachmentGroup label="Jobs" rows={attachmentGroups.jobs} queryKey={queryKey} onNotice={onNotice} />
           </>
         )}
-        <AttachmentGroup label="Documents" rows={contextPayload.attachment_groups.documents} queryKey={queryKey} onNotice={onNotice} />
+        <AttachmentGroup label="Documents" rows={attachmentGroups.documents} queryKey={queryKey} onNotice={onNotice} />
       </div>
       <section>
         <div className="mb-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">In-scope documents</div>
@@ -63,9 +65,9 @@ function useChatContextPayload(payload: ChatPayload, queryKey: ChatQueryKey): Ch
     queryKey: ["chat-context", String(payload.chat.id), queryKey[2]],
     queryFn: ({ signal }) => fetchChatContext(appendSearch(contextPath, queryKey[2]), { signal }),
     initialData: hasContextPayload(payload) ? {
-      attachment_groups: payload.attachment_groups,
-      documents_in_scope: payload.documents_in_scope,
-      attachment_results: payload.attachment_results
+      attachment_groups: payload.attachment_groups ?? EMPTY_ATTACHMENT_GROUPS,
+      documents_in_scope: payload.documents_in_scope ?? [],
+      attachment_results: payload.attachment_results ?? []
     } : undefined
   })
 
@@ -87,12 +89,12 @@ function useChatContextPayload(payload: ChatPayload, queryKey: ChatQueryKey): Ch
 function hasContextPayload(payload: ChatPayload) {
   return (payload.documents_in_scope ?? []).length > 0 ||
     (payload.attachment_results ?? []).length > 0 ||
-    Object.values(payload.attachment_groups).some((rows) => rows.length > 0)
+    Object.values(payload.attachment_groups ?? EMPTY_ATTACHMENT_GROUPS).some((rows) => rows.length > 0)
 }
 
 function emptyContextPayload(): ChatContextPayload {
   return {
-    attachment_groups: { repositories: [], epics: [], jobs: [], documents: [] },
+    attachment_groups: EMPTY_ATTACHMENT_GROUPS,
     documents_in_scope: [],
     attachment_results: []
   }
