@@ -173,6 +173,26 @@ RSpec.describe InputSources::Linear do
       epic = Epic.last
       expect(epic.title).to eq("Big feature rollout")
       expect(epic.repository).to eq(repository)
+      expect(epic.github_issue_url).to eq("linear:issue:#{epic_issue['id']}")
+    end
+
+    it "does not merge two distinct Epic declarations from different Linear issues" do
+      first = linear_issue(id: "epic-a", identifier: "LIN-10", description: "Epic: Feature A")
+      second = linear_issue(id: "epic-b", identifier: "LIN-11", description: "Epic: Feature B")
+      allow_any_instance_of(LinearClient).to receive(:issues).and_return([ first, second ])
+
+      expect { source.poll! }.to change(Epic, :count).by(2)
+
+      titles = Epic.last(2).map(&:title)
+      expect(titles).to contain_exactly("Feature A", "Feature B")
+    end
+
+    it "does not duplicate the Epic when the same declaration issue is polled again" do
+      epic_issue = linear_issue(id: "epic-c", description: "Epic: Feature C")
+      allow_any_instance_of(LinearClient).to receive(:issues).and_return([ epic_issue ])
+      source.poll!
+
+      expect { source.poll! }.not_to change(Epic, :count)
     end
   end
 
