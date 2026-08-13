@@ -63,6 +63,18 @@ export type SqlFingerprintSummary = {
   max_duration_ms: number | null
 }
 
+export type PerformanceComparison = {
+  key: string
+  label: string
+  current_average_duration_ms: number | null
+  baseline_average_duration_ms: number | null
+  delta_average_duration_ms: number | null
+  delta_percent: number | null
+  current_count: number
+  baseline_count: number | null
+  status: "regressed" | "improved" | "new" | "unchanged"
+}
+
 export type PerformanceEvent = {
   event: string
   occurred_at?: string | null
@@ -98,6 +110,15 @@ export type AdminPerformancePayload = {
   revision_scope: "current" | "all"
   thresholds: PerformanceThresholds
   storage: PerformanceStorage
+  baseline: {
+    revision: string | null
+    comparisons: {
+      slow_requests: PerformanceComparison[]
+      slow_phases: PerformanceComparison[]
+      browser_traces: PerformanceComparison[]
+      sql_fingerprints: PerformanceComparison[]
+    }
+  }
   summaries: {
     slow_requests: SlowRequestSummary[]
     slow_phases: SlowPhaseSummary[]

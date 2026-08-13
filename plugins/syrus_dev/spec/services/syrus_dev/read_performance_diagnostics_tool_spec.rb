@@ -79,6 +79,26 @@ RSpec.describe SyrusDev::ReadPerformanceDiagnosticsTool do
     expect(payload.to_json).not_to include("super-secret", "sample_sql")
   end
 
+  it "returns sanitized current-versus-previous-revision baseline comparisons" do
+    append_event(app_revision: "old-sha", path: "/api/v1/app/chats/123?token=old", duration_ms: 1_000.0)
+    append_event(app_revision: "new-sha", path: "/api/v1/app/chats/123?token=new", duration_ms: 2_000.0)
+
+    response = described_class.call(server_context: { run_id: run.id }, revision_scope: "all")
+
+    expect(response).not_to be_error
+    payload = payload_from(response)
+    expect(payload.dig("baseline", "revision")).to eq("old-sha")
+    expect(payload.dig("baseline", "comparisons", "slow_requests").first).to include(
+      "label" => "/api/v1/app/chats/123",
+      "current_average_duration_ms" => 2_000.0,
+      "baseline_average_duration_ms" => 1_000.0,
+      "delta_average_duration_ms" => 1_000.0,
+      "delta_percent" => 100.0,
+      "status" => "regressed"
+    )
+    expect(payload.to_json).not_to include("token=old", "token=new")
+  end
+
   it "includes bounded sanitized raw recent events when requested" do
     append_event(path: "/first?password=secret")
     append_event(path: "/second?api_key=secret")

@@ -55,10 +55,29 @@ module SyrusDev
           revision_scope: payload[:revision_scope],
           thresholds: payload[:thresholds],
           storage: payload[:storage],
+          baseline: sanitized_baseline(payload[:baseline]),
           summaries: sanitized_summaries(payload[:summaries])
         }.tap do |result|
           result[:events] = Array(payload[:events]).map { |event| sanitized_event(event) } if include_events
         end
+      end
+
+      def sanitized_baseline(baseline)
+        baseline = baseline.to_h
+        comparisons = baseline.fetch(:comparisons, {}).to_h
+        {
+          revision: baseline[:revision],
+          comparisons: {
+            slow_requests: Array(comparisons[:slow_requests]).map { |row| sanitized_comparison(row) },
+            slow_phases: Array(comparisons[:slow_phases]).map { |row| sanitized_comparison(row) },
+            browser_traces: Array(comparisons[:browser_traces]).map { |row| sanitized_comparison(row) },
+            sql_fingerprints: Array(comparisons[:sql_fingerprints]).map { |row| sanitized_comparison(row) }
+          }
+        }
+      end
+
+      def sanitized_comparison(row)
+        row.merge(label: scrub_path(row[:label]) || scrub_text(row[:label], 500))
       end
 
       def sanitized_summaries(summaries)
@@ -66,6 +85,7 @@ module SyrusDev
         {
           slow_requests: Array(summaries[:slow_requests]).map { |row| sanitized_slow_request(row) },
           slow_phases: Array(summaries[:slow_phases]).map { |row| sanitized_slow_phase(row) },
+          browser_traces: Array(summaries[:browser_traces]).map { |row| sanitized_browser_trace(row) },
           sql_fingerprints: Array(summaries[:sql_fingerprints]).map { |row| sanitized_sql_fingerprint(row) }
         }
       end
@@ -76,6 +96,13 @@ module SyrusDev
 
       def sanitized_slow_phase(row)
         row.merge(recent_metadata: scrub_metadata(row[:recent_metadata]))
+      end
+
+      def sanitized_browser_trace(row)
+        row.merge(
+          path: scrub_path(row[:path]),
+          recent_metadata: scrub_metadata(row[:recent_metadata])
+        )
       end
 
       def sanitized_sql_fingerprint(row)

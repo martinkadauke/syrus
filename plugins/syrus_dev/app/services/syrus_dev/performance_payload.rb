@@ -9,13 +9,16 @@ module SyrusDev
     def as_json(*)
       raw_events = PerformanceLogging::Store.recent(limit: limit)
       events = filter_events(raw_events)
+      summaries = summaries_payload(events)
+      current_summaries = summaries_payload(raw_events.select { |event| event["app_revision"] == current_revision })
       {
         enabled: Feature.enabled?(PerformanceLogging::FEATURE_SLUG),
         current_revision: current_revision,
         revision_scope: revision_scope,
         thresholds: PerformanceLogging.thresholds,
         storage: storage_payload,
-        summaries: summaries_payload(events),
+        baseline: baseline_payload(raw_events, current_summaries),
+        summaries: summaries,
         events: events
       }
     end
@@ -63,6 +66,102 @@ module SyrusDev
         browser_traces: grouped_browser_traces(events),
         sql_fingerprints: grouped_sql_fingerprints(events)
       }
+    end
+
+    def baseline_payload(raw_events, current_summaries)
+      baseline_revision = previous_revision(raw_events)
+      return { revision: nil, comparisons: empty_comparisons } unless baseline_revision
+
+      baseline_summaries = summaries_payload(raw_events.select { |event| event["app_revision"] == baseline_revision })
+      {
+        revision: baseline_revision,
+        comparisons: {
+          slow_requests: compare_summary_rows(current_summaries[:slow_requests], baseline_summaries[:slow_requests], :request_key),
+          slow_phases: compare_summary_rows(current_summaries[:slow_phases], baseline_summaries[:slow_phases], :phase_key),
+          browser_traces: compare_summary_rows(current_summaries[:browser_traces], baseline_summaries[:browser_traces], :browser_trace_key),
+          sql_fingerprints: compare_summary_rows(current_summaries[:sql_fingerprints], baseline_summaries[:sql_fingerprints], :sql_fingerprint_key)
+        }
+      }
+    end
+
+    def empty_comparisons
+      {
+        slow_requests: [],
+        slow_phases: [],
+        browser_traces: [],
+        sql_fingerprints: []
+      }
+    end
+
+    def previous_revision(raw_events)
+      raw_events
+        .filter_map { |event| event["app_revision"].presence }
+        .reject { |revision| revision == current_revision }
+        .uniq
+        .first
+    end
+
+    def compare_summary_rows(current_rows, baseline_rows, key_method)
+      baseline_by_key = baseline_rows.index_by { |row| send(key_method, row) }
+
+      current_rows.filter_map do |current|
+        key = send(key_method, current)
+        baseline = baseline_by_key[key]
+        current_avg = current[:average_duration_ms].to_f
+        baseline_avg = baseline&.dig(:average_duration_ms).to_f
+        next if baseline && baseline_avg <= 0 && current_avg <= 0
+
+        {
+          key: key,
+          label: comparison_label(current),
+          current_average_duration_ms: current[:average_duration_ms],
+          baseline_average_duration_ms: baseline&.dig(:average_duration_ms),
+          delta_average_duration_ms: baseline ? (current_avg - baseline_avg).round(1) : current_avg.round(1),
+          delta_percent: baseline && baseline_avg.positive? ? (((current_avg - baseline_avg) / baseline_avg) * 100.0).round(1) : nil,
+          current_count: current[:count],
+          baseline_count: baseline&.dig(:count),
+          status: comparison_status(current_avg, baseline_avg, baseline.present?)
+        }
+      end.sort_by { |row| [ comparison_status_rank(row[:status]), -row[:delta_average_duration_ms].to_f ] }.first(20)
+    end
+
+    def request_key(row)
+      [ row[:method], comparable_path(row[:path]), row[:controller], row[:action] ].join(" ")
+    end
+
+    def phase_key(row)
+      row[:phase].to_s
+    end
+
+    def browser_trace_key(row)
+      [ row[:name], comparable_path(row[:path]) ].join(" ")
+    end
+
+    def sql_fingerprint_key(row)
+      row[:fingerprint].to_s
+    end
+
+    def comparison_label(row)
+      comparable_path(row[:path]).presence || row[:phase].presence || row[:name].presence || row[:fingerprint].to_s.truncate(120)
+    end
+
+    def comparable_path(path)
+      path.to_s.split("?").first
+    end
+
+    def comparison_status(current_avg, baseline_avg, baseline_present)
+      return "new" unless baseline_present
+      return "unchanged" if baseline_avg <= 0
+
+      ratio = current_avg / baseline_avg
+      return "regressed" if current_avg - baseline_avg >= 250.0 && ratio >= 1.5
+      return "improved" if baseline_avg - current_avg >= 250.0 && ratio <= 0.75
+
+      "unchanged"
+    end
+
+    def comparison_status_rank(status)
+      { "regressed" => 0, "new" => 1, "improved" => 2, "unchanged" => 3 }.fetch(status, 4)
     end
 
     def grouped_slow_requests(events)

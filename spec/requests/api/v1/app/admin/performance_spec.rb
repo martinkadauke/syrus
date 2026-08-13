@@ -44,6 +44,30 @@ RSpec.describe "API: /api/v1/app/admin/performance", type: :request do
       "occurred_at" => "2026-08-01T12:00:01Z",
       "app_revision" => "new-sha"
     )
+    PerformanceLogging::Store.append(
+      "event" => PerformanceLogging::SLOW_REQUEST_EVENT,
+      "method" => "GET",
+      "path" => "/api/v1/app/dashboard",
+      "controller" => "Api::V1::App::DashboardController",
+      "action" => "show",
+      "duration_ms" => 1_500.0,
+      "sql_count" => 40,
+      "sql_duration_ms" => 900.0,
+      "occurred_at" => "2026-08-01T12:00:02Z",
+      "app_revision" => "old-sha"
+    )
+    PerformanceLogging::Store.append(
+      "event" => PerformanceLogging::SLOW_REQUEST_EVENT,
+      "method" => "GET",
+      "path" => "/api/v1/app/dashboard",
+      "controller" => "Api::V1::App::DashboardController",
+      "action" => "show",
+      "duration_ms" => 3_000.0,
+      "sql_count" => 42,
+      "sql_duration_ms" => 2_200.0,
+      "occurred_at" => "2026-08-01T12:00:03Z",
+      "app_revision" => "new-sha"
+    )
   end
 
   after do
@@ -79,6 +103,15 @@ RSpec.describe "API: /api/v1/app/admin/performance", type: :request do
     expect(body["revision_scope"]).to eq("current")
     expect(body["events"]).to include(include("event" => "syrus.performance.slow_phase", "phase" => "dashboard_payload"))
     expect(body["events"].to_s).not_to include("stale_dashboard_payload")
+    expect(body.dig("baseline", "revision")).to eq("old-sha")
+    expect(body.dig("baseline", "comparisons", "slow_requests").first).to include(
+      "label" => "/api/v1/app/dashboard",
+      "current_average_duration_ms" => 3000.0,
+      "baseline_average_duration_ms" => 1500.0,
+      "delta_average_duration_ms" => 1500.0,
+      "delta_percent" => 100.0,
+      "status" => "regressed"
+    )
     expect(body.dig("summaries", "slow_phases").first).to include(
       "phase" => "dashboard_payload",
       "count" => 1,
@@ -102,7 +135,7 @@ RSpec.describe "API: /api/v1/app/admin/performance", type: :request do
     get "/api/v1/app/admin/performance", params: { revision_scope: "all" }
 
     expect(response).to have_http_status(:ok)
-    expect(parse_body["events"].map { |event| event["app_revision"] }).to contain_exactly("new-sha", "new-sha", "old-sha")
+    expect(parse_body["events"].map { |event| event["app_revision"] }).to contain_exactly("new-sha", "new-sha", "new-sha", "old-sha", "old-sha")
   end
 
   it "404s when the Syrus Dev plugin is disabled" do

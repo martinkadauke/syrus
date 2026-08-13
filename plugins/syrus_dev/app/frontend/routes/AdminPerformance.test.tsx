@@ -53,6 +53,10 @@ describe("AdminPerformance", () => {
     expect(within(summary).getByText("rails.cache")).toBeInTheDocument()
     expect(within(summary).getByText("1.00s")).toBeInTheDocument()
 
+    expect(screen.getByText("Revision comparison vs oldsha123456")).toBeInTheDocument()
+    expect(screen.getAllByText("/api/v1/app/chats/126")).toHaveLength(2)
+    expect(screen.getByText("regressed")).toBeInTheDocument()
+    expect(screen.getByText("+580ms (+96.7%)")).toBeInTheDocument()
     expect(screen.getByText("Browser traces")).toBeInTheDocument()
     expect(screen.getByText("Browser max")).toBeInTheDocument()
     expect(screen.getByText("Backend API avg / max")).toBeInTheDocument()
@@ -78,8 +82,10 @@ describe("AdminPerformance", () => {
     renderRoute(<AdminPerformance />)
 
     const browserTraces = await screen.findByText("Browser traces")
-    const slowRequests = await screen.findByText("Slow requests")
-    expect(browserTraces.compareDocumentPosition(slowRequests) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const slowRequestCells = await screen.findAllByText("GET /api/v1/app/chats/126")
+    const slowRequestTable = slowRequestCells[0].closest("section")
+    expect(slowRequestTable).not.toBeNull()
+    expect(browserTraces.compareDocumentPosition(slowRequestTable!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
 
@@ -110,6 +116,27 @@ function performancePayload() {
       cache_key: "syrus:performance:events",
       max_events: 200,
       expires_in_seconds: 86400
+    },
+    baseline: {
+      revision: "oldsha1234567890",
+      comparisons: {
+        slow_requests: [
+          {
+            key: "GET /api/v1/app/chats/126 Api::V1::App::ChatsController show",
+            label: "/api/v1/app/chats/126",
+            current_average_duration_ms: 1180,
+            baseline_average_duration_ms: 600,
+            delta_average_duration_ms: 580,
+            delta_percent: 96.7,
+            current_count: 2,
+            baseline_count: 3,
+            status: "regressed"
+          }
+        ],
+        slow_phases: [],
+        browser_traces: [],
+        sql_fingerprints: []
+      }
     },
     summaries: {
       slow_requests: [
