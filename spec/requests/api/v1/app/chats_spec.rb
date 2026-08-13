@@ -1681,6 +1681,26 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       expect(parse_body.dig("chat", "coding_checkout_branch")).to eq("syrus-chat-99")
     end
 
+    it "only marks the coding relay ready when address and token are present" do
+      sign_in_as(user)
+      chat = ChatSession.create!(
+        user: user,
+        repository: repository,
+        coding_checkout_branch: "syrus-chat-99",
+        coding_relay_address: "127.0.0.1:9283"
+      )
+
+      get "/api/v1/app/chats/#{chat.id}"
+
+      expect(parse_body.dig("chat", "coding_relay_ready")).to eq(false)
+
+      chat.update!(coding_relay_token: "test-relay-token")
+
+      get "/api/v1/app/chats/#{chat.id}"
+
+      expect(parse_body.dig("chat", "coding_relay_ready")).to eq(true)
+    end
+
     it "includes app_cancel_coding_checkout_path in the response paths" do
       sign_in_as(user)
       chat = ChatSession.create!(user: user, repository: repository)
@@ -1874,11 +1894,15 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       chat = ChatSession.create!(user: user, repository: repository, coding_checkout_branch: "syrus-chat-42",
         coding_relay_address: "127.0.0.1:9283", coding_relay_token: "test-relay-token")
       enable_coding_mode!
-      stub_request(:get, "http://127.0.0.1:9283/workspace/files").to_raise(Errno::ECONNREFUSED)
+      stub_request(:get, "http://127.0.0.1:9283/workspace/files")
+        .with(query: hash_including("session_id" => chat.id.to_s))
+        .to_raise(Errno::ECONNREFUSED)
 
       get "/api/v1/app/chats/#{chat.id}/coding_files"
 
       expect(response).to have_http_status(:not_found)
+      expect(chat.reload.coding_relay_address).to be_nil
+      expect(chat.coding_relay_token).to be_nil
     end
   end
 
@@ -1951,7 +1975,9 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       chat = ChatSession.create!(user: user, repository: repository, coding_checkout_branch: "syrus-chat-42",
         coding_relay_address: "127.0.0.1:9283", coding_relay_token: "test-relay-token")
       enable_coding_mode!
-      stub_request(:get, "http://127.0.0.1:9283/workspace/file").to_raise(Errno::ECONNREFUSED)
+      stub_request(:get, "http://127.0.0.1:9283/workspace/file")
+        .with(query: hash_including("session_id" => chat.id.to_s))
+        .to_raise(Errno::ECONNREFUSED)
 
       get "/api/v1/app/chats/#{chat.id}/coding_file", params: { path: "missing.rb" }
 
@@ -2222,7 +2248,9 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       chat = ChatSession.create!(user: user, repository: repository, coding_checkout_branch: "syrus-chat-42",
         coding_relay_address: "127.0.0.1:9283", coding_relay_token: "test-relay-token")
       enable_coding_mode!
-      stub_request(:get, "http://127.0.0.1:9283/workspace/diff").to_raise(Errno::ECONNREFUSED)
+      stub_request(:get, "http://127.0.0.1:9283/workspace/diff")
+        .with(query: hash_including("session_id" => chat.id.to_s))
+        .to_raise(Errno::ECONNREFUSED)
 
       get "/api/v1/app/chats/#{chat.id}/coding_diff"
 

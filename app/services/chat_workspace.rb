@@ -384,7 +384,10 @@ class ChatWorkspace
       # reclaim_coding_checkout!) — transparently re-materialize it, restoring
       # any uncommitted work, before the agent runs this turn. The agent must
       # never be able to tell the workspace was deleted.
-      return path if path.join(".git").directory?
+      if path.join(".git").directory?
+        write_relay_credentials!
+        return path
+      end
 
       ensure_root!
       restore_coding_checkout!(repository, path, existing_branch)
@@ -899,7 +902,8 @@ class ChatWorkspace
 
   def write_relay_credentials!
     relay_address = ChatWorkspaceRelay.relay_address
-    return unless relay_address.present? && @chat_session.coding_relay_address.blank?
+    return if relay_address.blank?
+    return if @chat_session.coding_relay_address == relay_address && @chat_session.coding_relay_token.present?
 
     token = SecureRandom.hex(32)
     @chat_session.update_columns(coding_relay_address: relay_address, coding_relay_token: token)

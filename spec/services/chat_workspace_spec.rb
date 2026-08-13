@@ -183,6 +183,19 @@ RSpec.describe ChatWorkspace, :ci_only do
         expect(chat_session.reload.coding_relay_token).to eq(original_token)
       end
 
+      it "refreshes relay credentials when the checkout moves to another relay" do
+        described_class.ensure_coding_checkout!(chat_session, repository)
+        original_token = chat_session.reload.coding_relay_token
+
+        ChatWorkspaceRelay.relay_address = "127.0.0.1:9284"
+        described_class.ensure_coding_checkout!(chat_session, repository)
+
+        chat_session.reload
+        expect(chat_session.coding_relay_address).to eq("127.0.0.1:9284")
+        expect(chat_session.coding_relay_token).to be_present
+        expect(chat_session.coding_relay_token).not_to eq(original_token)
+      end
+
       it "does not write relay credentials when relay_address is nil" do
         ChatWorkspaceRelay.relay_address = nil
 

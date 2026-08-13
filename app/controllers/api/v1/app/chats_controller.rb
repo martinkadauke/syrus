@@ -1163,14 +1163,14 @@ module Api
 
         def proxy_to_coding_relay_response(chat_session, path, params: {})
           relay_address = chat_session.coding_relay_address
-          return nil if relay_address.blank?
+          return nil if relay_address.blank? || chat_session.coding_relay_token.blank?
 
           query_string = params.merge(session_id: chat_session.id).to_query
           uri = URI("http://#{relay_address}/workspace/#{path}?#{query_string}")
 
           http = Net::HTTP.new(uri.host, uri.port)
-          http.open_timeout = 5
-          http.read_timeout = 5
+          http.open_timeout = 1
+          http.read_timeout = 1
 
           request = Net::HTTP::Get.new(uri)
           request["Authorization"] = "Bearer #{chat_session.coding_relay_token}"
@@ -1178,8 +1178,13 @@ module Api
           response = http.request(request)
           body = JSON.parse(response.body)
           [ response.code.to_i, body ]
-        rescue StandardError
+        rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Errno::ENETUNREACH, SocketError, EOFError, Timeout::Error, JSON::ParserError
+          clear_stale_coding_relay!(chat_session)
           nil
+        end
+
+        def clear_stale_coding_relay!(chat_session)
+          chat_session.update_columns(coding_relay_address: nil, coding_relay_token: nil)
         end
 
  
@@ -1344,7 +1349,7 @@ module Api
             scratchpad_items_count: PerformanceLogging.phase("chat_json.scratchpad_items_count", chat_id: chat_session.id) { chat_session.scratchpad_items.count },
             coding_checkout_uncommitted: chat_session.coding_checkout_uncommitted?,
             coding_checkout_branch: chat_session.coding_checkout_branch,
-            coding_relay_ready: chat_session.coding_relay_address.present?,
+            coding_relay_ready: chat_session.coding_relay_address.present? && chat_session.coding_relay_token.present?,
             chat_effort: chat_session.chat_effort
           }
         end
