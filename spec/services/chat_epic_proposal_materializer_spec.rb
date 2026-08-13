@@ -258,7 +258,12 @@ RSpec.describe ChatEpicProposalMaterializer do
     expect(result.jobs.map(&:issue_title)).to eq([ "First", "Second", "Third" ])
   end
 
-  it "accepts redundant transitive sibling edges in a linear chain" do
+  it "rejects a redundant transitive sibling edge even though the chain is otherwise linear" do
+    # EpicDependencyPolicy::Linear's proposal-graph check treats this as a
+    # valid single chain (third is transitively ordered after first), but
+    # JobDependency's own linear-chain validation counts direct edges: an
+    # explicit third -> first edge on top of third -> second gives "third"
+    # two same-epic upstream dependencies, which is a merge.
     proposal = epic_proposal
     first = child_for(proposal, "first")
     second = child_for(proposal, "second")
@@ -268,8 +273,11 @@ RSpec.describe ChatEpicProposalMaterializer do
     depend_on(third, first)
 
     expect {
-      described_class.new(user: user).file!(proposal)
-    }.to change(Job, :count).by(3)
+      expect {
+        described_class.new(user: user).file!(proposal)
+      }.to raise_error(ActiveRecord::RecordInvalid, /Epic dependencies must form a single chain/)
+    }.to change(Job, :count).by(0)
+    expect(proposal.reload).to be_proposed
   end
 
   it "rejects fan-in child dependency graphs under the default linear policy" do
@@ -300,6 +308,22 @@ RSpec.describe ChatEpicProposalMaterializer do
     expect(proposal.reload).to be_proposed
   end
 
+  it "rejects a nonlinear child graph even when the target Epic's stored policy is nonlinear" do
+    target_epic = Factories.epic(user: user, repository: repository, epic_dependency_policy: "nonlinear")
+    proposal = epic_proposal
+    proposal.update!(target_epic: target_epic)
+    root = child_for(proposal, "root")
+    left = child_for(proposal, "left")
+    right = child_for(proposal, "right")
+    depend_on(left, root)
+    depend_on(right, root)
+
+    expect {
+      described_class.new(user: user).file!(proposal)
+    }.to raise_error(ArgumentError, /single chain.*left, right/)
+    expect(proposal.reload).to be_proposed
+  end
+
   it "rejects multiple root and leaf child graphs under the default linear policy" do
     proposal = epic_proposal
     first = child_for(proposal, "first")
@@ -313,22 +337,6 @@ RSpec.describe ChatEpicProposalMaterializer do
       described_class.new(user: user).file!(proposal)
     }.to raise_error(ArgumentError, /single chain.*first, third/)
     expect(proposal.reload).to be_proposed
-  end
-
-  it "allows nonlinear child graphs when the proposal has an explicit override" do
-    proposal = epic_proposal
-    proposal.update!(nonlinear_dependency_override: true)
-    root = child_for(proposal, "root")
-    left = child_for(proposal, "left")
-    right = child_for(proposal, "right")
-    depend_on(left, root)
-    depend_on(right, root)
-
-    result = nil
-    expect {
-      result = described_class.new(user: user).file!(proposal)
-    }.to change(Job, :count).by(3)
-    expect(result.epic.epic_dependency_policy).to eq("nonlinear")
   end
 
   it "creates pending Job dependencies for unresolved cross-card Job proposal references" do
@@ -462,21 +470,21 @@ RSpec.describe ChatEpicProposalMaterializer do
   it "rolls back the Epic when a child Job cannot be created" do
     other_repository = Factories.repository(user: user)
     proposal = epic_proposal
-    proposal.update!(nonlinear_dependency_override: true)
-    proposal.child_proposals.create!(
+    good = proposal.child_proposals.create!(
       chat_session: chat_session,
       slug: "good",
       title: "Good",
       body: "Same repo.",
       repository: repository
     )
-    proposal.child_proposals.create!(
+    bad = proposal.child_proposals.create!(
       chat_session: chat_session,
       slug: "bad",
       title: "Bad",
       body: "Different repo.",
       repository: other_repository
     )
+    depend_on(bad, good)
 
     expect {
       expect {

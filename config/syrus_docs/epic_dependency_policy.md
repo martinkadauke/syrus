@@ -7,12 +7,36 @@ Epic dependency policy controls the shape Syrus expects for child Job dependenci
 Repository `epic_dependency_policy` values:
 
 - `linear` (default) — child Jobs should form one ordered chain.
-- `nonlinear` — child Jobs may branch or fan in.
+- `nonlinear` — legacy value; child Jobs may branch or fan in.
 
 Epic `epic_dependency_policy` values:
 
 - `linear` (default) — require one ordered chain for this Epic.
-- `nonlinear` — allow branching or fan-in dependencies for this Epic.
+- `nonlinear` — legacy value; allows branching or fan-in dependencies for this Epic.
+
+## Settability
+
+`nonlinear` can no longer be newly chosen from any surface. The App and Admin
+REST APIs (`Api::V1::App::EpicsController`, `Api::V1::App::RepositoriesController`,
+`Api::V1::Admin::EpicsController`) reject an incoming `epic_dependency_policy`
+param of `"nonlinear"` on create/update with a validation error, and the
+`EpicForm`/`RepositoryForm` React forms no longer render "Nonlinear" as a
+selectable `<option>` — only `"linear"` can be picked going forward.
+
+This closes every path an operator (or the chat agent's Epic/Repository
+settings surface) could use to newly opt an Epic or Repository into a
+non-linear same-Epic `JobDependency` graph; combined with the unconditional
+`JobDependency`-level enforcement described below, no new fan-in/fan-out
+structure can be created regardless of what policy value is stored.
+
+Existing Epics/Repositories that already have `epic_dependency_policy: "nonlinear"`
+stored keep that value untouched — it is not migrated or coerced to `"linear"`.
+The `EpicForm`/`RepositoryForm` forms show the stored `"nonlinear"` value as a
+disabled, informational field instead of an editable option, and the read-only
+detail pages (`EpicDetail`, `RepositoryDetail`) keep displaying "Nonlinear" for
+those rows. The `EPIC_DEPENDENCY_POLICIES = %w[linear nonlinear]` model
+constant and the underlying DB columns are unchanged — this is a
+new-writes-only restriction, not a data migration.
 
 ## Resolution
 
@@ -23,7 +47,7 @@ epic.epic_dependency_policy          # "linear" or "nonlinear"
 epic.resolved_epic_dependency_policy # same concrete value
 ```
 
-New Epics are linear unless the operator explicitly opts that Epic into nonlinear dependencies. Existing Epics that used the retired `inherit` value were backfilled once to the repository policy that was current at migration time, so later repository setting changes do not alter existing Epic behavior.
+Epics proposed through chat are always `linear` — there is no chat-facing way to opt an Epic into nonlinear dependencies; only the Epic/Repository settings surface can set `nonlinear` (see Values above). Existing Epics that used the retired `inherit` value were backfilled once to the repository policy that was current at migration time, so later repository setting changes do not alter existing Epic behavior.
 
 ## Execution readiness
 
@@ -33,6 +57,8 @@ For nonlinear Epics, eager execution first looks for an unambiguous stack base. 
 
 ## Proposal validation
 
-Bundled Epic proposal confirmation validates proposed child Jobs against the resolved policy before creating the Epic or Jobs. Under `linear`, sibling `depends_on` edges must make every child comparable with every other child: one child, a simple chain, or a chain with redundant transitive edges is valid; fan-in, fan-out, disconnected roots/leaves, and parallel child Jobs are rejected with the offending slugs in the error.
+Bundled Epic proposal confirmation always validates proposed child Jobs as a single linear chain before creating the Epic or Jobs, regardless of any policy stored on an existing target Epic. Sibling `depends_on` edges must make every child comparable with every other child: one child, a simple chain, or a chain with redundant transitive edges is valid; fan-in, fan-out, disconnected roots/leaves, and parallel child Jobs are rejected with the offending slugs in the error. There is no proposal-time override — `propose_epic_with_jobs` has no field for requesting a nonlinear child graph, and Epics created from chat proposals always persist `linear` before child Job dependencies are materialized.
 
-`propose_epic_with_jobs` accepts `epic.nonlinear_dependency_override: true` as an explicit proposal-time override. Agents should set it only when the operator explicitly requested nonlinear execution. Proposal-created Epics without that override persist `linear` before child Job dependencies are materialized.
+## JobDependency-level enforcement
+
+Independent of the proposal-graph check above, `JobDependency`'s own model validation enforces same-Epic edges unconditionally, in every instance mode (`AppSetting.simple?` and `AppSetting.advanced?` alike): a Job may not have two same-Epic upstream dependencies (no merge/fan-in), and an upstream Job may not have two same-Epic downstream dependents (no fork/fan-out). This is a *direct-edge* count, not a transitive-reachability check, so it is stricter than the proposal-graph validation above — a proposal graph that the linear policy accepts as "a chain with redundant transitive edges" (e.g. `C depends_on B`, `B depends_on A`, and also an explicit `C depends_on A`) still fails at materialization time, because `C` ends up with two direct same-Epic upstream `JobDependency` rows. No code path — the `add_job_dependency` MCP tool, the admin API, chat proposal confirmation, or GitHub issue `Depends-on:` footer parsing — can create a fan-in or fan-out same-Epic `JobDependency` edge, in any instance mode. Existing `JobDependency` rows created before this enforcement are unaffected, since the check only runs on create/update; the DAG-capable services (`JobStackResolver`, `LandingQueueProcessor#dependency_order`, `EpicRestackPlan`, `MergeTrainAssembler`) do not create new `JobDependency` rows, and keep serving whatever fan-in/fan-out structure already exists on those older rows unmodified.
