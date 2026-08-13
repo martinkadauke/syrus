@@ -294,9 +294,9 @@ module App
     end
 
     def latest_terminal_provider_run
-      Run
+      provider_run_scope
         .includes(:run_diagnostic, :run_failure_classification)
-        .where(user_id: user.id, agent_provider: provider, state: %w[succeeded failed])
+        .where(state: %w[succeeded failed])
         .where.not(finished_at: nil)
         .order(finished_at: :desc, updated_at: :desc, id: :desc)
         .limit(1)
@@ -304,12 +304,22 @@ module App
     end
 
     def usage_limit_failed_runs
-      Run.left_outer_joins(:run_diagnostic, :run_failure_classification)
+      provider_run_scope.left_outer_joins(:run_diagnostic, :run_failure_classification)
          .includes(:run_diagnostic, :run_failure_classification, :step)
-         .where(user_id: user.id, state: "failed", agent_provider: provider)
+         .where(state: "failed")
          .where("runs.finished_at >= ?", now - ProviderCircuitBreaker::USAGE_LIMIT_WINDOW)
          .order(finished_at: :desc, updated_at: :desc)
          .limit(50)
+    end
+
+    def provider_run_scope
+      scope = Run.all
+      scope = scope.from(Arel.sql("#{Run.quoted_table_name} FORCE INDEX (idx_runs_user_provider_state_recent)")) if mysql_adapter?
+      scope.where(user_id: user.id, agent_provider: provider)
+    end
+
+    def mysql_adapter?
+      ActiveRecord::Base.connection.adapter_name.match?(/mysql/i)
     end
 
     def usage_limit?(run, text)

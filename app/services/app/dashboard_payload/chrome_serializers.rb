@@ -100,6 +100,7 @@ module App
       def smart_folder_count_needed?(folder)
         return true if active_smart_folder&.id == folder.id
         return true unless folder.builtin?
+        return false if folder.visibility == :on_demand
 
         folder.visibility.in?([ :always, :when_present ])
       end

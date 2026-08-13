@@ -183,7 +183,7 @@ module Filters
         end
 
         def apply_awaiting_approval
-          scope.where(id: awaiting_approval_ids)
+          awaiting_approval_scope(scope)
         end
 
         def apply_just_failed
@@ -295,7 +295,11 @@ module Filters
         end
 
         def awaiting_approval_ids(base = Job.all)
-          base.where(state: "implemented").without_active_workflows.select(:id)
+          awaiting_approval_scope(base).select(:id)
+        end
+
+        def awaiting_approval_scope(base)
+          base.where(state: "implemented").without_active_workflows
         end
 
         def unread_feedback_ids(base = Job.all)
