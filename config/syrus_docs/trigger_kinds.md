@@ -70,7 +70,14 @@ Structurally like `retry`; treated identically in most code paths.
 
 **Step chain:** `mergeability_preflight → prepare → retry_until(graders, repair: landing_fix) → push → auto_merge`
 
-Validates mergeability, re-runs required graders on the exact PR branch with each grader's `fast` command when configured, then merges. Landing does not run `coverage_analyze` because fast grader variants are pass/fail gates and do not produce the full coverage flow. Transient GitHub errors defer the Job back to `approved` for retry. Does not run `implement` — only landing validation and merge.
+Validates mergeability, mechanically rebases and force-pushes the PR branch onto
+the current base when that rebase is clean, re-runs required graders on the exact
+rebased PR branch with each grader's `fast` command when configured, then
+merges. If the mechanical rebase conflicts, Syrus dispatches the normal `rebase`
+workflow and defers. Landing does not run `coverage_analyze` because fast grader
+variants are pass/fail gates and do not produce the full coverage flow.
+Transient GitHub errors defer the Job back to `approved` for retry. Does not run
+`implement` — only landing validation and merge.
 
 ## landing_validation
 

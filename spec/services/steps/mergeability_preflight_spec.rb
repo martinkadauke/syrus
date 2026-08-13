@@ -11,6 +11,17 @@ RSpec.describe Steps::MergeabilityPreflight do
   let(:step) { workflow.steps.first }
   let(:run) { Run.create!(job: job, step: step, trigger_kind: "auto_merge") }
   let(:client) { instance_double(GithubClient) }
+  let(:no_op_rebase_result) do
+    AutoRebase::Result.new(
+      true,
+      "rebased",
+      "no-op (already up-to-date)",
+      changed: false,
+      pre_sha: "head",
+      post_sha: "head",
+      base_sha: "base"
+    )
+  end
 
   def pr(state: "open", mergeable_state: "clean", mergeable: true, head_sha: "head", head_ref: "feature", head_repo: "acme/widgets", base_ref: "main", base_sha: "base")
     OpenStruct.new(
@@ -45,6 +56,7 @@ RSpec.describe Steps::MergeabilityPreflight do
     allow(client).to receive(:pr_issue_comments).and_return([])
     allow(client).to receive(:pr_commits).and_return([])
     allow(client).to receive(:branch_head_sha).and_return("base")
+    allow(AutoRebase).to receive(:new).and_return(instance_double(AutoRebase, call: no_op_rebase_result))
   end
 
   it "records the exact GitHub mergeability state and continues when the PR is ready" do
@@ -57,8 +69,74 @@ RSpec.describe Steps::MergeabilityPreflight do
     expect(job.github_mergeable_state).to eq("clean")
     expect(job.mergeability_head_sha).to eq("abc")
     expect(job.mergeability_base_sha).to eq("def")
+    expect(job.local_mergeable).to be(true)
+    expect(job.local_mergeable_state).to eq("clean")
     expect(run.reload).to be_running
     expect(workflow.reload).to be_running
+  end
+
+  it "mechanically rebases and pushes the PR branch before landing graders" do
+    rebase_result = AutoRebase::Result.new(
+      true,
+      "rebased",
+      "advanced abc1234 to fedcba9",
+      changed: true,
+      pre_sha: "abc1234",
+      post_sha: "fedcba9",
+      base_sha: "def5678"
+    )
+    allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "clean", mergeable: true, head_sha: "abc1234", base_sha: "def5678"))
+    allow(AutoRebase).to receive(:new).with(job, base_branch: "main").and_return(instance_double(AutoRebase, call: rebase_result))
+
+    described_class.new(run).call
+
+    expect(job.reload.mergeability_head_sha).to eq("fedcba9")
+    expect(job.mergeability_base_sha).to eq("def5678")
+    expect(job.local_mergeable).to be(true)
+    expect(job.local_mergeability_head_sha).to eq("fedcba9")
+    expect(workflow.artifact("mergeability_preflight_rebase")).to include(
+      "succeeded" => true,
+      "changed" => true,
+      "post_sha" => "fedcba9",
+      "base_sha" => "def5678"
+    )
+    expect(workflow.artifact(LandingThroughputMetrics::ARTIFACT_KEY).dig("validation_decisions").last).to include(
+      "context" => "auto_merge",
+      "head_sha" => "fedcba9",
+      "base_sha" => "def5678"
+    )
+    expect(run.job_logs.pluck(:chunk).join("\n")).to include("auto_merge: mechanically rebased and pushed syrus/issue-42-1 before landing graders")
+    expect(run.reload).to be_running
+    expect(workflow.reload).to be_running
+  end
+
+  it "dispatches a rebase workflow when the mechanical rebase conflicts before landing graders" do
+    rebase_result = AutoRebase::Result.new(
+      false,
+      "conflict",
+      nil,
+      pre_sha: "abc1234",
+      base_sha: "def5678"
+    )
+    allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "clean", mergeable: true, head_sha: "abc1234", base_sha: "def5678"))
+    allow(AutoRebase).to receive(:new).with(job, base_branch: "main").and_return(instance_double(AutoRebase, call: rebase_result))
+    allow(StepDispatcher).to receive(:start_workflow)
+
+    expect {
+      described_class.new(run).call
+    }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
+
+    expect(job.reload).to be_approved
+    expect(run.reload).to be_cancelled
+    expect(step.reload).to be_cancelled
+    expect(workflow.reload).to be_cancelled
+    expect(workflow.artifact("mergeability_preflight_rebase")).to include(
+      "succeeded" => false,
+      "reason" => "conflict",
+      "pre_sha" => "abc1234",
+      "base_sha" => "def5678"
+    )
+    expect(StepDispatcher).to have_received(:start_workflow).with(an_instance_of(Workflow))
   end
 
   it "continues to prepare when GitHub mergeability is unknown and local rebase is clean" do

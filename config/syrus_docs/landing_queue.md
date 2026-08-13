@@ -41,7 +41,15 @@ an already-active merge train, or landing state drift where a Job is in
 
 ### mergeability_preflight
 
-Refreshes GitHub's mergeability status for the PR. If GitHub is still computing (`mergeable: null`), waits briefly and retries. If the branch has conflicts, dispatches a `rebase` workflow and defers. If a prior landing validation is still valid for the current artifact, base, and grader configuration, skips grader re-validation and logs the reuse reason.
+Refreshes GitHub's mergeability status for the PR. When GitHub says the PR is
+ready, Syrus first attempts a deterministic rebase onto the current base branch
+and force-pushes it with `--force-with-lease` if the rebase changes the PR head.
+Final graders then run against that rebased head. If the deterministic rebase
+conflicts, Syrus dispatches a `rebase` workflow and defers. If GitHub is still
+computing (`mergeable: null`), Syrus runs a local rebase preflight to distinguish
+conflicts from GitHub lag. If a prior landing validation is still valid for the
+current artifact, base, and grader configuration, skips grader re-validation and
+logs the reuse reason.
 
 ### Grader re-validation
 

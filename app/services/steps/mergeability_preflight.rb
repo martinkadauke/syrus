@@ -2,6 +2,9 @@ module Steps
   class MergeabilityPreflight < Base
     include AutoMergeControl
 
+    RefSnapshot = Struct.new(:sha, :ref, :repo, keyword_init: true)
+    PullRequestSnapshot = Struct.new(:state, :mergeable, :mergeable_state, :labels, :head, :base, keyword_init: true)
+
     def call
       if job.external_pr?
         call_for_external_pr
@@ -26,10 +29,13 @@ module Steps
       else
         raise StepFailed, "auto_merge: #{gate.reason}" unless gate.merge_ready?
 
-        decision = landing_validation_decision(client, pr_repo, pr)
-        record_landing_validation_decision!(decision, pr)
+        rebase_result = mechanically_rebase_before_landing!(gate, client: client)
+        pr_for_validation = pr_after_mechanical_rebase(pr, rebase_result)
+
+        decision = landing_validation_decision(client, pr_repo, pr_for_validation)
+        record_landing_validation_decision!(decision, pr_for_validation)
         if decision.reusable?
-          skip_revalidated_landing_steps!(pr, decision)
+          skip_revalidated_landing_steps!(pr_for_validation, decision)
         else
           log("auto_merge: landing graders will run - #{decision.reason}", kind: "system")
         end
@@ -100,6 +106,49 @@ module Steps
       workflow.set_artifact!("external_pr_head_sha", pr.head&.sha)
     end
 
+    def mechanically_rebase_before_landing!(gate, client:)
+      result = ::AutoRebase.new(job, base_branch: MergeabilityRecorder.base_ref(gate.pr)).call
+      workflow.set_artifact!("mergeability_preflight_rebase", result.to_h)
+
+      if result.succeeded?
+        MergeabilityRecorder.record_local!(
+          job: job,
+          result: LocalMergeabilityCheck::Result.new(
+            state: "clean",
+            mergeable: true,
+            message: result.note.presence || "mechanical rebase passed",
+            head_sha: result.post_sha.presence || MergeabilityRecorder.head_sha(gate.pr),
+            base_sha: result.base_sha.presence || MergeabilityRecorder.base_sha(gate.pr),
+            base_ref: MergeabilityRecorder.base_ref(gate.pr)
+          )
+        )
+        if result.changed?
+          job.update!(
+            mergeability_head_sha: result.post_sha,
+            mergeability_base_sha: result.base_sha.presence || job.mergeability_base_sha,
+            mergeability_checked_at: Time.current
+          )
+          log("auto_merge: mechanically rebased and pushed #{job.branch_name} before landing graders - #{result.note}", kind: "system")
+        else
+          log("auto_merge: mechanical rebase before landing graders passed - #{result.note}", kind: "system")
+        end
+        return result
+      end
+
+      rebase_gate = AutoMergeGate::Result.new(
+        outcome: :needs_rebase,
+        approved: gate.approved?,
+        reason: "mechanical rebase before landing graders failed: #{result}",
+        pr: gate.pr
+      )
+      handle_needs_rebase!(
+        rebase_gate,
+        defer_reason: "#{rebase_gate.reason}; rebase_result=#{result.reason}",
+        client: client
+      )
+      nil
+    end
+
     def handle_transient!(gate)
       local = LocalMergeabilityCheck.new(job: job, pr: gate.pr).call
       MergeabilityRecorder.record_local!(job: job, result: local)
@@ -148,6 +197,26 @@ module Steps
           cursor = cursor.next_step
         end
       end
+    end
+
+    def pr_after_mechanical_rebase(pr, result)
+      return pr unless result&.changed?
+
+      PullRequestSnapshot.new(
+        state: pr.state,
+        mergeable: pr.mergeable,
+        mergeable_state: pr.mergeable_state,
+        labels: pr.respond_to?(:labels) ? pr.labels : [],
+        head: RefSnapshot.new(
+          sha: result.post_sha.presence || MergeabilityRecorder.head_sha(pr),
+          ref: pr.head&.ref,
+          repo: pr.head&.repo
+        ),
+        base: RefSnapshot.new(
+          ref: MergeabilityRecorder.base_ref(pr),
+          sha: result.base_sha.presence || MergeabilityRecorder.base_sha(pr)
+        )
+      )
     end
 
     def record_landing_validation_decision!(decision, pr)

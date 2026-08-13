@@ -186,7 +186,11 @@ Non-agentic / Agentic / Non-agentic. Same as the single-PR rebase chain but oper
 
 ### mergeability_preflight
 
-Non-agentic. Refreshes GitHub mergeability, runs a local rebase preflight when GitHub is still computing, dispatches rebase workflows for conflicts, and short-circuits if a prior landing validation is still valid.
+Non-agentic. Refreshes GitHub mergeability, mechanically rebases and
+force-pushes a ready PR branch onto the current base before landing graders run,
+runs a local rebase preflight when GitHub is still computing, dispatches rebase
+workflows for conflicts, and short-circuits if a prior landing validation is
+still valid.
 
 ### speculative_landing_build
 
