@@ -22,6 +22,10 @@ RSpec.describe ProviderCircuitBreaker do
     run
   end
 
+  before do
+    described_class.clear_read_cache!
+  end
+
   it "opens when recent transient provider failures span unrelated jobs" do
     5.times do |index|
       failed_agent_run(job: Factories.job(repository: Factories.repository(user: user), issue_number: index + 1))
@@ -34,6 +38,21 @@ RSpec.describe ProviderCircuitBreaker do
     expect(decision.failure_count).to eq(5)
     expect(decision.job_count).to eq(5)
     expect(decision.retry_after).to be_within(1.second).of(now + 9.minutes)
+  end
+
+  it "caches logless read-side decisions briefly" do
+    5.times do |index|
+      failed_agent_run(job: Factories.job(repository: Factories.repository(user: user), issue_number: index + 1))
+    end
+
+    first = described_class.call("codex", now: now, include_logs: false)
+    second = described_class.call("codex", now: now + 1.second, include_logs: false)
+    third = described_class.call("codex", now: now + described_class::READ_CACHE_TTL + 1.second, include_logs: false)
+
+    expect(first).to be_open
+    expect(second).to equal(first)
+    expect(third).to be_open
+    expect(third).not_to equal(first)
   end
 
   it "stays closed when failures are isolated to one job" do

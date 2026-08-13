@@ -3,9 +3,12 @@ class ProviderCircuitBreaker
   OPEN_FOR = 10.minutes
   USAGE_LIMIT_WINDOW = 24.hours
   USAGE_LIMIT_OPEN_FOR = 24.hours
+  READ_CACHE_TTL = 30.seconds
   MIN_FAILURES = 5
   MIN_UNRELATED_JOBS = 3
   REPEAT_SIGNATURE_THRESHOLD = 3
+  @read_cache_mutex = Mutex.new
+  @read_cache = {}
 
   RETRYABLE_OUTCOMES = %w[
     provider_transient
@@ -54,7 +57,13 @@ class ProviderCircuitBreaker
   FailureSignal = Data.define(:run, :signature, :retryable)
   UsageLimitSignal = Data.define(:run, :signature, :model, :evidence)
 
-  def self.call(provider, now: Time.current, include_logs: true) = new(provider, now: now, include_logs: include_logs).call
+  def self.call(provider, now: Time.current, include_logs: true)
+    return new(provider, now: now, include_logs: include_logs).call if include_logs
+
+    fetch_read_cache(provider.to_s, now: now) do
+      new(provider, now: now, include_logs: include_logs).call
+    end
+  end
 
   def self.open?(provider, now: Time.current) = call(provider, now: now).open?
 
@@ -63,6 +72,24 @@ class ProviderCircuitBreaker
       decision = call(provider, now: now)
       decision if decision.open?
     end
+  end
+
+  def self.clear_read_cache!
+    @read_cache_mutex.synchronize { @read_cache = {} }
+  end
+
+  def self.fetch_read_cache(provider, now:)
+    entry = @read_cache_mutex.synchronize do
+      cached = @read_cache[provider]
+      cached if cached && cached[:expires_at] > now
+    end
+    return entry[:value] if entry
+
+    value = yield
+    @read_cache_mutex.synchronize do
+      @read_cache[provider] = { value: value, expires_at: now + READ_CACHE_TTL }
+    end
+    value
   end
 
   def initialize(provider, now: Time.current, include_logs: true)
