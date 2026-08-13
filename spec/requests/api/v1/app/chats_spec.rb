@@ -1005,7 +1005,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     chat.messages.create!(role: "user", content: { "text" => "Keep this provider" })
 
     user.update!(chat_provider: "codex")
-    get "/api/v1/app/chats/#{chat.id}/bookmarks"
+    get "/api/v1/app/chats/#{chat.id}"
 
     expect(response).to have_http_status(:ok)
     expect(chat.reload.chat_provider).to eq("claude")
