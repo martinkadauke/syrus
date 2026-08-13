@@ -4,16 +4,7 @@ RSpec.describe ChatSpeechToText::Capability do
   let(:user) { Factories.user }
 
   before do
-    allow(ENV).to receive(:[]).and_call_original
-    allow(ENV).to receive(:[]).with("SYRUS_STT_PROVIDER").and_return(nil)
-    allow(ENV).to receive(:[]).with("SYRUS_STT_WHISPER_CPP_EXECUTABLE").and_return(nil)
-    allow(ENV).to receive(:[]).with("SYRUS_STT_WHISPER_CPP_MODEL").and_return(nil)
-    allow(ENV).to receive(:[]).with("SYRUS_STT_BACKEND_STREAMING").and_return(nil)
-    # Bypass the bundled-binary fallback (WhisperCpp::BUNDLED_*_PATH) so specs are
-    # deterministic regardless of whether this environment has whisper.cpp baked in.
-    allow(File).to receive(:exist?).and_call_original
-    allow(File).to receive(:exist?).with(ChatSpeechToText::Providers::WhisperCpp::BUNDLED_EXECUTABLE_PATH).and_return(false)
-    allow(File).to receive(:exist?).with(ChatSpeechToText::Providers::WhisperCpp::BUNDLED_MODEL_PATH).and_return(false)
+    stub_no_chat_speech_to_text_backend!
   end
 
   it "does not offer any dictation mode when the feature is disabled" do

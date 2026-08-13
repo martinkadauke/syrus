@@ -45,9 +45,7 @@ RSpec.describe "API: /api/v1/app speech-to-text", type: :request do
   it "returns a deterministic backend-unavailable response when backend STT is not configured" do
     sign_in_as(user)
     enable_speech_to_text!
-    allow(File).to receive(:exist?).and_call_original
-    allow(File).to receive(:exist?).with(ChatSpeechToText::Providers::WhisperCpp::BUNDLED_EXECUTABLE_PATH).and_return(false)
-    allow(File).to receive(:exist?).with(ChatSpeechToText::Providers::WhisperCpp::BUNDLED_MODEL_PATH).and_return(false)
+    stub_no_chat_speech_to_text_backend!
 
     post "/api/v1/app/chats/#{chat.id}/speech_to_text"
 
@@ -167,9 +165,7 @@ RSpec.describe "API: /api/v1/app speech-to-text", type: :request do
   it "logs backend fallback reasons without runtime config values" do
     sign_in_as(user)
     enable_speech_to_text!
-    allow(File).to receive(:exist?).and_call_original
-    allow(File).to receive(:exist?).with(ChatSpeechToText::Providers::WhisperCpp::BUNDLED_EXECUTABLE_PATH).and_return(false)
-    allow(File).to receive(:exist?).with(ChatSpeechToText::Providers::WhisperCpp::BUNDLED_MODEL_PATH).and_return(false)
+    stub_no_chat_speech_to_text_backend!
     messages = []
     allow(Rails.logger).to receive(:info) { |message| messages << message }
 

@@ -1444,9 +1444,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
   it "reports speech-to-text disabled by default" do
     sign_in_as(user)
     chat = ChatSession.create!(user: user)
-    allow(File).to receive(:exist?).and_call_original
-    allow(File).to receive(:exist?).with(ChatSpeechToText::Providers::WhisperCpp::BUNDLED_EXECUTABLE_PATH).and_return(false)
-    allow(File).to receive(:exist?).with(ChatSpeechToText::Providers::WhisperCpp::BUNDLED_MODEL_PATH).and_return(false)
+    stub_no_chat_speech_to_text_backend!
 
     get "/api/v1/app/chats/#{chat.id}"
 
@@ -1471,9 +1469,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       feature.category = "Labs"
       feature.name = "Chat speech-to-text"
     end.update!(enabled: true)
-    allow(File).to receive(:exist?).and_call_original
-    allow(File).to receive(:exist?).with(ChatSpeechToText::Providers::WhisperCpp::BUNDLED_EXECUTABLE_PATH).and_return(false)
-    allow(File).to receive(:exist?).with(ChatSpeechToText::Providers::WhisperCpp::BUNDLED_MODEL_PATH).and_return(false)
+    stub_no_chat_speech_to_text_backend!
 
     get "/api/v1/app/chats/#{chat.id}"
 
