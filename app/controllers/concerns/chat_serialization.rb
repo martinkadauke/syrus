@@ -108,7 +108,7 @@ module ChatSerialization
   end
 
   def preload_bookmarks_in_chat_payload?(chat_session)
-    !chat_session.enabled_supervisor_chat?
+    false
   end
 
   def preload_chat_payload_associations(chat_session)
