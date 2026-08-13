@@ -158,9 +158,6 @@ module App
         command_spans = PerformanceLogging.phase("job_detail.run.command_spans", job_id: @job.id, run_id: run.id) do
           ordered_command_spans_for(run).map { |span| command_span_json(span) }
         end
-        worker_health_correlation = PerformanceLogging.phase("job_detail.run.worker_health_correlation", job_id: @job.id, run_id: run.id) do
-          WorkerHealthRunCorrelation.for_run(run, sample_limit: 0)
-        end
         {
           id: run.id,
           state: run.state,
@@ -194,7 +191,6 @@ module App
           health_snapshots: latest_health_snapshot_for(run).then { |snapshot| snapshot ? [ health_snapshot_json(snapshot) ] : [] },
           active_process: active_process_json(run),
           command_spans: command_spans,
-          worker_health_correlation: worker_health_correlation,
           agent_session: agent_session_json(session),
           can_stop: run.may_cancel?,
           can_diagnose: run.queued? || run.running?,

@@ -370,7 +370,7 @@ RSpec.describe "App API job detail", type: :request do
       "outcome" => "succeeded",
       "hostname" => "worker-a"
     ))
-    expect(first_run.dig("worker_health_correlation", "command_spans", 0, "name")).to eq("bundle check")
+    expect(first_run).not_to have_key("worker_health_correlation")
   end
 
   it "returns job detail cost after a run records cost metadata" do

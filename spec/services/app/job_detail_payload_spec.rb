@@ -597,19 +597,17 @@ RSpec.describe App::JobDetailPayload do
       payload = payload_for(job)
       serialized = JSON.generate(payload)
       active_process = payload.dig(:workflows, 0, :steps, 0, :runs, 0, :active_process)
-      health_process = payload.dig(:workflows, 0, :steps, 0, :runs, 0, :worker_health_correlation, :processes, 0)
 
       expect(active_process[:command]).to eq("git fetch https://x-access-token:[REDACTED]@github.com/acme/widgets.git")
-      expect(health_process[:command]).to eq("git fetch https://x-access-token:[REDACTED]@github.com/acme/widgets.git")
       expect(serialized).not_to include("ghp_jobdetail")
       expect(serialized).not_to include("x-access-token:ghp_")
     end
 
-    it "includes compact worker health correlation on each run payload" do
+    it "omits per-run worker health correlation from the default workflow payload" do
       job = Factories.job_record(repository: repo)
       workflow = Workflow.create!(job: job, trigger_kind: "initial", state: "succeeded", worker_hostname: "worker-1")
       step = Step.create!(workflow: workflow, kind: "grader", position: 0, state: "succeeded", details: { "name" => "rspec" })
-      run = Run.create!(
+      Run.create!(
         job: job,
         step: step,
         trigger_kind: "initial",
@@ -626,15 +624,9 @@ RSpec.describe App::JobDetailPayload do
         cpu_pressure_some: 52.0
       )
 
-      correlation = payload_for(job).dig(:workflows, 0, :steps, 0, :runs, 0, :worker_health_correlation)
+      run_payload = payload_for(job).dig(:workflows, 0, :steps, 0, :runs, 0)
 
-      expect(correlation).to include(
-        run_id: run.id,
-        primary_hostname: "worker-1",
-        sample_count: 1,
-        command_spans: []
-      )
-      expect(correlation.dig(:pressure, :level)).to eq("critical")
+      expect(run_payload).not_to have_key(:worker_health_correlation)
     end
 
     it "serializes only workflow artifact fields needed by the detail UI" do
