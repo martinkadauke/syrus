@@ -554,6 +554,7 @@ export type JobActions = {
   can_manage_tags: boolean
   can_open_in_coding_mode: boolean
   can_start_preview: boolean
+  can_run_visual_review: boolean
   feedback_agent_options: string[]
   rebase_agent_options: string[]
   retry_agent_options: string[]
@@ -651,6 +652,7 @@ export type JobPaths = {
   app_provider_setting_path?: string
   app_preview_path: string
   app_preview_logs_path: string
+  app_visual_review_path: string
   admin_resource_admission_path: string
 }
 

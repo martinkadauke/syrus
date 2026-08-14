@@ -142,6 +142,7 @@ Rails.application.routes.draw do
         post "jobs/:job_id/poll_feedback", to: "job_run_commands#poll_feedback", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/rebase", to: "job_run_commands#rebase", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/retry_pr_ingestion", to: "job_run_commands#retry_pr_ingestion", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
+        post "jobs/:job_id/visual_review", to: "job_run_commands#run_visual_review", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/check_mergeability", to: "job_run_commands#check_mergeability", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/resume", to: "job_run_commands#resume", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/runs/:run_id/stop", to: "job_run_commands#stop_run", constraints: { job_id: /[a-zA-Z0-9_-]+/, run_id: /\d+/ }
@@ -283,6 +284,7 @@ Rails.application.routes.draw do
         get "repositories/:id/insight_schedule_config", to: "insight_schedule_configs#show", constraints: { id: /\d+/ }
         patch "repositories/:id/insight_schedule_config", to: "insight_schedule_configs#update", constraints: { id: /\d+/ }
         get "workflows/:workflow_id/coverage_hit_map", to: "workflows#coverage_hit_map", constraints: { workflow_id: /\d+/ }
+        get "workflows/:workflow_id/visual_artifact", to: "workflows#visual_artifact", constraints: { workflow_id: /\d+/ }
         get "repositories/:repository_id/input_sources/:type", to: "input_sources#show"
         patch "repositories/:repository_id/input_sources/:type", to: "input_sources#update"
         get "repositories/:repository_id/documents", to: "repository_documents#index"

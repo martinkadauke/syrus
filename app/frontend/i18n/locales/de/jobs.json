@@ -18,6 +18,7 @@
   "rebase_now": "Jetzt rebasen",
   "check_mergeability": "Mergebarkeit prüfen",
   "retry_pr_ingestion": "PR-Übernahme erneut versuchen",
+  "run_visual_review": "Visuelle Prüfung ausführen",
   "retry": "Erneut versuchen",
   "retry_with_feedback": "Mit Feedback erneut versuchen",
   "retry_with_agent": "Mit {{provider}} erneut versuchen",
@@ -95,6 +96,7 @@
   "artifact_migration_after": "Nachher",
   "artifact_diff_before": "Vorher",
   "artifact_diff_after": "Nachher",
+  "artifact_image_alt": "Screenshot",
   "merge_train_phase": {
     "assembling": "Epic merge train assembling",
     "reconciling": "Epic merge train reconciling",

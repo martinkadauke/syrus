@@ -18,6 +18,7 @@
   "rebase_now": "Statim rebase fac",
   "check_mergeability": "Coniungibilitatem inspice",
   "retry_pr_ingestion": "Susceptionem PR itera",
+  "run_visual_review": "Recognitionem visualem fac",
   "retry": "Itera",
   "retry_with_feedback": "Cum responso itera",
   "retrying": "Iteratur...",
@@ -93,6 +94,7 @@
   "artifact_migration_after": "Post",
   "artifact_diff_before": "Ante",
   "artifact_diff_after": "Post",
+  "artifact_image_alt": "Imago capturae",
   "merge_train_phase": {
     "assembling": "Epic merge train assembling",
     "reconciling": "Epic merge train reconciling",

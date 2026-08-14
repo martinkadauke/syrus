@@ -420,6 +420,36 @@ describe("MediaGallery artifacts", () => {
     expect(screen.queryByText("users")).not.toBeInTheDocument()
   })
 
+  it("renders a submitted visual_review_screenshot artifact as an image via TypedArtifactPanel", async () => {
+    vi.mocked(fetchChatMedia).mockResolvedValue({
+      snapshots: [],
+      chat_images: [],
+      typed_artifacts: [
+        {
+          type: "visual_review_screenshot",
+          title: "Homepage after fix",
+          created_at: "2026-08-06T10:00:00Z",
+          renderer_type: "image_diff",
+          payload: {
+            image_url: "/api/v1/app/workflows/1/visual_artifact?type=visual_review_screenshot",
+            content_type: "image/png",
+            byte_size: 48213
+          }
+        }
+      ],
+      whiteboard_has_unsaved_content: false
+    })
+
+    renderWorkspacePanel(makePayload(), { activeTab: "media" })
+
+    expect(await screen.findByText("Homepage after fix")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }))
+
+    const image = await screen.findByRole("img", { name: "Homepage after fix" })
+    expect(image).toHaveAttribute("src", "/api/v1/app/workflows/1/visual_artifact?type=visual_review_screenshot")
+  })
+
   it("does not show the media-empty placeholder when only artifacts are present", async () => {
     vi.mocked(fetchChatMedia).mockResolvedValue({
       snapshots: [],

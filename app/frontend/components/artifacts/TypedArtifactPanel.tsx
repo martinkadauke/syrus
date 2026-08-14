@@ -1,4 +1,4 @@
-import type { TypedArtifact, SchemaErdPayload, MigrationDiffPayload } from "../../api/artifacts"
+import type { TypedArtifact, SchemaErdPayload, MigrationDiffPayload, ImageDiffPayload } from "../../api/artifacts"
 import { ErdDiagramRenderer } from "./ErdDiagramRenderer"
 import { MigrationDiffRenderer } from "./MigrationDiffRenderer"
 
@@ -38,9 +38,28 @@ function ArtifactBody({ artifact }: { artifact: TypedArtifact }) {
   if (artifact.renderer_type === "migration_diff") {
     return <MigrationDiffRenderer payload={artifact.payload as MigrationDiffPayload} />
   }
+  if (artifact.renderer_type === "image_diff") {
+    return <ImageDiffBody payload={artifact.payload as ImageDiffPayload} title={artifact.title} />
+  }
+  return <RawArtifactBody payload={artifact.payload} />
+}
+
+function ImageDiffBody({ payload, title }: { payload: ImageDiffPayload; title: string }) {
+  if (!payload.image_url) {
+    return <RawArtifactBody payload={payload} />
+  }
+
+  return (
+    <a href={payload.image_url} target="_blank" rel="noreferrer">
+      <img src={payload.image_url} alt={title} className="max-w-full rounded border border-gray-200" />
+    </a>
+  )
+}
+
+function RawArtifactBody({ payload }: { payload: unknown }) {
   return (
     <pre className="overflow-x-auto rounded bg-gray-50 p-3 text-xs text-gray-700">
-      {JSON.stringify(artifact.payload, null, 2)}
+      {JSON.stringify(payload, null, 2)}
     </pre>
   )
 }

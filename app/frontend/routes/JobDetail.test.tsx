@@ -1251,6 +1251,37 @@ describe("ArtifactsTab", () => {
     expect(screen.getByText(/adapter: postgresql/)).toBeInTheDocument()
   })
 
+  it("renders image_diff: a linked screenshot image", () => {
+    renderArtifactsTab([{
+      type: "visual_review_screenshot",
+      title: "Homepage after fix",
+      created_at: "2026-08-06T10:00:00Z",
+      renderer_type: "image_diff",
+      payload: {
+        image_url: "/api/v1/app/workflows/1/visual_artifact?type=visual_review_screenshot",
+        content_type: "image/png",
+        byte_size: 48213
+      }
+    }])
+
+    const image = screen.getByRole("img", { name: "Homepage after fix" })
+    expect(image).toHaveAttribute("src", "/api/v1/app/workflows/1/visual_artifact?type=visual_review_screenshot")
+    expect(image.closest("a")).toHaveAttribute("href", "/api/v1/app/workflows/1/visual_artifact?type=visual_review_screenshot")
+  })
+
+  it("falls back to raw JSON for image_diff artifacts with no image_url", () => {
+    renderArtifactsTab([{
+      type: "visual_review_screenshot",
+      title: "Homepage after fix",
+      created_at: "2026-08-06T10:00:00Z",
+      renderer_type: "image_diff",
+      payload: {}
+    }])
+
+    expect(screen.queryByRole("img")).not.toBeInTheDocument()
+    expect(screen.getByText("{}")).toBeInTheDocument()
+  })
+
   it("falls back to raw JSON for unknown renderer_type", () => {
     renderArtifactsTab([{
       type: "unknown_type",
@@ -1627,6 +1658,7 @@ function jobPayload(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload
       can_open_in_local_mode: false,
       can_cancel_local_mode: false,
       can_start_preview: false,
+      can_run_visual_review: false,
       linked_chat_id: null,
       feedback_agent_options: [],
       rebase_agent_options: [],
@@ -1667,6 +1699,7 @@ function jobPayload(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload
       app_priority_path: "/api/v1/app/jobs/1/priority",
       app_preview_path: "/api/v1/app/jobs/1/preview",
       app_preview_logs_path: "/api/v1/app/jobs/1/preview/logs",
+      app_visual_review_path: "/api/v1/app/jobs/1/visual_review",
       admin_resource_admission_path: "/admin/resource_admission"
     },
     ...overrides

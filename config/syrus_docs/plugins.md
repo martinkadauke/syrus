@@ -199,7 +199,7 @@ Maps agent-submitted artifact types to a core frontend renderer. Include
 | Method | Returns | Description |
 |---|---|---|
 | `.artifact_type` | `String` | Artifact type identifier (e.g. `"rails_schema_erd"`) |
-| `.renderer_type` | `Symbol` | One of `:erd_diagram`, `:migration_diff`, `:data_table`, `:before_after_diff` |
+| `.renderer_type` | `Symbol` | One of `:erd_diagram`, `:migration_diff`, `:data_table`, `:before_after_diff`, `:image_diff` |
 | `.payload_schema` | `Hash\|nil` | Optional JSON Schema for the payload (documentation only, not validated) |
 
 A plugin may register multiple renderer classes by passing an array to the
@@ -333,3 +333,21 @@ Bundled plugins:
   `:coverage_analyzer` (SimpleCov), and `:grader_augmentor` (appends structured
   RSpec JSON failure details to the grade log when an rspec grader fails). Enable
   by calling `SyrusRails.register!` from an initializer.
+- `browser` — default-enabled. Provides `:mcp_tool_set`
+  (`SyrusBrowser::McpToolSet`): granular headless-browser tools
+  (`browser_navigate`, `browser_click`, `browser_fill`, `browser_snapshot`,
+  `browser_screenshot`, `browser_wait_for`, `browser_close`) for workflow
+  agents, backed by a bundled `@playwright/mcp` stdio subprocess (Chromium
+  ships in the worker Docker image only — see `Dockerfile`'s `worker-deps`
+  stage). One browser session is spawned per Run and reused across every
+  `browser_*` call in that Run; it is killed when the workflow step's MCP
+  sidecar exits. `browser_navigate` is hard-restricted to loopback URLs
+  (`SyrusBrowser::LoopbackGuard`) — an agent driving a real browser can only
+  reach the worker's own `start_preview` preview, never an arbitrary network
+  destination, regardless of what a prompt or a compromised target repo asks
+  it to do. Also provides `:artifact_renderer` (`SyrusBrowser::ImageDiffRenderer`,
+  type `visual_review_screenshot` → `:image_diff`) — `browser_screenshot`
+  itself only returns image content to the agent's own context, so an agent
+  that wants a screenshot to survive as a durable, operator-visible artifact
+  calls the core `submit_visual_artifact` MCP tool (see
+  `config/syrus_docs/typed_artifacts.md`) to persist it.
