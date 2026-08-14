@@ -8,14 +8,14 @@ module PerformanceLogging
   DEFAULT_SLOW_REQUEST_MS = 1_000.0
   DEFAULT_SLOW_SQL_MS = 250.0
   DEFAULT_SLOW_PHASE_MS = 250.0
-  TOP_SQL_FINGERPRINT_LIMIT = 10
-  MAX_SQL_FINGERPRINTS_PER_REQUEST = 100
+  TOP_SQL_FINGERPRINT_LIMIT = Integer(ENV["SYRUS_PERFORMANCE_TOP_SQL_FINGERPRINT_LIMIT"], exception: false) || 8
+  MAX_SQL_FINGERPRINTS_PER_REQUEST = Integer(ENV["SYRUS_PERFORMANCE_MAX_SQL_FINGERPRINTS_PER_REQUEST"], exception: false) || 25
 
   module Store
     CACHE_KEY = "syrus:performance_logging:events:v1"
-    MAX_EVENTS = 1_000
+    MAX_EVENTS = Integer(ENV["SYRUS_PERFORMANCE_MAX_EVENTS"], exception: false) || 300
     EXPIRES_IN = 6.hours
-    FLUSH_INTERVAL = 10.seconds
+    FLUSH_INTERVAL = (Integer(ENV["SYRUS_PERFORMANCE_FLUSH_INTERVAL_SECONDS"], exception: false) || 60).seconds
 
     @mutex = Mutex.new
     @events = []
@@ -129,7 +129,7 @@ module PerformanceLogging
         request_context,
         "duration_ms" => rounded_duration(duration_ms),
         "name" => safe_string(payload[:name], 200),
-        "sql" => safe_string(payload[:sql], 2_000),
+        "sql" => safe_string(payload[:sql], 600),
         "fingerprint" => fingerprint_sql(payload[:sql])
       ).compact
     )
@@ -343,7 +343,7 @@ module PerformanceLogging
 
     entry = fingerprints[fingerprint] ||= {
       "fingerprint" => fingerprint,
-      "sample_sql" => safe_string(payload[:sql], 1_000),
+      "sample_sql" => safe_string(payload[:sql], 600),
       "name" => safe_string(payload[:name], 200),
       "count" => 0,
       "total_duration_ms" => 0.0,
