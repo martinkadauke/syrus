@@ -225,7 +225,7 @@
       },
       "visual_review": {
         "name": "Recognitio visualis",
-        "description": "Habilitat transitum probationis qualitatis navigatri sine capite, quem agens operarius adversus suam ipsius praevisionem intra gradum exercet ut vitia visibilia deprehendat et imagines artificiorum capiat. Ordinatio visual_review.enabled in .syrus.yml repositorii hanc praedictionem per repositorium vincit."
+        "description": "Gradum visual_review activat: agens independens navigatorem sine capite contra ipsam praevisionem operarii in gradu dirigit ut vitia visibilia deprehendat et documenta screenshot capiat antequam gradatores currunt. Fasciculus .syrus.yml repositorii hunc valorem praedefinitum totius instantiae per repositorium mutare potest."
       }
     }
   },

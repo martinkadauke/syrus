@@ -225,7 +225,7 @@
       },
       "visual_review": {
         "name": "Visuelle Überprüfung",
-        "description": "Aktiviert einen Headless-Browser-QA-Durchlauf, den der Worker-Agent gegen seine eigene In-Step-Vorschau ausführt, um sichtbare Fehler zu erkennen und Screenshot-Artefakte zu erfassen. Die Einstellung visual_review.enabled in der .syrus.yml eines Repositorys überschreibt diesen Standardwert pro Repository."
+        "description": "Aktiviert den visual_review-Schritt: Ein unabhängiger Agent steuert einen Headless-Browser gegen die eigene Vorschau des Workers im aktuellen Schritt, um sichtbare Fehler zu erkennen und Screenshot-Artefakte zu erfassen, bevor die Grader laufen. Die .syrus.yml eines Repositorys kann diesen instanzweiten Standardwert pro Repository überschreiben."
       }
     }
   },

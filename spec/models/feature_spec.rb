@@ -132,6 +132,11 @@ RSpec.describe Feature, type: :model do
   end
 
   describe "declarations" do
+    it "declares the visual_review labs flag default-off in config/features.yml" do
+      declaration = FeatureRegistry.declarations.find { |feature| feature.slug == "visual_review" }
+      expect(declaration).to have_attributes(category: "Labs", default_enabled: false, type: :boolean)
+    end
+
     it "declares the video_walkthroughs labs flag default-off in config/features.yml" do
       declaration = FeatureRegistry.declarations.find { |feature| feature.slug == "video_walkthroughs" }
       expect(declaration).to have_attributes(category: "Labs", default_enabled: false, type: :boolean)
@@ -152,11 +157,6 @@ RSpec.describe Feature, type: :model do
       declaration = YAML.load_file(Rails.root.join("config/features.yml")).fetch("features")
                         .find { |f| f["slug"] == "admin_supervisor_chat" }
       expect(declaration).to include("category" => "Operations", "default" => false)
-    end
-
-    it "declares the visual_review labs flag default-off in config/features.yml" do
-      declaration = FeatureRegistry.declarations.find { |feature| feature.slug == "visual_review" }
-      expect(declaration).to have_attributes(category: "Labs", default_enabled: false, type: :boolean)
     end
   end
 
