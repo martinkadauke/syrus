@@ -62,11 +62,15 @@ preview:
 
 `start` may use `$PORT` or `${PORT}`; Syrus replaces it with a dynamically allocated port. `setup` runs first in the fresh preview checkout, then `seed` runs before the server starts. Setup, seed, and server commands receive the same preview environment. Any nonzero setup or seed command fails the preview instead of starting a partially prepared app. `env` sets repository-specific variables and `unset_env` strips inherited variables such as production database URLs. Use these keys for repo-specific preview guardrails rather than hardcoding repository checks into Syrus.
 
-The bundled Rails preview provider forces `VITE_RUBY_SKIP_PROXY=false` so Rails
-apps using vite-ruby emit same-origin asset paths instead of browser-facing
-`localhost:<vite-port>` URLs. The preview proxy forwards those same-origin asset
-requests to the preview Rails process, and vite-ruby's Rack proxy forwards them
-to the app's local Vite dev server.
+The bundled Rails preview provider installs JavaScript dependencies when a
+package-manager lockfile is present, starts `npm run dev` alongside
+`bin/rails server` when the repo has `package.json`, and forces
+`VITE_RUBY_SKIP_PROXY=false` so Rails apps using vite-ruby emit same-origin
+asset paths instead of browser-facing `localhost:<vite-port>` URLs. The preview
+proxy also rewrites browser-facing `localhost:<port>` origins out of HTML
+responses, which covers apps that hardcode Vite dev-server tags. Same-origin
+asset requests go back through the preview Rails process, and vite-ruby's Rack
+proxy forwards them to the app's local Vite dev server.
 
 ### Preview service process
 

@@ -60,14 +60,14 @@ RSpec.describe SyrusRails::PreviewProvider do
   end
 
   describe "#start_command" do
-    it "returns the rails server command with the given port" do
+    it "returns a command that starts Vite when package.json is present before the rails server" do
       expect(provider.start_command(port: 3001))
-        .to eq("bin/rails server -p 3001 -b 0.0.0.0 -e development")
+        .to eq("mkdir -p log tmp/pids && if [ -f package.json ]; then npm run dev > log/vite.log 2>&1 & fi && exec bin/rails server -p 3001 -b 0.0.0.0 -e development")
     end
 
     it "interpolates the port into the command" do
       expect(provider.start_command(port: 4567))
-        .to eq("bin/rails server -p 4567 -b 0.0.0.0 -e development")
+        .to include("bin/rails server -p 4567 -b 0.0.0.0 -e development")
     end
   end
 
@@ -81,7 +81,8 @@ RSpec.describe SyrusRails::PreviewProvider do
     it "installs gems into the preview workspace before seed/start" do
       expect(provider.setup_commands).to eq([
         "bundle config set --local path vendor/bundle",
-        "bundle install --jobs 4"
+        "bundle install --jobs 4",
+        "if [ -f package-lock.json ]; then npm ci; elif [ -f pnpm-lock.yaml ]; then corepack enable && pnpm install --frozen-lockfile; elif [ -f yarn.lock ]; then corepack enable && yarn install --frozen-lockfile; elif [ -f bun.lockb ] || [ -f bun.lock ]; then bun install --frozen-lockfile; fi"
       ])
     end
   end

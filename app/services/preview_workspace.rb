@@ -1,4 +1,5 @@
 require "fileutils"
+require "json"
 
 class PreviewWorkspace
   def self.data_root
@@ -42,6 +43,7 @@ class PreviewWorkspace
     )
     @git.run("remote", "set-url", "origin", @repository.remote_url, chdir: @path.to_s)
     @git.configure_author(BotIdentity.for(@job), chdir: @path.to_s)
+    apply_preview_asset_proxy_overrides!
     @preview_environment.update_columns(workspace_path: @path.to_s, updated_at: Time.current)
     @path.to_s
   rescue StandardError
@@ -53,5 +55,29 @@ class PreviewWorkspace
 
   def authenticated_url
     @repository.authenticated_url(user: @job.user)
+  end
+
+  # Preview workspaces are disposable copies. It is safe to patch framework
+  # development-server config here when the original repo would otherwise emit
+  # browser-facing localhost asset URLs that cannot work through Syrus's preview
+  # domain.
+  def apply_preview_asset_proxy_overrides!
+    vite_config = @path.join("config", "vite.json")
+    return unless vite_config.file?
+
+    config = JSON.parse(vite_config.read)
+    changed = false
+    %w[all development].each do |section|
+      next unless config[section].is_a?(Hash)
+      next unless config[section].key?("skipProxy")
+
+      config[section]["skipProxy"] = false
+      changed = true
+    end
+    return unless changed
+
+    vite_config.write("#{JSON.pretty_generate(config)}\n")
+  rescue JSON::ParserError => e
+    Rails.logger.warn("[PreviewWorkspace] could not patch Vite preview config for #{@job.slug}: #{e.message}")
   end
 end

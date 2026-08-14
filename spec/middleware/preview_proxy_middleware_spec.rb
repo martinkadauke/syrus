@@ -137,6 +137,39 @@ RSpec.describe PreviewProxyMiddleware do
       expect(headers["Content-Security-Policy"]).to include("child-src 'self' http: https: data: blob:")
     end
 
+    it "rewrites browser-facing localhost asset origins in HTML responses" do
+      stub_request(:get, "http://127.0.0.1:25000/")
+        .to_return(
+          status: 200,
+          body: '<script type="module" src="http://localhost:3036/builds/main.tsx"></script>',
+          headers: {
+            "content-type" => "text/html; charset=utf-8",
+            "content-length" => "72",
+            "etag" => 'W/"abc"'
+          }
+        )
+
+      status, headers, body = middleware.call(env_for(host: "preview-#{job.id}.lvh.me"))
+
+      expect(status).to eq(200)
+      expect(body.join).to include('src="/builds/main.tsx"')
+      expect(body.join).not_to include("localhost:3036")
+      expect(headers.keys.map(&:downcase)).not_to include("content-length", "etag")
+    end
+
+    it "leaves non-HTML localhost text responses alone" do
+      stub_request(:get, "http://127.0.0.1:25000/api")
+        .to_return(
+          status: 200,
+          body: '{"url":"http://localhost:3036/builds/main.tsx"}',
+          headers: { "content-type" => "application/json" }
+        )
+
+      _, _, body = middleware.call(env_for(host: "preview-#{job.id}.lvh.me", path: "/api"))
+
+      expect(body.join).to include("http://localhost:3036")
+    end
+
     it "resets last_activity_at on each proxied request" do
       freeze_time do
         middleware.call(env_for(host: "preview-#{job.id}.lvh.me"))

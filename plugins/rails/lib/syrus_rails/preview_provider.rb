@@ -7,7 +7,11 @@ module SyrusRails
     end
 
     def start_command(port:)
-      "bin/rails server -p #{port} -b 0.0.0.0 -e development"
+      [
+        "mkdir -p log tmp/pids",
+        "if [ -f package.json ]; then npm run dev > log/vite.log 2>&1 & fi",
+        "exec bin/rails server -p #{port} -b 0.0.0.0 -e development"
+      ].join(" && ")
     end
 
     def seed_command
@@ -17,7 +21,8 @@ module SyrusRails
     def setup_commands
       [
         "bundle config set --local path vendor/bundle",
-        "bundle install --jobs 4"
+        "bundle install --jobs 4",
+        "if [ -f package-lock.json ]; then npm ci; elif [ -f pnpm-lock.yaml ]; then corepack enable && pnpm install --frozen-lockfile; elif [ -f yarn.lock ]; then corepack enable && yarn install --frozen-lockfile; elif [ -f bun.lockb ] || [ -f bun.lock ]; then bun install --frozen-lockfile; fi"
       ]
     end
 

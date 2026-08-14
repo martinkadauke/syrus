@@ -83,9 +83,26 @@ class PreviewProxyMiddleware
       proxy_resp.each_header do |name, value|
         headers[name] = value unless HOP_BY_HOP_HEADERS.include?(name.downcase)
       end
+      body = rewrite_browser_localhost_origins(proxy_resp.body || "", headers)
       apply_preview_headers!(headers)
-      [status, headers, [proxy_resp.body || ""]]
+      [status, headers, [body]]
     end
+  end
+
+  def rewrite_browser_localhost_origins(body, headers)
+    return body unless html_response?(headers)
+
+    rewritten = body.gsub(%r{https?://(?:localhost|127\.0\.0\.1):\d+}, "")
+    return body if rewritten == body
+
+    delete_header!(headers, "Content-Length")
+    delete_header!(headers, "ETag")
+    rewritten
+  end
+
+  def html_response?(headers)
+    content_type = headers["content-type"] || headers["Content-Type"]
+    content_type.to_s.include?("text/html")
   end
 
   def apply_preview_headers!(headers)
