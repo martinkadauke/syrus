@@ -8,6 +8,7 @@ RSpec.describe ChatSpeechToText::Telemetry do
     Feature.where(slug: "operational_log_indexing").delete_all
     Feature.create!(slug: "operational_log_indexing", category: "Operations", name: "Operational log indexing", enabled: true)
     Feature.clear_enabled_cache!("operational_log_indexing")
+    Observability::EventSink.clear!
     Current.reset
   end
 
