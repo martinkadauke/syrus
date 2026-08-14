@@ -56,15 +56,16 @@ class AutoRebase
     end
   end
 
-  def initialize(job, git: nil, base_branch: nil)
+  def initialize(job, git: nil, base_branch: nil, branch_name: nil)
     @job = job
     @git = git || GitRunner.new
     @base_branch_override = base_branch.presence
+    @branch_name = branch_name.presence || @job.branch_name
     @env = { "GIT_TERMINAL_PROMPT" => "0" }
   end
 
   def call
-    return Result.new(false, "no_branch", nil) if @job.branch_name.blank?
+    return Result.new(false, "no_branch", nil) if branch_name.blank?
     return Result.new(false, "no_repo", nil)   unless @job.repository
 
     # Clone the base branch (not shallow — rebase needs full history
@@ -119,6 +120,10 @@ class AutoRebase
     @base_branch_override || @job.effective_base_branch
   end
 
+  def branch_name
+    @branch_name
+  end
+
   # Full (non-shallow) clone on the effective base branch so that
   # `origin/<base>` is available as a remote tracking ref and
   # merge-base computation works across any history depth.
@@ -138,11 +143,11 @@ class AutoRebase
     authenticated_git("git_auto_rebase_fetch") do |url|
       @git.run(
         "fetch", url,
-        "refs/heads/#{@job.branch_name}:refs/heads/#{@job.branch_name}",
+        "refs/heads/#{branch_name}:refs/heads/#{branch_name}",
         chdir: clone_path.to_s, env: @env
       )
     end
-    @git.run("checkout", @job.branch_name, chdir: clone_path.to_s)
+    @git.run("checkout", branch_name, chdir: clone_path.to_s)
   end
 
   def cleanup_clone
@@ -201,19 +206,19 @@ class AutoRebase
   def force_push(expected_sha: @expected_remote_sha)
     authenticated_git("git_auto_rebase_force_push") do |url|
       @git.run("push", force_with_lease_arg(expected_sha), url,
-               "HEAD:refs/heads/#{@job.branch_name}",
+               "HEAD:refs/heads/#{branch_name}",
                chdir: clone_path.to_s, env: @env)
     end
   rescue GitRunner::GitError => e
     raise e unless lease_rejected?(e)
 
     raise LeaseRejected,
-      "Lease rejected while pushing rebased branch #{@job.branch_name}. " \
-      "The remote branch moved after Syrus fetched it; refusing to overwrite newer remote work."
+      "Lease rejected while pushing rebased branch #{branch_name}. " \
+        "The remote branch moved after Syrus fetched it; refusing to overwrite newer remote work."
   end
 
   def force_with_lease_arg(expected_sha = @expected_remote_sha)
-    "--force-with-lease=refs/heads/#{@job.branch_name}:#{expected_sha}"
+    "--force-with-lease=refs/heads/#{branch_name}:#{expected_sha}"
   end
 
   def lease_rejected?(error)

@@ -63,7 +63,7 @@ module Steps
       mergeable_state = pr.respond_to?(:mergeable_state) ? pr.mergeable_state : nil
       case mergeable_state
       when "clean", "unstable", nil
-        # Proceed to graders.
+        mechanically_rebase_external_pr_before_landing!(pr, client: client) if same_repository_external_pr?(pr)
       when *AutoMergeGate::TRANSIENT_MERGEABLE_STATES
         log("external_pr_merge: deferred - mergeable_state=#{mergeable_state.inspect}", kind: "system")
         defer_landing_if_possible!
@@ -106,8 +106,30 @@ module Steps
       workflow.set_artifact!("external_pr_head_sha", pr.head&.sha)
     end
 
-    def mechanically_rebase_before_landing!(gate, client:)
-      result = ::AutoRebase.new(job, base_branch: MergeabilityRecorder.base_ref(gate.pr)).call
+    def same_repository_external_pr?(pr)
+      pr.head&.repo&.full_name == repository.slug && pr.head&.ref.to_s.present?
+    end
+
+    def mechanically_rebase_external_pr_before_landing!(pr, client:)
+      gate = AutoMergeGate::Result.new(
+        outcome: :ready,
+        approved: true,
+        reason: "external PR is approved for landing",
+        pr: pr
+      )
+      result = mechanically_rebase_before_landing!(
+        gate,
+        client: client,
+        context: "external_pr_merge",
+        branch_name: pr.head&.ref
+      )
+      return unless result&.changed?
+
+      workflow.set_artifact!("external_pr_head_sha", result.post_sha)
+    end
+
+    def mechanically_rebase_before_landing!(gate, client:, context: "auto_merge", branch_name: nil)
+      result = auto_rebase_for(gate.pr, branch_name: branch_name).call
       workflow.set_artifact!("mergeability_preflight_rebase", result.to_h)
 
       if result.succeeded?
@@ -128,9 +150,9 @@ module Steps
             mergeability_base_sha: result.base_sha.presence || job.mergeability_base_sha,
             mergeability_checked_at: Time.current
           )
-          log("auto_merge: mechanically rebased and pushed #{job.branch_name} before landing graders - #{result.note}", kind: "system")
+          log("#{context}: mechanically rebased and pushed #{branch_name.presence || job.branch_name} before landing graders - #{result.note}", kind: "system")
         else
-          log("auto_merge: mechanical rebase before landing graders passed - #{result.note}", kind: "system")
+          log("#{context}: mechanical rebase before landing graders passed - #{result.note}", kind: "system")
         end
         return result
       end
@@ -138,7 +160,7 @@ module Steps
       rebase_gate = AutoMergeGate::Result.new(
         outcome: :needs_rebase,
         approved: gate.approved?,
-        reason: "mechanical rebase before landing graders failed: #{result}",
+        reason: "#{context} mechanical rebase before landing graders failed: #{result}",
         pr: gate.pr
       )
       handle_needs_rebase!(
@@ -147,6 +169,12 @@ module Steps
         client: client
       )
       nil
+    end
+
+    def auto_rebase_for(pr, branch_name:)
+      kwargs = { base_branch: MergeabilityRecorder.base_ref(pr) }
+      kwargs[:branch_name] = branch_name if branch_name.present?
+      ::AutoRebase.new(job, **kwargs)
     end
 
     def handle_transient!(gate)

@@ -9,6 +9,11 @@ class RebaseTarget
       job.effective_base_branch
   end
 
+  def self.source_branch_for(job:, workflow: nil)
+    workflow&.artifact(BRANCH_ARTIFACT).presence ||
+      job.branch_name.presence
+  end
+
   def self.open_parent_branch(job)
     parent = job.parent_job
     return unless parent&.open? && parent.branch_name.present?
@@ -20,10 +25,18 @@ class RebaseTarget
     merged = (artifacts || {}).dup
     branch = base_branch.presence || pr&.base&.ref.to_s.presence
     sha = pr&.base&.sha.to_s.presence
+    source_branch = branch_name.presence || pr_head_ref(pr)
 
-    merged[BRANCH_ARTIFACT] = branch_name if branch_name.present?
+    merged[BRANCH_ARTIFACT] = source_branch if source_branch.present?
     merged[BASE_BRANCH_ARTIFACT] = branch if branch.present?
     merged[BASE_SHA_ARTIFACT] = sha if sha.present?
     merged.presence
   end
+
+  def self.pr_head_ref(pr)
+    return unless pr&.respond_to?(:head)
+
+    pr.head&.ref.to_s.presence
+  end
+  private_class_method :pr_head_ref
 end

@@ -156,7 +156,9 @@ class WorkflowWorkspace
     @repository = @job.repository
     @git = git || GitRunner.new
     @path = self.class.path_for(workflow)
-    @branch_name = @job.branch_name.presence || initial_branch_name
+    @branch_name = @workflow.artifact(RebaseTarget::BRANCH_ARTIFACT).presence ||
+      @job.branch_name.presence ||
+      initial_branch_name
     @env = { "GIT_TERMINAL_PROMPT" => "0" }
     @log = log
   end

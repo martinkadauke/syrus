@@ -8,7 +8,7 @@ module Steps
   class AutoRebase < Base
     def call
       log("auto_rebase: attempting deterministic rebase (#{workflow.slug})")
-      result = ::AutoRebase.new(job, base_branch: rebase_base_branch).call
+      result = auto_rebase.call
       workflow.set_artifact!("auto_rebase_result", result.to_h)
 
       if result.succeeded?
@@ -24,6 +24,16 @@ module Steps
 
     def rebase_base_branch
       RebaseTarget.branch_for(job: job, workflow: workflow)
+    end
+
+    def rebase_source_branch
+      RebaseTarget.source_branch_for(job: job, workflow: workflow)
+    end
+
+    def auto_rebase
+      kwargs = { base_branch: rebase_base_branch }
+      kwargs[:branch_name] = rebase_source_branch if rebase_source_branch.present?
+      ::AutoRebase.new(job, **kwargs)
     end
 
     def cancel_agent_rebase!(reason:)

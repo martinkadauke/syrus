@@ -28,7 +28,7 @@ module Steps
       pr_number = job.pr_number || job.external_pr_number
       Prompts::Rebase.new(
         repo_slug: repository.slug,
-        branch_name: job.branch_name,
+        branch_name: RebaseTarget.source_branch_for(job: job, workflow: workflow),
         base_branch: RebaseTarget.branch_for(job: job, workflow: workflow),
         pr_number: pr_number
       ).to_s

@@ -187,10 +187,12 @@ Non-agentic / Agentic / Non-agentic. Same as the single-PR rebase chain but oper
 ### mergeability_preflight
 
 Non-agentic. Refreshes GitHub mergeability, mechanically rebases and
-force-pushes a ready PR branch onto the current base before landing graders run,
-runs a local rebase preflight when GitHub is still computing, dispatches rebase
-workflows for conflicts, and short-circuits if a prior landing validation is
-still valid.
+force-pushes a ready owned PR branch or same-repository external PR head onto
+the current base before landing graders run, runs a local rebase preflight when
+GitHub is still computing, dispatches rebase workflows for conflicts, and
+short-circuits if a prior landing validation is still valid. Fork external PRs
+are checked for mergeability but are not rebased because Syrus cannot push their
+head branches.
 
 ### speculative_landing_build
 

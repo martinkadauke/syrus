@@ -346,6 +346,82 @@ RSpec.describe Steps::MergeabilityPreflight do
       expect(external_workflow.artifact("external_pr_head_sha")).to eq("abc123")
     end
 
+    it "mechanically rebases same-repository external PRs before landing graders" do
+      rebase_result = AutoRebase::Result.new(
+        true,
+        "rebased",
+        "advanced abc1234 to def5678",
+        changed: true,
+        pre_sha: "abc1234",
+        post_sha: "def5678",
+        base_sha: "base999"
+      )
+      allow(client).to receive(:pull_request).with("acme/widgets", 99, anything).and_return(
+        pr(state: "open", mergeable_state: "clean", head_sha: "abc1234", head_ref: "contributor-branch", head_repo: "acme/widgets", base_sha: "base999")
+      )
+      allow(AutoRebase).to receive(:new)
+        .with(external_pr_job, base_branch: "main", branch_name: "contributor-branch")
+        .and_return(instance_double(AutoRebase, call: rebase_result))
+
+      described_class.new(external_run).call
+
+      expect(external_pr_job.reload.mergeability_head_sha).to eq("def5678")
+      expect(external_pr_job.local_mergeability_head_sha).to eq("def5678")
+      expect(external_workflow.artifact("external_pr_head_sha")).to eq("def5678")
+      expect(external_workflow.artifact("mergeability_preflight_rebase")).to include(
+        "succeeded" => true,
+        "changed" => true,
+        "pre_sha" => "abc1234",
+        "post_sha" => "def5678",
+        "base_sha" => "base999"
+      )
+      expect(external_run.job_logs.pluck(:chunk).join("\n")).to include("external_pr_merge: mechanically rebased and pushed contributor-branch before landing graders")
+      expect(external_run.reload).to be_running
+      expect(external_workflow.reload).to be_running
+    end
+
+    it "dispatches a rebase workflow for same-repository external PR conflicts before landing graders" do
+      rebase_result = AutoRebase::Result.new(
+        false,
+        "conflict",
+        nil,
+        pre_sha: "abc1234",
+        base_sha: "base999"
+      )
+      allow(client).to receive(:pull_request).with("acme/widgets", 99, anything).and_return(
+        pr(state: "open", mergeable_state: "clean", head_sha: "abc1234", head_ref: "contributor-branch", head_repo: "acme/widgets", base_sha: "base999")
+      )
+      allow(AutoRebase).to receive(:new)
+        .with(external_pr_job, base_branch: "main", branch_name: "contributor-branch")
+        .and_return(instance_double(AutoRebase, call: rebase_result))
+      allow(StepDispatcher).to receive(:start_workflow)
+
+      expect {
+        described_class.new(external_run).call
+      }.to change { external_pr_job.workflows.where(trigger_kind: "rebase").count }.by(1)
+
+      rebase_workflow = external_pr_job.workflows.where(trigger_kind: "rebase").last
+      expect(rebase_workflow.artifact(RebaseTarget::BRANCH_ARTIFACT)).to eq("contributor-branch")
+      expect(rebase_workflow.artifact(RebaseTarget::BASE_BRANCH_ARTIFACT)).to eq("main")
+      expect(external_pr_job.reload).to be_approved
+      expect(external_run.reload).to be_cancelled
+      expect(external_workflow.reload).to be_cancelled
+      expect(StepDispatcher).to have_received(:start_workflow).with(rebase_workflow)
+    end
+
+    it "does not mechanically rebase fork external PRs" do
+      allow(client).to receive(:pull_request).with("acme/widgets", 99, anything).and_return(
+        pr(state: "open", mergeable_state: "clean", head_sha: "abc123", head_ref: "contributor-branch", head_repo: "fork/widgets")
+      )
+      expect(AutoRebase).not_to receive(:new)
+
+      described_class.new(external_run).call
+
+      expect(external_run.reload).to be_running
+      expect(external_workflow.reload).to be_running
+      expect(external_workflow.artifact("external_pr_head_sha")).to eq("abc123")
+    end
+
     it "proceeds when GitHub reports unstable (non-required check failing)" do
       allow(client).to receive(:pull_request).with("acme/widgets", 99, anything).and_return(
         pr(state: "open", mergeable_state: "unstable")

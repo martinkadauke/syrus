@@ -98,7 +98,16 @@ pushes, repairs, or merges, and failed/cancelled workflows do not fail the Job.
 
 **Step chain:** `mergeability_preflight → prepare → grader_fanout → grader_collect → external_pr_merge`
 
-Validates the externally filed PR and merges it through GitHub's merge API. The workflow prepares the workspace before running graders but does not run a normal push step. Same-repository external PRs can run `landing_fix` after grader failures and push repair commits back to the PR head before merge. Fork PRs receive a `REQUEST_CHANGES` review on required grader failure and return to `implemented` for re-approval after the contributor pushes a fix.
+Validates the externally filed PR and merges it through GitHub's merge API.
+Same-repository external PRs are mechanically rebased and force-pushed onto the
+current base before landing graders run; conflicts dispatch the normal `rebase`
+workflow against the external PR head branch. The workflow prepares the
+workspace before running graders but does not run a normal push step.
+Same-repository external PRs can run `landing_fix` after grader failures and push
+repair commits back to the PR head before merge. Fork PRs skip mechanical rebase
+and repair pushes; they receive a `REQUEST_CHANGES` review on required grader
+failure and return to `implemented` for re-approval after the contributor pushes
+a fix.
 
 ## merge_train
 
