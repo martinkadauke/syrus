@@ -12,12 +12,14 @@ RSpec.describe ChatSpeechToText::Telemetry do
   end
 
   after do
+    Observability::EventSink.clear!
     Current.reset
   end
 
   it "indexes mode_selected events as info with chat_speech_to_text source and context" do
     expect {
       described_class.log("mode_selected", chat_id: 42, mode: "backend_batch", provider: "openai")
+      Observability::EventSink.flush!(kinds: [ :operational ])
     }.to change(OperationalLogEvent, :count).by(1)
 
     event = OperationalLogEvent.last
@@ -29,6 +31,7 @@ RSpec.describe ChatSpeechToText::Telemetry do
 
   it "indexes transcribed events as info" do
     described_class.log("transcribed", chat_id: 42, mode: "backend_batch", provider: "openai", duration_ms: 12.3)
+    Observability::EventSink.flush!(kinds: [ :operational ])
 
     event = OperationalLogEvent.last
     expect(event.level).to eq("info")
@@ -37,6 +40,7 @@ RSpec.describe ChatSpeechToText::Telemetry do
 
   it "indexes fallback events as warn" do
     described_class.log("fallback", chat_id: 42, requested_mode: "backend_streaming", fallback_mode: "backend_batch", reason: "unavailable")
+    Observability::EventSink.flush!(kinds: [ :operational ])
 
     event = OperationalLogEvent.last
     expect(event.level).to eq("warn")
@@ -45,6 +49,7 @@ RSpec.describe ChatSpeechToText::Telemetry do
 
   it "indexes error events as error" do
     described_class.log("error", chat_id: 42, mode: "backend_batch", error_class: "Boom")
+    Observability::EventSink.flush!(kinds: [ :operational ])
 
     event = OperationalLogEvent.last
     expect(event.level).to eq("error")

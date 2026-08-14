@@ -13,6 +13,8 @@ module Mcp::Tools
         return Mcp::Tools.unauthorized("Admin access required") unless admin?(server_context)
 
         overview = ::Admin::OverviewPayload.new.as_json
+        resource_admission = ::Admin::OverviewPayload.new(params: { page: "resource_admission" }).as_json[:resource_admission]
+        overview[:resource_admission] ||= resource_admission
         Mcp::Tools.success(
           total_users: User.count,
           active_repositories: Repository.active.count,
