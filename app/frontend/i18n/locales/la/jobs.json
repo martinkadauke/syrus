@@ -18,6 +18,7 @@
   "rebase_now": "Statim rebase fac",
   "check_mergeability": "Coniungibilitatem inspice",
   "retry_pr_ingestion": "Susceptionem PR itera",
+  "run_visual_review": "Recognitionem visualem fac",
   "retry": "Itera",
   "retry_with_feedback": "Cum responso itera",
   "retrying": "Iteratur...",

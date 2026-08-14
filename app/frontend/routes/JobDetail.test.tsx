@@ -1658,6 +1658,7 @@ function jobPayload(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload
       can_open_in_local_mode: false,
       can_cancel_local_mode: false,
       can_start_preview: false,
+      can_run_visual_review: false,
       linked_chat_id: null,
       feedback_agent_options: [],
       rebase_agent_options: [],
@@ -1698,6 +1699,7 @@ function jobPayload(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload
       app_priority_path: "/api/v1/app/jobs/1/priority",
       app_preview_path: "/api/v1/app/jobs/1/preview",
       app_preview_logs_path: "/api/v1/app/jobs/1/preview/logs",
+      app_visual_review_path: "/api/v1/app/jobs/1/visual_review",
       admin_resource_admission_path: "/admin/resource_admission"
     },
     ...overrides

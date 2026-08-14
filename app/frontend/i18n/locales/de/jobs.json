@@ -18,6 +18,7 @@
   "rebase_now": "Jetzt rebasen",
   "check_mergeability": "Mergebarkeit prüfen",
   "retry_pr_ingestion": "PR-Übernahme erneut versuchen",
+  "run_visual_review": "Visuelle Prüfung ausführen",
   "retry": "Erneut versuchen",
   "retry_with_feedback": "Mit Feedback erneut versuchen",
   "retry_with_agent": "Mit {{provider}} erneut versuchen",
