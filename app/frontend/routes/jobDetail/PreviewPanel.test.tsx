@@ -26,6 +26,7 @@ function renderPanel(props: Partial<Parameters<typeof PreviewPanel>[0]> = {}) {
       <PreviewPanel
         jobId={42}
         previewPath="/api/v1/app/jobs/42/preview"
+        previewLogsPath="/api/v1/app/jobs/42/preview/logs"
         canStart={true}
         initialPreview={null}
         queryKey={["jobs", "42", "detail", ""] as const}
@@ -44,6 +45,7 @@ describe("PreviewPanel", () => {
         <PreviewPanel
           jobId={42}
           previewPath="/api/v1/app/jobs/42/preview"
+          previewLogsPath="/api/v1/app/jobs/42/preview/logs"
           canStart={false}
           initialPreview={null}
           queryKey={["jobs", "42", "detail", ""] as const}
@@ -111,6 +113,36 @@ describe("PreviewPanel", () => {
       initialPreview: preview({ state: "failed", url: null, expires_at: null, error_message: "No preview provider found." })
     })
     expect(screen.getByText("No preview provider found.")).toBeInTheDocument()
+  })
+
+  it("loads preview logs on demand", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path.endsWith("/preview/logs")) {
+        return Promise.resolve(jsonResponse({
+          preview: preview({ state: "running" }),
+          logs: [
+            { path: "log/development.log", content: "Started POST /signup\nCompleted 500", missing: false },
+            { path: "log/vite.log", content: "", missing: true }
+          ]
+        }))
+      }
+      return Promise.resolve(jsonResponse({ preview: preview({ state: "running" }) }))
+    })
+
+    renderPanel({ initialPreview: preview({ state: "running" }) })
+    fireEvent.click(screen.getByRole("button", { name: "Show preview logs" }))
+
+    await waitFor(() => {
+      expect(window.fetch).toHaveBeenCalledWith(
+        "/api/v1/app/jobs/42/preview/logs",
+        expect.objectContaining({ credentials: "same-origin" })
+      )
+    })
+    expect(await screen.findByText(/Started POST \/signup/)).toBeInTheDocument()
+    expect(screen.getByText(/Completed 500/)).toBeInTheDocument()
+    expect(screen.getByText("log/vite.log")).toBeInTheDocument()
+    expect(screen.getByText("missing")).toBeInTheDocument()
   })
 
   it("starts a preview when Start Preview is clicked", async () => {

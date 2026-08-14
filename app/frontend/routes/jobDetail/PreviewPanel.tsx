@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useT } from "../../hooks/useT"
-import { fetchJobPreview, startJobPreview, stopJobPreview, type PreviewEnvironmentRecord } from "../../api/jobs"
+import { fetchJobPreview, fetchJobPreviewLogs, startJobPreview, stopJobPreview, type PreviewEnvironmentRecord } from "../../api/jobs"
 import { errorMessage } from "../../lib/errorMessage"
 import type { JobDetailQueryKey } from "./queryKeys"
 
@@ -38,12 +38,14 @@ function useCountdown(expiresAt: string | null) {
 export function PreviewPanel({
   jobId,
   previewPath,
+  previewLogsPath,
   canStart,
   initialPreview,
   queryKey
 }: {
   jobId: number
   previewPath: string
+  previewLogsPath: string
   canStart: boolean
   initialPreview: PreviewEnvironmentRecord | null
   queryKey: JobDetailQueryKey
@@ -106,6 +108,7 @@ export function PreviewPanel({
           onStop={() => stop.mutate()}
           t={t}
         />
+        {env ? <PreviewLogs jobId={jobId} previewLogsPath={previewLogsPath} running={env.state === "running"} /> : null}
         {env?.state === "running" && !expired && countdown ? (
           <p className="text-xs text-gray-500 dark:text-gray-400">{t("preview_expires_in", { time: countdown })}</p>
         ) : null}
@@ -117,6 +120,44 @@ export function PreviewPanel({
         ) : null}
       </div>
     </section>
+  )
+}
+
+function PreviewLogs({ jobId, previewLogsPath, running }: { jobId: number; previewLogsPath: string; running: boolean }) {
+  const [open, setOpen] = useState(false)
+  const logs = useQuery({
+    queryKey: ["job-preview-logs", jobId],
+    queryFn: () => fetchJobPreviewLogs(previewLogsPath),
+    enabled: open,
+    refetchInterval: open && running ? POLL_INTERVAL_MS : false
+  })
+
+  return (
+    <div className="pt-1">
+      <button
+        className="text-xs font-medium text-gray-600 underline decoration-gray-300 underline-offset-2 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100"
+        onClick={() => setOpen((value) => !value)}
+        type="button"
+      >
+        {open ? "Hide preview logs" : "Show preview logs"}
+      </button>
+      {open ? (
+        <div className="mt-2 space-y-2">
+          {logs.isPending ? <p className="text-xs text-gray-500 dark:text-gray-400">Loading logs...</p> : null}
+          {logs.isError ? <p className="text-xs text-red-600 dark:text-red-400">Preview logs could not be loaded.</p> : null}
+          {logs.data?.logs.length === 0 ? <p className="text-xs text-gray-500 dark:text-gray-400">No preview logs found.</p> : null}
+          {logs.data?.logs.map((log) => (
+            <div className="overflow-hidden rounded border border-gray-200 dark:border-gray-700" key={log.path}>
+              <div className="flex items-center justify-between bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                <span>{log.path}</span>
+                {log.missing ? <span className="text-amber-600 dark:text-amber-400">missing</span> : null}
+              </div>
+              <pre className="max-h-56 overflow-auto bg-gray-950 p-2 text-[11px] leading-4 text-gray-100">{log.missing ? "" : log.content || "(empty)"}</pre>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }
 

@@ -83,6 +83,23 @@ RSpec.describe Mcp::Tools::ReadPreviewLogTool do
     end
   end
 
+  context "when the job has a preview environment" do
+    it "reads from the preview workspace instead of the workflow workspace" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "log"))
+        File.write(File.join(dir, "log", "development.log"), "preview line\n")
+        run.job.preview_environments.create!(state: "running", workspace_path: dir, expires_at: 10.minutes.from_now)
+        allow(PreviewCommandSource).to receive(:new).with(dir).and_return(double(resolve: preview_config))
+
+        response = call
+
+        expect(response).not_to be_error
+        expect(response.content.first[:text]).to include("preview line")
+        expect(response.content.first[:text]).to include(File.join(dir, "log/development.log"))
+      end
+    end
+  end
+
   context "when path traversal is attempted" do
     it "returns an error for a path escaping the workspace" do
       response = call(path: "../../etc/passwd")
@@ -161,7 +178,7 @@ RSpec.describe Mcp::Tools::ReadPreviewLogTool do
     it "returns an error" do
       response = call
       expect(response).to be_error
-      expect(response.content.first[:text]).to include("no workflow workspace found")
+      expect(response.content.first[:text]).to include("no preview or workflow workspace found")
     end
   end
 end

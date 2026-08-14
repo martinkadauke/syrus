@@ -40,10 +40,10 @@ module Mcp::Tools
       def call(path: nil, lines: DEFAULT_LINES, server_context:)
         run = Mcp::Tools.run_from_context(server_context)
 
-        workspace_path = workspace_path_for(run)
-        return Mcp::Tools.invalid("no workflow workspace found") unless workspace_path
-
         line_count = clamp_lines(lines)
+        workspace_path = preview_workspace_path_for(run) || workflow_workspace_path_for(run)
+        return Mcp::Tools.invalid("no preview or workflow workspace found") unless workspace_path
+
         log_path   = resolve_log_path(path, workspace_path)
         return Mcp::Tools.invalid("no log path configured and none specified") unless log_path
         return Mcp::Tools.invalid("log file not found: #{log_path}") unless File.exist?(log_path)
@@ -61,7 +61,15 @@ module Mcp::Tools
 
       private
 
-      def workspace_path_for(run)
+      def preview_workspace_path_for(run)
+        env = run.job.preview_environments.active.order(created_at: :desc).first ||
+          run.job.preview_environments.order(created_at: :desc).first
+        return unless env&.workspace_path.present? && Dir.exist?(env.workspace_path)
+
+        env.workspace_path
+      end
+
+      def workflow_workspace_path_for(run)
         step     = run.step
         return nil unless step
         workflow = step.workflow

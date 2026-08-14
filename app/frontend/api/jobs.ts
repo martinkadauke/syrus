@@ -650,6 +650,7 @@ export type JobPaths = {
   app_priority_path: string
   app_provider_setting_path?: string
   app_preview_path: string
+  app_preview_logs_path: string
   admin_resource_admission_path: string
 }
 
@@ -663,6 +664,17 @@ export type PreviewEnvironmentRecord = {
 
 export type PreviewStatusPayload = {
   preview: PreviewEnvironmentRecord | null
+}
+
+export type PreviewLogRecord = {
+  path: string
+  content: string
+  missing: boolean
+}
+
+export type PreviewLogsPayload = {
+  preview: PreviewEnvironmentRecord
+  logs: PreviewLogRecord[]
 }
 
 export type PreviewActionPayload = {
@@ -924,6 +936,10 @@ export function fetchPickerJobs(params: { state?: string; repo?: string; limit?:
 
 export function fetchJobPreview(path: string) {
   return getJson<PreviewStatusPayload>(path)
+}
+
+export function fetchJobPreviewLogs(path: string) {
+  return getJson<PreviewLogsPayload>(path)
 }
 
 export function startJobPreview(path: string) {

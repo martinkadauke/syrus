@@ -31,7 +31,7 @@ module SyrusRails
     end
 
     def log_paths
-      ["log/development.log"]
+      ["log/development.log", "log/vite.log"]
     end
 
     def env

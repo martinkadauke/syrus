@@ -54,6 +54,9 @@ apps can leak `http://localhost:<vite-port>` asset URLs that point at the
 operator's browser machine instead of the preview host and render as a blank
 page.
 
+The provider exposes `log/development.log` and `log/vite.log` to the preview
+log API and the `read_preview_log` MCP tool.
+
 Postgres preview environments are not yet supported.
 
 ## Running tests

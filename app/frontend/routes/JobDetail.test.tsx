@@ -1666,6 +1666,7 @@ function jobPayload(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload
       app_cancel_local_mode_path: "/api/v1/app/jobs/1/cancel_local_mode",
       app_priority_path: "/api/v1/app/jobs/1/priority",
       app_preview_path: "/api/v1/app/jobs/1/preview",
+      app_preview_logs_path: "/api/v1/app/jobs/1/preview/logs",
       admin_resource_admission_path: "/admin/resource_admission"
     },
     ...overrides

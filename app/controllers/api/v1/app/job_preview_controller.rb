@@ -10,6 +10,21 @@ module Api
           render json: { preview: env ? preview_json(env) : nil }
         end
 
+        def logs
+          job = find_job
+          env = job.preview_environments.order(created_at: :desc).first
+          unless env
+            render_error("not_found", "No preview environment found for this job.", status: :not_found)
+            return
+          end
+
+          logs = PreviewLogReader.call(env, lines: params.fetch(:lines, PreviewLogReader::DEFAULT_LINES))
+          render json: {
+            preview: preview_json(env),
+            logs: logs.map { |log| preview_log_json(log) }
+          }
+        end
+
         def create
           job = find_job
           unless job.previewable?
@@ -49,6 +64,14 @@ module Api
             url: env.running? ? env.preview_url(PREVIEW_BASE_DOMAIN) : nil,
             expires_at: env.expires_at&.iso8601,
             error_message: env.error_message
+          }
+        end
+
+        def preview_log_json(log)
+          {
+            path: log.path,
+            content: log.content,
+            missing: log.missing
           }
         end
       end

@@ -384,6 +384,7 @@ function SummaryTab({ payload, command, prefix, queryKey, withPreviewStop }: { p
             initialPreview={payload.preview}
             jobId={payload.job.id}
             previewPath={payload.paths.app_preview_path}
+            previewLogsPath={payload.paths.app_preview_logs_path}
             queryKey={queryKey}
           />
           <ApprovalStatusPanel payload={payload} />

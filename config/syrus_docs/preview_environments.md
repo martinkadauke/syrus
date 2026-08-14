@@ -62,6 +62,12 @@ preview:
 
 `start` may use `$PORT` or `${PORT}`; Syrus replaces it with a dynamically allocated port. `setup` runs first in the fresh preview checkout, then `seed` runs before the server starts. Setup, seed, and server commands receive the same preview environment. Any nonzero setup or seed command fails the preview instead of starting a partially prepared app. `env` sets repository-specific variables and `unset_env` strips inherited variables such as production database URLs. Use these keys for repo-specific preview guardrails rather than hardcoding repository checks into Syrus.
 
+`logs` declares files, relative to the preview workspace, that should be
+available to operators and agents while debugging a running preview. The Job
+detail Preview panel exposes these logs on demand, and workflow agents can read
+them through `read_preview_log`. The bundled Rails provider exposes both
+`log/development.log` and `log/vite.log`.
+
 The bundled Rails preview provider installs JavaScript dependencies when a
 package-manager lockfile is present, starts `npm run dev` alongside
 `bin/rails server` when the repo has `package.json`, and forces

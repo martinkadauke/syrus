@@ -95,7 +95,7 @@ RSpec.describe SyrusRails::PreviewProvider do
 
   describe "#log_paths" do
     it "returns the development log path" do
-      expect(provider.log_paths).to eq(["log/development.log"])
+      expect(provider.log_paths).to eq(["log/development.log", "log/vite.log"])
     end
   end
 

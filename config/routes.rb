@@ -130,6 +130,7 @@ Rails.application.routes.draw do
         post "jobs/:job_id/open_in_local_mode", to: "job_lifecycle#open_in_local_mode", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/cancel_local_mode", to: "job_lifecycle#cancel_local_mode", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         get "jobs/:job_id/preview", to: "job_preview#show", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
+        get "jobs/:job_id/preview/logs", to: "job_preview#logs", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/preview", to: "job_preview#create", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         delete "jobs/:job_id/preview", to: "job_preview#destroy", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:id/chat_feedback", to: "jobs#chat_feedback", constraints: { id: /[a-zA-Z0-9_-]+/ }

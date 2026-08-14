@@ -604,6 +604,7 @@ module App
         app_priority_path: "/api/v1/app/jobs/#{@job.id}/priority",
         app_provider_setting_path: "/api/v1/app/jobs/#{@job.id}/provider_setting",
         app_preview_path: "/api/v1/app/jobs/#{@job.id}/preview",
+        app_preview_logs_path: "/api/v1/app/jobs/#{@job.id}/preview/logs",
         admin_resource_admission_path: admin_resource_admission_path
       }
     end

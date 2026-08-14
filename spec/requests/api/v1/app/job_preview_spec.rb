@@ -9,6 +9,7 @@ RSpec.describe "App API job preview", type: :request do
 
   def parse_body = JSON.parse(response.body)
   def preview_path(job_record) = "/api/v1/app/jobs/#{job_record.id}/preview"
+  def preview_logs_path(job_record) = "/api/v1/app/jobs/#{job_record.id}/preview/logs"
 
   def create_preview_env(job_record, **attrs)
     PreviewEnvironment.create!({ job: job_record, state: "starting" }.merge(attrs))
@@ -146,6 +147,43 @@ RSpec.describe "App API job preview", type: :request do
       other_job = Factories.job_record(repository: other_repo)
 
       post preview_path(other_job), as: :json
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "GET /api/v1/app/jobs/:job_id/preview/logs" do
+    it "returns tailed preview logs for the latest environment" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "log"))
+        File.write(File.join(dir, "log", "development.log"), "first\nsecond\nthird\n")
+        env = create_preview_env(job, state: "running", workspace_path: dir, expires_at: 10.minutes.from_now)
+        allow(PreviewLogReader).to receive(:call).with(env, lines: "2").and_call_original
+
+        get "#{preview_logs_path(job)}?lines=2", as: :json
+      end
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body.dig("preview", "state")).to eq("running")
+      expect(parse_body["logs"]).to include(
+        a_hash_including("path" => "log/development.log", "content" => "second\nthird", "missing" => false)
+      )
+    end
+
+    it "returns not_found when no preview environment exists" do
+      get preview_logs_path(job), as: :json
+
+      expect(response).to have_http_status(:not_found)
+      expect(parse_body.dig("error", "code")).to eq("not_found")
+    end
+
+    it "does not expose another user's preview logs" do
+      other_user = Factories.user
+      other_repo = Factories.repository(user: other_user)
+      other_job = Factories.job_record(repository: other_repo)
+      create_preview_env(other_job, state: "running", workspace_path: Dir.mktmpdir)
+
+      get preview_logs_path(other_job), as: :json
 
       expect(response).to have_http_status(:not_found)
     end
