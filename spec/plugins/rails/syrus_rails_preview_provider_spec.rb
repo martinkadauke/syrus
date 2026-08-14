@@ -102,7 +102,8 @@ RSpec.describe SyrusRails::PreviewProvider do
     it "runs Rails previews in development with an isolated search database" do
       expect(provider.env).to eq(
         "RAILS_ENV" => "development",
-        "SEARCH_DATABASE_PATH" => "storage/preview_search.sqlite3"
+        "SEARCH_DATABASE_PATH" => "storage/preview_search.sqlite3",
+        "VITE_RUBY_SKIP_PROXY" => "false"
       )
     end
   end

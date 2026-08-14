@@ -46,6 +46,11 @@ development:
   database: db/development.sqlite3
 ```
 
+Rails previews set `VITE_RUBY_SKIP_PROXY=false` so vite-ruby generates
+same-origin asset URLs. Without that override, previewed apps can leak
+`http://localhost:<vite-port>` asset URLs that point at the operator's browser
+machine instead of the preview host and render as a blank page.
+
 Postgres preview environments are not yet supported.
 
 ## Running tests
