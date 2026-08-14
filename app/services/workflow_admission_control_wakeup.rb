@@ -16,11 +16,9 @@ class WorkflowAdmissionControlWakeup
   private
 
   def wake_deferred_workflows
-    Workflow
-      .where(state: %w[queued running])
-      .where("artifacts LIKE ? OR artifacts LIKE ?", "%#{StepDispatcher::ADMISSION_BLOCK_REASON}%", '%"pause_reason"%')
+    WorkflowAdmissionCapacityWakeup.sleeper_scope
       .filter_map do |workflow|
-        next unless admission_or_resource_paused?(workflow)
+        next unless WorkflowAdmissionCapacityWakeup.admission_or_resource_paused?(workflow)
 
         WorkflowPhaseAdmissionJob.perform_later(workflow.id)
         workflow.id
@@ -40,15 +38,4 @@ class WorkflowAdmissionControlWakeup
       end
   end
 
-  def admission_or_resource_paused?(workflow)
-    workflow.artifact("start_blocked_reason").to_s.in?(admission_pause_reasons) ||
-      workflow.artifact("pause_reason").to_s.in?(admission_pause_reasons)
-  end
-
-  def admission_pause_reasons
-    [
-      StepDispatcher::ADMISSION_BLOCK_REASON,
-      StepDispatcher::PAUSE_REASON_RESOURCE_SAFETY
-    ]
-  end
 end

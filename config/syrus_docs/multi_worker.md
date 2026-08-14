@@ -349,8 +349,12 @@ extends:
 Both policies still pause in-flight Workflows for hard worker memory or disk
 exhaustion. Those pauses write `pause_reason`, `pause_kind`,
 `pause_started_at`, `pause_next_check_at`, and `pause_details` artifacts, and a
-scheduled admission wakeup can resume them when pressure clears.
-`WorkflowPhaseAdmissionJob` retries the next queued step after the backoff.
+scheduled admission wakeup remains the fallback for resuming them when pressure
+clears. Syrus also enqueues a bounded capacity wakeup whenever a Run or Workflow
+finishes while admission/resource sleepers exist, so blocked work is
+reconsidered promptly when active work frees capacity instead of waiting for the
+full backoff. `WorkflowPhaseAdmissionJob` retries the next queued step after
+either wakeup path.
 
 Manual Job pause is operator-controlled and is not an admission-control signal.
 It persists on the Job (`manual_paused`) and takes effect at the next Step

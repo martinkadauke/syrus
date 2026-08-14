@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe Run do
+  include ActiveJob::TestHelper
+
   let(:job) { Factories.job }
 
   describe "agent diff storage" do
@@ -84,6 +86,26 @@ RSpec.describe Run do
       run = job.initial_run
       run.start!; run.succeed!
       expect(run.may_cancel?).to be false
+    end
+  end
+
+  describe "admission capacity wakeup" do
+    it "enqueues a capacity wakeup when admission sleepers exist" do
+      run = job.initial_run
+      allow(WorkflowAdmissionCapacityWakeup).to receive(:deferred_sleepers_exist?).and_return(true)
+
+      expect(WorkflowAdmissionCapacityWakeupJob).to receive(:perform_later)
+
+      run.wake_workflow_admission_after_completion!
+    end
+
+    it "does not enqueue a capacity wakeup when no admission sleepers exist" do
+      run = job.initial_run
+      allow(WorkflowAdmissionCapacityWakeup).to receive(:deferred_sleepers_exist?).and_return(false)
+
+      expect {
+        run.wake_workflow_admission_after_completion!
+      }.not_to have_enqueued_job(WorkflowAdmissionCapacityWakeupJob)
     end
   end
 

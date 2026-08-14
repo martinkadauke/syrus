@@ -23,6 +23,25 @@ RSpec.describe WorkflowAdmissionControlWakeup do
       .and have_enqueued_job(LandingQueueProcessorJob)
   end
 
+  it "enqueues landing admission workflows that use the landing start-block reason" do
+    job = Factories.job_record(user: user, repository: repository, state: "landing")
+    workflow = Workflow.create!(
+      job: job,
+      trigger_kind: "auto_merge",
+      state: "queued",
+      artifacts: {
+        "start_blocked_reason" => "landing start blocked: workflow admission budget",
+        "start_blocked_details" => { "action" => "delay_until" }
+      }
+    )
+
+    expect {
+      result = described_class.call
+      expect(result.workflow_ids).to eq([ workflow.id ])
+    }.to have_enqueued_job(WorkflowPhaseAdmissionJob).with(workflow.id)
+      .and have_enqueued_job(LandingQueueProcessorJob)
+  end
+
   it "does not wake manual or provider pauses as admission-control sleepers" do
     manual_job = Factories.job_record(user: user, repository: repository, state: "queued")
     manual_workflow = Workflows::Initial.instantiate(job: manual_job, agent_provider: "codex")

@@ -130,10 +130,15 @@ class Workflow < ApplicationRecord
 
   after_update_commit :schedule_auto_retry!, if: :saved_change_to_state_to_failed?
   after_update_commit :enforce_job_workflow_runaway_limits_on_fail!, if: :saved_change_to_state_to_failed?
+  after_update_commit :wake_workflow_admission_after_completion!, if: :saved_change_to_state_to_terminal?
   after_create_commit :enforce_job_workflow_runaway_limits_on_create!
 
   def saved_change_to_state_to_failed?
     saved_change_to_state? && state == "failed"
+  end
+
+  def saved_change_to_state_to_terminal?
+    saved_change_to_state? && terminal?
   end
 
   def epic_wide?
@@ -146,6 +151,13 @@ class Workflow < ApplicationRecord
 
   def enforce_job_workflow_runaway_limits_on_fail!
     job.enforce_workflow_runaway_limits!(failed_workflow: self)
+  end
+
+  def wake_workflow_admission_after_completion!
+    WorkflowAdmissionCapacityWakeupJob.perform_later if WorkflowAdmissionCapacityWakeup.deferred_sleepers_exist?
+  rescue StandardError => e
+    Rails.logger.warn("[WorkflowAdmissionCapacityWakeup] failed to enqueue after Workflow ##{id}: #{e.class}: #{e.message}")
+    nil
   end
 
   def sync_workflow_admission_override_metadata

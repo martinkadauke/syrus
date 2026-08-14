@@ -121,6 +121,8 @@ class Run < ApplicationRecord
                        if: :saved_change_to_state_to_succeeded?
   after_update_commit :refresh_resource_summary_after_completion!,
                        if: :saved_change_to_state_to_terminal?
+  after_update_commit :wake_workflow_admission_after_completion!,
+                       if: :saved_change_to_state_to_terminal?
 
   def saved_change_to_state_to_cancelled?
     saved_change_to_state? && state == "cancelled"
@@ -136,6 +138,13 @@ class Run < ApplicationRecord
 
   def saved_change_to_state_to_terminal?
     saved_change_to_state? && terminal?
+  end
+
+  def wake_workflow_admission_after_completion!
+    WorkflowAdmissionCapacityWakeupJob.perform_later if WorkflowAdmissionCapacityWakeup.deferred_sleepers_exist?
+  rescue StandardError => e
+    Rails.logger.warn("[WorkflowAdmissionCapacityWakeup] failed to enqueue after Run ##{id}: #{e.class}: #{e.message}")
+    nil
   end
 
   def cascade_cancel_to_workflow!
