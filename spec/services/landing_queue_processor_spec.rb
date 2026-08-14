@@ -128,6 +128,46 @@ RSpec.describe LandingQueueProcessor do
     )
   end
 
+  it "lets a fix-main Job preempt a landing workflow paused by broken main" do
+    blocked = queue_job(issue_number: 1, approved_at: 2.minutes.ago)
+    blocked.start_landing!
+    blocked.save!
+    blocked_workflow = Workflows::AutoMerge.instantiate(job: blocked)
+    blocked_workflow.update!(
+      artifacts: {
+        "start_blocked_reason" => StepDispatcher::MAIN_HEALTH_BLOCK_REASON,
+        "start_blocked_next_check_at" => 10.minutes.from_now.iso8601
+      }
+    )
+    fix_job = Factories.job_record(
+      user: user,
+      repository: repository,
+      kind: "direct",
+      issue_number: nil,
+      issue_title: MainHealthChangedService::FIX_MAIN_TITLE,
+      issue_body: "Restore main.",
+      pr_number: 123,
+      priority: "urgent",
+      state: "implemented"
+    )
+    fix_job.approve!(via: "operator")
+    fix_job.update!(approved_at: 1.minute.ago)
+    repository.update!(ci_health: "broken", landing_paused: true)
+
+    workflow = described_class.call
+
+    expect(workflow).to be_present
+    expect(workflow.job).to eq(fix_job)
+    expect(workflow.trigger_kind).to eq("auto_merge")
+    expect(fix_job.reload).to be_landing
+    expect(blocked.reload).to be_approved
+    expect(blocked_workflow.reload).to be_failed
+    expect(blocked_workflow.artifact("start_blocked_details")).to include(
+      "preempted_by_job_id" => fix_job.id,
+      "preempted_by_job_slug" => fix_job.slug
+    )
+  end
+
   it "does not dispatch a second landing workflow for a job that already has one active" do
     job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
     job.start_landing!
