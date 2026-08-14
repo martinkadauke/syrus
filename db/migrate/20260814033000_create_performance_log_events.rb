@@ -22,10 +22,20 @@ class CreatePerformanceLogEvents < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :performance_log_events, [ :app_revision, :occurred_at ], name: "idx_perf_events_revision_occurred", if_not_exists: true
-    add_index :performance_log_events, [ :event_name, :occurred_at ], name: "idx_perf_events_name_occurred", if_not_exists: true
-    add_index :performance_log_events, [ :path, :occurred_at ], name: "idx_perf_events_path_occurred", if_not_exists: true
-    add_index :performance_log_events, [ :phase, :occurred_at ], name: "idx_perf_events_phase_occurred", if_not_exists: true
-    add_index :performance_log_events, [ :sql_fingerprint, :occurred_at ], name: "idx_perf_events_sql_fingerprint_occurred", if_not_exists: true
+    unless index_exists?(:performance_log_events, [ :app_revision, :occurred_at ], name: "idx_perf_events_revision_occurred")
+      add_index :performance_log_events, [ :app_revision, :occurred_at ], name: "idx_perf_events_revision_occurred"
+    end
+    unless index_exists?(:performance_log_events, [ :event_name, :occurred_at ], name: "idx_perf_events_name_occurred")
+      add_index :performance_log_events, [ :event_name, :occurred_at ], name: "idx_perf_events_name_occurred"
+    end
+    unless index_exists?(:performance_log_events, [ :path, :occurred_at ], name: "idx_perf_events_path_occurred")
+      add_index :performance_log_events, [ :path, :occurred_at ], name: "idx_perf_events_path_occurred"
+    end
+    unless index_exists?(:performance_log_events, [ :phase, :occurred_at ], name: "idx_perf_events_phase_occurred")
+      add_index :performance_log_events, [ :phase, :occurred_at ], name: "idx_perf_events_phase_occurred"
+    end
+    unless index_exists?(:performance_log_events, [ :sql_fingerprint, :occurred_at ], name: "idx_perf_events_sql_fingerprint_occurred")
+      add_index :performance_log_events, [ :sql_fingerprint, :occurred_at ], name: "idx_perf_events_sql_fingerprint_occurred"
+    end
   end
 end
