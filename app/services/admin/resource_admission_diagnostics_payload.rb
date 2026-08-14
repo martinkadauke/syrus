@@ -42,7 +42,8 @@ module Admin
 
     def recent_top_consumers
       summaries = recent_summary_scope
-        .order(Arel.sql("COALESCE(process_attributed_duration_seconds, process_wall_time_seconds, duration_seconds, 0) DESC"))
+        .where.not(process_attributed_duration_seconds: nil)
+        .order(process_attributed_duration_seconds: :desc)
         .limit(RECENT_LIMIT)
 
       summaries.map { |summary| serialize_summary(summary) }
@@ -81,7 +82,7 @@ module Admin
     def recent_summary_scope
       RunResourceSummary
         .includes(:run, :job, :workflow, :step, :repository)
-        .where("COALESCE(finished_at, started_at, created_at) >= ?", now - RECENT_WINDOW)
+        .where(created_at: (now - RECENT_WINDOW)..)
     end
 
     def confidence_levels_clause

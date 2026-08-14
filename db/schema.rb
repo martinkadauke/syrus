@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_13_162524) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_14_021000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -1564,6 +1564,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_13_162524) do
     t.bigint "workflow_id"
     t.index ["hostname", "started_at"], name: "idx_run_resource_summaries_host_started"
     t.index ["job_id"], name: "index_run_resource_summaries_on_job_id"
+    t.index ["process_attributed_duration_seconds", "created_at"], name: "idx_run_resource_summaries_process_duration_created"
     t.index ["repository_id", "step_kind", "created_at"], name: "idx_run_resource_summaries_repo_step_created"
     t.index ["run_id"], name: "index_run_resource_summaries_on_run_id", unique: true
     t.index ["workflow_id"], name: "index_run_resource_summaries_on_workflow_id"
