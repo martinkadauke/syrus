@@ -1,6 +1,6 @@
 module App
   class ProviderAvailability
-    CACHE_TTL = 2.minutes
+    CACHE_TTL = 10.minutes
     @cache_mutex = Mutex.new
     @process_cache = {}
 
