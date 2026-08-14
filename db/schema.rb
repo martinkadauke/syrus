@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_14_033000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_14_040500) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -136,6 +136,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_14_033000) do
     t.integer "chat_session_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["attachable_type", "attachable_id", "chat_session_id"], name: "idx_chat_attachments_attachable_session"
     t.index ["attachable_type", "attachable_id"], name: "index_chat_attachments_on_attachable"
     t.index ["chat_session_id", "attachable_type", "attachable_id"], name: "index_chat_attachments_on_session_and_attachable", unique: true
     t.index ["chat_session_id", "attachable_type", "attached_at", "id"], name: "idx_chat_attachments_payload_order"
