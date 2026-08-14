@@ -12,13 +12,14 @@ module SyrusDev
       events = filter_events(raw_events)
       summaries = summaries_payload(events)
       current_summaries = summaries_payload(raw_events.select { |event| event["app_revision"] == current_revision })
+      baseline_revision = previous_revision(raw_events)
       {
         enabled: Feature.enabled?(PerformanceLogging::FEATURE_SLUG),
         current_revision: current_revision,
         revision_scope: revision_scope,
         thresholds: PerformanceLogging.thresholds,
         storage: storage_payload,
-        baseline: baseline_payload(raw_events, current_summaries),
+        baseline: baseline_payload(baseline_revision, raw_events, current_summaries),
         summaries: summaries,
         events: events
       }
@@ -66,11 +67,10 @@ module SyrusDev
       }
     end
 
-    def baseline_payload(raw_events, current_summaries)
-      baseline_revision = previous_revision(raw_events)
+    def baseline_payload(baseline_revision, raw_events, current_summaries)
       return { revision: nil, comparisons: empty_comparisons } unless baseline_revision
 
-      baseline_summaries = summaries_payload(raw_events.select { |event| event["app_revision"] == baseline_revision })
+      baseline_summaries = summaries_payload(events_for_revision(raw_events, baseline_revision))
       {
         revision: baseline_revision,
         comparisons: {
@@ -92,11 +92,36 @@ module SyrusDev
     end
 
     def previous_revision(raw_events)
-      raw_events
+      revision = raw_events
         .filter_map { |event| event["app_revision"].presence }
         .reject { |revision| revision == current_revision }
         .uniq
         .first
+      revision.presence || previous_persisted_revision
+    end
+
+    def previous_persisted_revision
+      PerformanceLogEvent
+        .where(occurred_at: PerformanceLogEvent::RETENTION.ago..)
+        .where.not(app_revision: [ nil, "", current_revision ])
+        .group(:app_revision)
+        .maximum(:occurred_at)
+        .max_by { |_revision, occurred_at| occurred_at }
+        &.first
+    end
+
+    def events_for_revision(raw_events, revision)
+      events = raw_events.select { |event| event["app_revision"] == revision }
+      persisted = PerformanceLogEvent
+        .where(app_revision: revision, occurred_at: PerformanceLogEvent::RETENTION.ago..)
+        .recent_first
+        .limit(limit)
+        .map(&:as_event_hash)
+      (events + persisted)
+        .uniq { |event| [ event["occurred_at"], event["event"], event["request_id"], event["trace_id"], event["phase"], event["path"], event["fingerprint"] ] }
+        .sort_by { |event| event["occurred_at"].to_s }
+        .last(limit)
+        .reverse
     end
 
     def compare_summary_rows(current_rows, baseline_rows, key_method)

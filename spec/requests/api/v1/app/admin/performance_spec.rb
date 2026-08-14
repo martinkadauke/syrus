@@ -138,6 +138,51 @@ RSpec.describe "API: /api/v1/app/admin/performance", type: :request do
     expect(parse_body["events"].map { |event| event["app_revision"] }).to contain_exactly("new-sha", "new-sha", "new-sha", "old-sha", "old-sha")
   end
 
+  it "keeps a prior-revision baseline when current-revision events fill the recent window" do
+    sign_in_as(admin)
+    PerformanceLogging::Store.clear!
+    PerformanceLogEvent.delete_all
+    old_event = {
+      "event" => PerformanceLogging::SLOW_REQUEST_EVENT,
+      "method" => "GET",
+      "path" => "/api/v1/app/dashboard",
+      "controller" => "Api::V1::App::DashboardController",
+      "action" => "show",
+      "duration_ms" => 1_500.0,
+      "sql_count" => 40,
+      "sql_duration_ms" => 900.0,
+      "occurred_at" => 10.minutes.ago.iso8601,
+      "app_revision" => "old-sha"
+    }
+    current_events = 301.times.map do |index|
+      {
+        "event" => PerformanceLogging::SLOW_REQUEST_EVENT,
+        "method" => "GET",
+        "path" => "/api/v1/app/dashboard",
+        "controller" => "Api::V1::App::DashboardController",
+        "action" => "show",
+        "duration_ms" => 3_000.0,
+        "sql_count" => 42,
+        "sql_duration_ms" => 2_200.0,
+        "occurred_at" => (9.minutes.ago + index.seconds).iso8601,
+        "app_revision" => "new-sha"
+      }
+    end
+    PerformanceLogEvent.insert_all(([ old_event ] + current_events).map { |event| PerformanceLogEvent.from_event_hash(event) }) # rubocop:disable Rails/SkipsModelValidations
+
+    get "/api/v1/app/admin/performance", params: { revision_scope: "all", limit: 300 }
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["events"].map { |event| event["app_revision"] }.uniq).to eq([ "new-sha" ])
+    expect(body.dig("baseline", "revision")).to eq("old-sha")
+    expect(body.dig("baseline", "comparisons", "slow_requests").first).to include(
+      "current_average_duration_ms" => 3_000.0,
+      "baseline_average_duration_ms" => 1_500.0,
+      "status" => "regressed"
+    )
+  end
+
   it "404s when the Syrus Dev plugin is disabled" do
     PluginRecord.find_by!(name: "syrus_dev").update!(enabled: false)
     sign_in_as(admin)
