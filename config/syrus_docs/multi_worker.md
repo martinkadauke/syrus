@@ -33,6 +33,16 @@ queues across two worker configs and select one per pod with the
   queue, so retry-from-failed-step affinity (below) works on whichever worker
   can see the workspace.
 
+Search schema is not part of the primary MySQL schema. It lives in
+`db/search_migrate` and is applied to the local SQLite search database by
+`bin/rails syrus:prepare_search`. Container boot runs this task before web and
+worker processes start; local `bin/setup` runs it after `db:prepare`. The task
+is idempotent and also verifies the known FTS virtual tables after migration, so
+a recorded-but-missing table is recreated on the next deploy. New search/FTS
+tables must be added under `db/search_migrate`; if they are required even when
+an older schema version was recorded, add them to the task's required-table
+verification list too.
+
 **The home worker MUST be a single pod** (`replicas: 1`, `strategy: Recreate`).
 Chat workspaces (`ChatWorkspace`, at
 `$SYRUS_DATA_ROOT/chat-workspaces/<chat_session_id>`) are local-disk and

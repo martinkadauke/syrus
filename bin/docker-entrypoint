@@ -15,9 +15,18 @@ if [ -n "${SYRUS_MISE_GO_VERSION:-}" ] && [ -d "/opt/mise/installs/go/${SYRUS_MI
   /usr/local/bin/mise reshim go >/dev/null
 fi
 
-# If running the rails server then create or migrate existing database
+prepare_search_database() {
+  if [ "${SYRUS_SKIP_SEARCH_PREPARE:-}" != "1" ]; then
+    ./bin/rails syrus:prepare_search
+  fi
+}
+
+# If running the rails server then create or migrate existing databases.
 if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
   ./bin/rails db:prepare
+  prepare_search_database
+elif [ "${@: -1:1}" == "./bin/jobs" ] || [ "${@: -1:1}" == "bin/jobs" ]; then
+  prepare_search_database
 fi
 
 exec "${@}"
