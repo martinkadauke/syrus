@@ -2,6 +2,7 @@ class OperationalLogIndex < SearchRecord
   include FtsQueryParser
 
   MAX_LIMIT = 100
+  FALLBACK_SEARCH_SCAN_LIMIT = 1_000
 
   class << self
     def upsert(event)
@@ -67,6 +68,8 @@ class OperationalLogIndex < SearchRecord
     end
 
     def search(query: nil, since: OperationalLogEvent::RETENTION.ago, until_time: nil, level: nil, role: nil, hostname: nil, app_revision: nil, limit: 50, offset: 0)
+      return fallback_search(query: query, since: since, until_time: until_time, level: level, role: role, hostname: hostname, app_revision: app_revision, limit: limit, offset: offset) unless available?
+
       binds = []
       wheres = [ "occurred_at >= ?" ]
       binds << bind(since.iso8601(6))
@@ -129,7 +132,60 @@ class OperationalLogIndex < SearchRecord
       rows.map(&:symbolize_keys)
     end
 
+    def available?
+      connection.select_value("SELECT name FROM sqlite_master WHERE name = 'operational_log_fts'").present?
+    rescue ActiveRecord::StatementInvalid, SQLite3::SQLException
+      false
+    end
+
     private
+
+    def fallback_search(query:, since:, until_time:, level:, role:, hostname:, app_revision:, limit:, offset:)
+      scope = OperationalLogEvent.where(occurred_at: since..)
+      scope = scope.where(occurred_at: ..until_time) if until_time.present?
+      scope = scope.where(level: level) if level.present?
+      scope = scope.where(role: role) if role.present?
+      scope = scope.where(hostname: hostname) if hostname.present?
+      scope = scope.where(app_revision: app_revision) if app_revision.present?
+      records = scope.order(occurred_at: :desc, id: :desc).limit(fallback_scan_limit(limit, offset)).to_a
+      records = filter_fallback_query(records, query) if query.present?
+      records.drop([ offset.to_i, 0 ].max).first([[ limit.to_i, 1 ].max, MAX_LIMIT].min).map { |event| fallback_row(event) }
+    end
+
+    def fallback_scan_limit(limit, offset)
+      [[ limit.to_i, 1 ].max + [ offset.to_i, 0 ].max, FALLBACK_SEARCH_SCAN_LIMIT].min
+    end
+
+    def filter_fallback_query(records, query)
+      terms = query.to_s.scan(/[[:alnum:]_.:\/-]+/).map(&:downcase).uniq
+      return records if terms.empty?
+
+      records.select do |event|
+        haystack = "#{event.message} #{context_text(event.context)}".downcase
+        terms.all? { |term| haystack.include?(term) }
+      end
+    end
+
+    def fallback_row(event)
+      {
+        operational_log_event_id: event.id,
+        occurred_at: event.occurred_at&.iso8601(6),
+        level: event.level,
+        role: event.role,
+        hostname: event.hostname,
+        app_revision: event.app_revision,
+        pid: event.pid,
+        source: event.source,
+        job_id: event.job_id,
+        workflow_id: event.workflow_id,
+        run_id: event.run_id,
+        request_id: event.request_id,
+        message: event.message,
+        context_text: context_text(event.context),
+        context_json: event.context.to_json,
+        rank: 0
+      }
+    end
 
     def context_text(context)
       context.to_h.map { |key, value| "#{key}=#{value}" }.join(" ")

@@ -87,6 +87,36 @@ RSpec.describe SyrusDev::ReadSyrusLogsTool do
     expect(payload.dig("logs", 0, "context")).to include("path" => "/jobs", "api_key" => "api_key=[REDACTED]")
   end
 
+  it "falls back to retained log rows when the FTS table is missing" do
+    event = OperationalLogEvent.create!(
+      occurred_at: 1.minute.ago,
+      level: "error",
+      role: "worker",
+      hostname: "host-a",
+      app_revision: "sha",
+      pid: 123,
+      source: "spec",
+      request_id: "req-1",
+      message: "failed migration without fts",
+      context: { "path" => "/jobs" }
+    )
+    SearchRecord.connection.execute("DROP TABLE IF EXISTS operational_log_fts")
+
+    response = described_class.call(
+      server_context: { run_id: run.id },
+      query: "migration",
+      since: "1d",
+      level: "error",
+      role: "worker",
+      hostname: "host-a"
+    )
+
+    expect(response).not_to be_error
+    payload = payload_from(response)
+    expect(payload["enabled"]).to be(true)
+    expect(payload["logs"]).to contain_exactly(include("id" => event.id, "message" => "failed migration without fts"))
+  end
+
   it "allows agent insight runs to search Syrus logs" do
     insight_job = Job.create!(user: user, repository: repository, kind: "agent_insight", priority: "low")
     insight_workflow = Workflow.create!(
