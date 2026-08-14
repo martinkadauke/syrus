@@ -156,13 +156,12 @@ module Filters
         end
 
         def apply_queued
-          queued_workflow_job_ids = latest_workflow_job_ids("queued")
           # Infrastructure workflows skip propagate_start_to_job!, leaving the job :queued while the workflow runs; exclude them so they appear in_progress instead.
           running_infra_ids = Workflow.where(state: "running", trigger_kind: Workflow::INFRASTRUCTURE_TRIGGER_KINDS).select(:job_id)
           active = scope.where(manual_paused: false)
           active.where(state: "queued")
                .where.not(id: running_infra_ids)
-               .or(active.open_threads.where.not(state: "landing").where(id: queued_workflow_job_ids))
+               .or(active.open_threads.where.not(state: "landing").where(id: active_queued_workflow_job_ids))
         end
 
         def apply_inbox
@@ -261,6 +260,10 @@ module Filters
             .select(:job_id)
         end
 
+        def active_queued_workflow_job_ids
+          Workflow.where(state: "queued").select(:job_id)
+        end
+
         def unpaused_running_workflow_job_ids
           Workflow.where(state: "running")
                   .where("artifacts IS NULL OR NOT (artifacts LIKE ? OR artifacts LIKE ?)", '%"pause_reason"%', '%"start_blocked_reason"%')
@@ -271,14 +274,6 @@ module Filters
           Workflow.where(state: "running")
                   .where.not(trigger_kind: Workflow::LANDING_TRIGGER_KINDS)
                   .where("artifacts LIKE ? OR artifacts LIKE ?", '%"pause_reason"%', '%"start_blocked_reason"%')
-                  .where(<<~SQL.squish)
-                    workflows.id = (
-                      SELECT latest_workflows.id FROM workflows latest_workflows
-                      WHERE latest_workflows.job_id = workflows.job_id
-                      ORDER BY (latest_workflows.finished_at IS NULL) DESC, latest_workflows.finished_at DESC, latest_workflows.id DESC
-                      LIMIT 1
-                    )
-                  SQL
                   .select(:job_id)
         end
 
