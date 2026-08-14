@@ -12,6 +12,7 @@ module Admin
     def as_json(*)
       return disabled_payload unless OperationalLogging.enabled_for_instance?
 
+      Observability::EventSink.flush!(kinds: [ :operational ])
       normalized = normalized_params
       rows = OperationalLogIndex.search(**normalized.fetch(:search_params))
       has_next_page = rows.size > normalized.fetch(:per_page)

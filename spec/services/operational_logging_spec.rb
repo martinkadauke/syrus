@@ -12,11 +12,13 @@ RSpec.describe OperationalLogging do
     Feature.clear_enabled_cache!("operational_log_indexing")
     Current.reset
     clear_enqueued_jobs
+    Observability::EventSink.clear!(kind: :operational)
     allow(SyrusVersion).to receive(:current).and_return("sha-test")
     allow(SyrusVersion).to receive(:hostname).and_return("host-a")
   end
 
   after do
+    Observability::EventSink.clear!(kind: :operational)
     Current.reset
     clear_enqueued_jobs
   end
@@ -48,7 +50,7 @@ RSpec.describe OperationalLogging do
     }.not_to change(OperationalLogEvent, :count)
   end
 
-  it "redacts secrets, truncates large payloads, and enqueues home-worker indexing" do
+  it "redacts secrets, truncates large payloads, and buffers for staged persistence" do
     event = nil
 
     expect {
@@ -63,14 +65,19 @@ RSpec.describe OperationalLogging do
           extra: "y" * 10_000
         }
       )
+    }.not_to change(OperationalLogEvent, :count)
+
+    expect(event["message"]).to start_with("token=[REDACTED]")
+    expect(event["message"].bytesize).to be <= described_class::MAX_MESSAGE_BYTES
+    expect(event["context"].to_json.bytesize).to be <= described_class::MAX_CONTEXT_BYTES
+    expect(event["context"].to_json).not_to include("secret-value")
+    expect(enqueued_jobs.map { |job| job[:job] }).not_to include(IndexOperationalLogEventJob)
+
+    expect {
+      Observability::EventSink.flush!(kinds: [ :operational ])
     }.to change(OperationalLogEvent, :count).by(1)
 
-    expect(event.message).to start_with("token=[REDACTED]")
-    expect(event.message.bytesize).to be <= described_class::MAX_MESSAGE_BYTES
-    expect(event.context.to_json.bytesize).to be <= described_class::MAX_CONTEXT_BYTES
-    expect(event.context.to_json).not_to include("secret-value")
     expect(enqueued_jobs.map { |job| job[:job] }).to include(IndexOperationalLogEventJob)
-    expect(enqueued_jobs.find { |job| job[:job] == IndexOperationalLogEventJob }[:queue]).to eq("indexing")
   end
 
   it "ingests request and active job notification payloads with structured identifiers" do
@@ -89,6 +96,7 @@ RSpec.describe OperationalLogging do
       12.34
     )
     described_class.ingest_job({ job: RunJob.new }, 45.67)
+    Observability::EventSink.flush!(kinds: [ :operational ])
 
     expect(OperationalLogEvent.pluck(:source)).to contain_exactly("action_controller", "active_job")
     expect(OperationalLogEvent.find_by(source: "action_controller")).to have_attributes(request_id: "req-2", role: "web")
@@ -102,12 +110,12 @@ RSpec.describe OperationalLogging do
     Thread.current[:syrus_current_run] = nil
   end
 
-  it "does not touch the search database during primary ingest" do
+  it "does not touch the primary or search database during primary ingest" do
     allow(SearchRecord).to receive(:connection).and_raise("compute worker must not write search")
 
     expect {
       described_class.ingest(level: "info", source: "spec", message: "primary only")
-    }.to change(OperationalLogEvent, :count).by(1)
+    }.not_to change(OperationalLogEvent, :count)
   end
 
   it "prunes expired primary and search rows without logging recursively" do

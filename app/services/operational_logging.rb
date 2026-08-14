@@ -29,22 +29,22 @@ module OperationalLogging
 
     suppress do
       attrs = normalized_context(context)
-      event = OperationalLogEvent.create!(
-        occurred_at: occurred_at,
-        level: normalize_level(level),
-        role: safe_string(role.presence || process_role, 100),
-        hostname: safe_string(hostname.presence || SyrusVersion.hostname, 255),
-        app_revision: safe_string(SyrusVersion.current, 255),
-        pid: pid,
-        source: safe_string(source, 255),
-        request_id: safe_string(attrs.delete("request_id"), 255),
-        job_id: integer_or_nil(attrs.delete("job_id")),
-        workflow_id: integer_or_nil(attrs.delete("workflow_id")),
-        run_id: integer_or_nil(attrs.delete("run_id")),
-        message: safe_string(message, MAX_MESSAGE_BYTES),
-        context: attrs
-      )
-      enqueue_prune_if_due
+      event = {
+        "occurred_at" => occurred_at.iso8601(6),
+        "level" => normalize_level(level),
+        "role" => safe_string(role.presence || process_role, 100),
+        "hostname" => safe_string(hostname.presence || SyrusVersion.hostname, 255),
+        "app_revision" => safe_string(SyrusVersion.current, 255),
+        "pid" => pid,
+        "source" => safe_string(source, 255),
+        "request_id" => safe_string(attrs.delete("request_id"), 255),
+        "job_id" => integer_or_nil(attrs.delete("job_id")),
+        "workflow_id" => integer_or_nil(attrs.delete("workflow_id")),
+        "run_id" => integer_or_nil(attrs.delete("run_id")),
+        "message" => safe_string(message, MAX_MESSAGE_BYTES),
+        "context" => attrs
+      }.compact
+      Observability::EventSink.append(kind: :operational, event: event, durable: true)
       event
     end
   rescue StandardError
@@ -175,10 +175,7 @@ module OperationalLogging
   end
 
   def enqueue_prune_if_due
-    last = Thread.current[:syrus_operational_log_last_prune_enqueue_at]
-    return if last && Time.current - last < PRUNE_INTERVAL
-
-    Thread.current[:syrus_operational_log_last_prune_enqueue_at] = Time.current
-    PruneOperationalLogsJob.perform_later
+    # Retained for compatibility with older callers; pruning is scheduled
+    # through recurring jobs now so ingestion never writes Solid Queue rows.
   end
 end

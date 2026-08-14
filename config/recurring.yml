@@ -50,6 +50,14 @@ default: &default
     class: ChatScopedEventRetryFailedJob
     queue: low_priority_maintenance
     schedule: every 5 minutes
+  flush_observability_events:
+    class: FlushObservabilityEventsJob
+    queue: low_priority_maintenance
+    schedule: every minute
+  prune_operational_logs:
+    class: PruneOperationalLogsJob
+    queue: cleanup
+    schedule: every 10 minutes
   sync_enabled_forks:
     class: SyncEnabledForksJob
     queue: low_priority_maintenance

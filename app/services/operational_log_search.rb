@@ -55,6 +55,7 @@ module OperationalLogSearch
     return Mcp::Tools.invalid(normalized[:error]) if normalized[:error]
 
     rows = OperationalLogging.suppress do
+      Observability::EventSink.flush!(kinds: [ :operational ])
       OperationalLogIndex.search(**normalized.fetch(:params))
     end
 

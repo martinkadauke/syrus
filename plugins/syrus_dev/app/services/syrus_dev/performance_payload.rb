@@ -7,6 +7,7 @@ module SyrusDev
     end
 
     def as_json(*)
+      PerformanceLogging::Store.flush!
       raw_events = PerformanceLogging::Store.recent(limit: limit)
       events = filter_events(raw_events)
       summaries = summaries_payload(events)
@@ -34,10 +35,11 @@ module SyrusDev
 
     def storage_payload
       {
-        kind: cache_store_name,
-        cache_key: PerformanceLogging::Store::CACHE_KEY,
+        kind: "performance_log_events",
         max_events: PerformanceLogging::Store::MAX_EVENTS,
-        expires_in_seconds: PerformanceLogging::Store::EXPIRES_IN.to_i
+        expires_in_seconds: PerformanceLogEvent::RETENTION.to_i,
+        buffered: Observability::EventSink.stats.dig(:buffered, :performance).to_i,
+        dropped: Observability::EventSink.stats.dig(:dropped, :performance).to_i
       }
     end
 
@@ -53,10 +55,6 @@ module SyrusDev
 
     def current_revision
       SyrusVersion.current
-    end
-
-    def cache_store_name
-      Array(Rails.application.config.cache_store).first.to_s
     end
 
     def summaries_payload(events)

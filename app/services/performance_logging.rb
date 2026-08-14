@@ -12,7 +12,7 @@ module PerformanceLogging
   MAX_SQL_FINGERPRINTS_PER_REQUEST = Integer(ENV["SYRUS_PERFORMANCE_MAX_SQL_FINGERPRINTS_PER_REQUEST"], exception: false) || 25
 
   module Store
-    CACHE_KEY = "syrus:performance_logging:events:v1"
+    CACHE_KEY = "observability:performance_log_events"
     MAX_EVENTS = Integer(ENV["SYRUS_PERFORMANCE_MAX_EVENTS"], exception: false) || 300
     EXPIRES_IN = 6.hours
     FLUSH_INTERVAL = (Integer(ENV["SYRUS_PERFORMANCE_FLUSH_INTERVAL_SECONDS"], exception: false) || 60).seconds
@@ -24,67 +24,31 @@ module PerformanceLogging
     module_function
 
     def append(event)
-      buffer_event(event)
-      flush_if_due
+      Observability::EventSink.append(kind: :performance, event: event)
     rescue StandardError
       nil
     end
 
     def recent(limit: MAX_EVENTS)
-      limit = clamp_limit(limit)
-      PerformanceLogging.suppress do
-        (Array(Rails.cache.read(CACHE_KEY)) + buffered_events)
-          .uniq { |event| [ event["occurred_at"], event["event"], event["request_id"], event["phase"], event["name"] ] }
-          .last(limit)
-          .reverse
-      end
+      Observability::EventSink.recent(kind: :performance, limit: clamp_limit(limit))
     rescue StandardError
-      buffered_events.last(limit).reverse
+      []
     end
 
     def flush!
-      PerformanceLogging.suppress do
-        events = buffered_events
-        return if events.empty?
-
-        cached = Array(Rails.cache.read(CACHE_KEY))
-        Rails.cache.write(CACHE_KEY, (cached + events).last(MAX_EVENTS), expires_in: EXPIRES_IN)
-        @mutex.synchronize do
-          @events = []
-          @last_flush_at = Time.current
-        end
-      end
+      PerformanceLogging.suppress { Observability::EventSink.flush!(kinds: [ :performance ]) }
     rescue StandardError
       nil
     end
 
     def clear!
-      @mutex.synchronize do
-        @events = []
-        @last_flush_at = Time.current
-      end
-      PerformanceLogging.suppress { Rails.cache.delete(CACHE_KEY) }
+      PerformanceLogging.suppress { Observability::EventSink.clear!(kind: :performance) }
     rescue StandardError
       nil
     end
 
     def clamp_limit(limit)
       [[limit.to_i, 1].max, MAX_EVENTS].min
-    end
-
-    def buffer_event(event)
-      @mutex.synchronize { @events = (@events + [ event ]).last(MAX_EVENTS) }
-    end
-
-    def buffered_events
-      @mutex.synchronize { @events.dup }
-    end
-
-    def flush_if_due
-      last_flush_at = @mutex.synchronize { @last_flush_at }
-      return if Time.current - last_flush_at < FLUSH_INTERVAL
-
-      flush!
     end
   end
 
@@ -270,7 +234,7 @@ module PerformanceLogging
 
   def emit(event, flush: true)
     Rails.logger.info(event.to_json)
-    flush ? Store.append(event) : Store.buffer_event(event)
+    Store.append(event)
   rescue StandardError
     nil
   end

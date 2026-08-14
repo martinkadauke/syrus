@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_14_021000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_14_033000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -1244,6 +1244,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_14_021000) do
     t.integer "user_id", null: false
     t.index ["external_id"], name: "index_passkeys_on_external_id", unique: true
     t.index ["user_id"], name: "index_passkeys_on_user_id"
+  end
+
+  create_table "performance_log_events", force: :cascade do |t|
+    t.string "action", limit: 100
+    t.string "app_revision"
+    t.string "controller", limit: 200
+    t.datetime "created_at", null: false
+    t.float "duration_ms"
+    t.string "event_name", null: false
+    t.string "method", limit: 20
+    t.string "name", limit: 200
+    t.datetime "occurred_at", null: false
+    t.string "path", limit: 500
+    t.json "payload", null: false
+    t.string "phase", limit: 200
+    t.string "request_id"
+    t.integer "slow_sql_count"
+    t.integer "sql_count"
+    t.float "sql_duration_ms"
+    t.string "sql_fingerprint", limit: 700
+    t.string "trace_id", limit: 100
+    t.datetime "updated_at", null: false
+    t.index ["app_revision", "occurred_at"], name: "idx_perf_events_revision_occurred"
+    t.index ["event_name", "occurred_at"], name: "idx_perf_events_name_occurred"
+    t.index ["path", "occurred_at"], name: "idx_perf_events_path_occurred"
+    t.index ["phase", "occurred_at"], name: "idx_perf_events_phase_occurred"
+    t.index ["sql_fingerprint", "occurred_at"], name: "idx_perf_events_sql_fingerprint_occurred"
   end
 
   create_table "platform_identities", force: :cascade do |t|

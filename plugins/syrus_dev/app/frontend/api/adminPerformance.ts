@@ -10,9 +10,11 @@ export type PerformanceThresholds = {
 
 export type PerformanceStorage = {
   kind: string
-  cache_key: string
+  cache_key?: string
   max_events: number
   expires_in_seconds: number
+  buffered?: number
+  dropped?: number
 }
 
 export type SlowRequestSummary = {
