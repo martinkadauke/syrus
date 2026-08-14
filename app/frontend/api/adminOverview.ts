@@ -64,7 +64,7 @@ export type AdminOverviewPayload = {
   }[]
   worker_health?: WorkerHealthPayload
   resource_admission?: ResourceAdmissionDiagnosticsPayload
-  chat_scoped_events: {
+  chat_scoped_events?: {
     window_hours: number
     total: number
     by_state: Record<string, number>
@@ -371,6 +371,10 @@ export type WorkerHealthPayload = {
   hosts: WorkerHealthHost[]
 }
 
-export function fetchAdminOverview() {
-  return getJson<AdminOverviewPayload>("/api/v1/app/admin/overview")
+export function fetchAdminOverview(page: "overview" | "resource_admission" | "scoped_chat_events" = "overview") {
+  const params = new URLSearchParams()
+  if (page !== "overview") params.set("page", page)
+
+  const query = params.toString()
+  return getJson<AdminOverviewPayload>(`/api/v1/app/admin/overview${query ? `?${query}` : ""}`)
 }

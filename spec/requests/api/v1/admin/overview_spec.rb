@@ -31,7 +31,8 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
       expect(body).to have_key("agent_session_capture_rate")
       expect(body).to have_key("data_root_disk_usage")
       expect(body).to have_key("worker_health")
-      expect(body).to have_key("resource_admission")
+      expect(body).not_to have_key("resource_admission")
+      expect(body).not_to have_key("chat_scoped_events")
       expect(body).not_to have_key("provider_session_capture_rate")
       expect(body).to have_key("workers")
       expect(body).to have_key("recurring")
@@ -232,7 +233,7 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
         }
       })
 
-      get "/api/v1/admin/overview", headers: auth
+      get "/api/v1/admin/overview", params: { page: "resource_admission" }, headers: auth
 
       diagnostics = parse_body.fetch("resource_admission")
       expect(diagnostics.fetch("delayed_work").first).to include(

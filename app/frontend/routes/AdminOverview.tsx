@@ -19,6 +19,19 @@ const emptyResourceAdmission: ResourceAdmissionDiagnosticsPayload = {
   admission_overrides: []
 }
 
+const emptyChatScopedEvents: NonNullable<AdminOverviewPayload["chat_scoped_events"]> = {
+  window_hours: 24,
+  total: 0,
+  by_state: {},
+  by_decision: {
+    no_op: 0,
+    respond: 0,
+    act: 0
+  },
+  failures: [],
+  recent: []
+}
+
 export function AdminOverview() {
   return <AdminOverviewPage />
 }
@@ -42,7 +55,7 @@ export function AdminScopedChatEvents() {
       titleKey="page_title_scoped_chat_events"
       headingKey="overview.chat_events_section"
       ariaKey="overview.aria_chat_events"
-      renderContent={(data, prefix) => <ChatScopedEventsSection data={data.chat_scoped_events} prefix={prefix} />}
+      renderContent={(data, prefix) => <ChatScopedEventsSection data={data.chat_scoped_events ?? emptyChatScopedEvents} prefix={prefix} />}
     />
   )
 }
@@ -65,8 +78,8 @@ function AdminOverviewPage({
   const location = useLocation()
   const prefix = routePrefix(location.pathname)
   const overview = useQuery({
-    queryKey: ["admin", "overview"],
-    queryFn: fetchAdminOverview
+    queryKey: ["admin", "overview", page],
+    queryFn: () => fetchAdminOverview(page)
   })
 
   if (overview.isPending) {
@@ -277,7 +290,7 @@ function Metric({
   )
 }
 
-function ChatScopedEventsSection({ data, prefix }: { data: AdminOverviewPayload["chat_scoped_events"]; prefix: string }) {
+function ChatScopedEventsSection({ data, prefix }: { data: NonNullable<AdminOverviewPayload["chat_scoped_events"]>; prefix: string }) {
   const { t } = useT("admin")
   const failures = data.failures || []
   const recent = data.recent || []
@@ -339,7 +352,7 @@ function ChatScopedEventsSection({ data, prefix }: { data: AdminOverviewPayload[
   )
 }
 
-function EventLinks({ event, prefix }: { event: AdminOverviewPayload["chat_scoped_events"]["recent"][number]; prefix: string }) {
+function EventLinks({ event, prefix }: { event: NonNullable<AdminOverviewPayload["chat_scoped_events"]>["recent"][number]; prefix: string }) {
   const links = []
   if (event.chat) links.push(<Link className="underline hover:no-underline" key="chat" to={withRoutePrefix(event.chat.path, prefix)}>{event.chat.title}</Link>)
   if (event.job) links.push(<Link className="underline hover:no-underline" key="job" to={withRoutePrefix(event.job.path, prefix)}>{event.job.slug}</Link>)

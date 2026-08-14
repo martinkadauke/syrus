@@ -33,13 +33,13 @@ module Admin
           data_root_disk_usage: PerformanceLogging.phase("admin_overview.data_root_disk_usage") { data_root_disk_usage_payload },
           worker_data_root_usages: PerformanceLogging.phase("admin_overview.worker_data_root_usages") { InstanceVersion.worker_data_root_usages },
           worker_health: PerformanceLogging.phase("admin_overview.worker_health") { worker_health_payload(sample_limit_per_host: 4) },
-          resource_admission: PerformanceLogging.phase("admin_overview.resource_admission") { resource_admission_payload },
-          chat_scoped_events: PerformanceLogging.phase("admin_overview.chat_scoped_events") { chat_scoped_events_payload },
           stuck: PerformanceLogging.phase("admin_overview.stuck_cache") { paginated_cached_stuck_items },
           stuck_pagination: PerformanceLogging.phase("admin_overview.stuck_pagination") { cached_stuck_pagination },
           stuck_snapshot: PerformanceLogging.phase("admin_overview.stuck_snapshot") { stuck_snapshot_payload }
         }
 
+        payload[:resource_admission] = PerformanceLogging.phase("admin_overview.resource_admission") { resource_admission_payload } if resource_admission_page?
+        payload[:chat_scoped_events] = PerformanceLogging.phase("admin_overview.chat_scoped_events") { chat_scoped_events_payload } if scoped_chat_events_page?
         payload[:workers] = PerformanceLogging.phase("admin_overview.workers") { workers_payload }
         payload[:recurring] = PerformanceLogging.phase("admin_overview.recurring") { recurring_payload }
         payload
@@ -60,6 +60,18 @@ module Admin
     private
 
     attr_reader :params
+
+    def requested_page
+      params.respond_to?(:[]) ? params[:page].to_s : ""
+    end
+
+    def resource_admission_page?
+      requested_page == "resource_admission"
+    end
+
+    def scoped_chat_events_page?
+      requested_page == "scoped_chat_events"
+    end
 
     def low_rate_limit_users
       User.where("gh_rate_limit_remaining IS NOT NULL AND gh_rate_limit_limit > 0").select do |u|

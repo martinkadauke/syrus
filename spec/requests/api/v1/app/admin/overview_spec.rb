@@ -75,7 +75,6 @@ RSpec.describe "API: /api/v1/app/admin/overview", type: :request do
       "github_api_blocked_users",
       "agent_session_capture_rate",
       "worker_health",
-      "chat_scoped_events",
       "workers",
       "recurring",
       "stuck",
@@ -83,11 +82,8 @@ RSpec.describe "API: /api/v1/app/admin/overview", type: :request do
       "stuck_snapshot"
     )
     expect(body["active_runs"]["total"]).to eq(1)
-    expect(body["chat_scoped_events"]).to include(
-      "window_hours" => 24,
-      "by_decision" => include("no_op" => 0, "respond" => 0, "act" => 0),
-      "recent" => []
-    )
+    expect(body).not_to have_key("resource_admission")
+    expect(body).not_to have_key("chat_scoped_events")
     expect(body["stuck_pagination"]).to include(
       "page" => 1,
       "per_page" => 50,
@@ -170,5 +166,37 @@ RSpec.describe "API: /api/v1/app/admin/overview", type: :request do
     sample = body.dig("worker_health", "current", 0, "sample")
     expect(sample).to include("cpu_used_percent" => 42.0)
     expect(sample).not_to have_key("raw_metrics")
+  end
+
+  it "returns resource admission diagnostics only when requested for the subpage" do
+    admin = Factories.user
+    allow(Admin::StuckItemsCache).to receive(:read).and_return(cached_stuck_snapshot([]))
+    sign_in_as(admin)
+
+    get api_v1_app_admin_overview_path, params: { page: "resource_admission" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["resource_admission"]).to include(
+      "windows" => include("recent_hours" => 24, "delayed_hours" => 6),
+      "active_consumers" => [],
+      "recent_top_consumers" => []
+    )
+    expect(parse_body).not_to have_key("chat_scoped_events")
+  end
+
+  it "returns scoped chat event diagnostics only when requested for the subpage" do
+    admin = Factories.user
+    allow(Admin::StuckItemsCache).to receive(:read).and_return(cached_stuck_snapshot([]))
+    sign_in_as(admin)
+
+    get api_v1_app_admin_overview_path, params: { page: "scoped_chat_events" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["chat_scoped_events"]).to include(
+      "window_hours" => 24,
+      "by_decision" => include("no_op" => 0, "respond" => 0, "act" => 0),
+      "recent" => []
+    )
+    expect(parse_body).not_to have_key("resource_admission")
   end
 end
