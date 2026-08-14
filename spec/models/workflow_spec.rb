@@ -60,6 +60,16 @@ RSpec.describe Workflow do
     end
   end
 
+  describe "#landing_workflow?" do
+    it "treats every trigger that owns landing state as a landing workflow" do
+      expect(described_class::LANDING_TRIGGER_KINDS).to contain_exactly("auto_merge", "external_pr_merge", "merge_train")
+
+      described_class::LANDING_TRIGGER_KINDS.each do |trigger_kind|
+        expect(build_wf(trigger_kind: trigger_kind)).to be_landing_workflow
+      end
+    end
+  end
+
   describe "AASM state machine" do
     let(:wf) { described_class.create!(job: job, trigger_kind: "initial") }
 
