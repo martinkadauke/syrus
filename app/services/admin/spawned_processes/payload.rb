@@ -10,20 +10,26 @@ module Admin
       end
 
       def index
-        SmartFolder.ensure_spawned_process_builtins!
-        active_folder = active_smart_folder
-        base_scope = SpawnedProcess.all
-        filter = display_filter(active_folder)
-        scope = filter.apply(base_scope).order(started_at: :desc).limit(@per_page)
+        PerformanceLogging.phase("admin_processes_payload") do
+          PerformanceLogging.phase("admin_processes.ensure_builtins") { SmartFolder.ensure_spawned_process_builtins! }
+          active_folder = PerformanceLogging.phase("admin_processes.active_folder") { active_smart_folder }
+          base_scope = SpawnedProcess.all
+          filter = PerformanceLogging.phase("admin_processes.display_filter") { display_filter(active_folder) }
+          scope = filter.apply(base_scope).includes(:workflow).order(started_at: :desc).limit(@per_page)
 
-        {
-          filter: filter.to_h,
-          controls: controls_json,
-          processes: scope.to_a.map { |process| serialize(process) },
-          running_total: SpawnedProcess.running.count,
-          active_smart_folder_id: active_folder&.id,
-          smart_folders: smart_folders(base_scope, active_folder)
-        }
+          processes = PerformanceLogging.phase("admin_processes.load_processes") { scope.to_a }
+
+          {
+            filter: filter.to_h,
+            controls: PerformanceLogging.phase("admin_processes.controls") { controls_json },
+            processes: PerformanceLogging.phase("admin_processes.serialize_processes") {
+              processes.map { |process| serialize(process) }
+            },
+            running_total: PerformanceLogging.phase("admin_processes.running_total") { SpawnedProcess.running.count },
+            active_smart_folder_id: active_folder&.id,
+            smart_folders: PerformanceLogging.phase("admin_processes.smart_folders") { smart_folders(base_scope, active_folder) }
+          }
+        end
       end
 
       def show(id)

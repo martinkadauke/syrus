@@ -12,7 +12,7 @@ module Filters
         end
 
         def self.typeahead
-          SpawnedProcess.where("started_at > ?", 24.hours.ago).distinct.count(:hostname) > Filters::FkOptionsResolver::LIMIT
+          true
         end
 
         def apply

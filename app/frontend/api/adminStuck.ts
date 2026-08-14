@@ -35,10 +35,16 @@ export type AdminStuckPayload = {
     previous_path: string | null
     next_path: string | null
   }
+  snapshot?: {
+    captured_at: string | null
+    stale: boolean
+  }
 }
 
-export function fetchAdminStuck(page = 1, signal?: AbortSignal) {
-  return getJson<AdminStuckPayload>(`/api/v1/app/admin/stuck?page=${page}`, { signal })
+export function fetchAdminStuck(page = 1, signal?: AbortSignal, refresh = false) {
+  const params = new URLSearchParams({ page: String(page) })
+  if (refresh) params.set("refresh", "1")
+  return getJson<AdminStuckPayload>(`/api/v1/app/admin/stuck?${params.toString()}`, { signal })
 }
 
 export function forceFailStuckJob(path: string) {

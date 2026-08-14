@@ -50,6 +50,9 @@ RSpec.describe "API: /api/v1/app/admin/processes", type: :request do
     expect(body["running_total"]).to eq(SpawnedProcess.running.count)
     expect(body["filter"]).to eq("and" => [])
     expect(body.dig("controls", "filter_schema").map { |field| field["field"] }).to include("state", "kind", "hostname")
+    hostname_field = body.dig("controls", "filter_schema").find { |field| field["field"] == "hostname" }
+    expect(hostname_field).to include("typeahead" => true)
+    expect(hostname_field).not_to have_key("values")
     expect(body["smart_folders"].find { |folder| folder["name"] == "Running" }).to include(
       "count" => 1,
       "path" => a_string_matching(%r{\A/admin/processes\?smart_folder_id=})

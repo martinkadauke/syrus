@@ -48,9 +48,12 @@ module Admin
     end
 
     def all
-      preload_records(result.issues)
-      result.issues.each_with_index.map do |issue, index|
-        build_item(issue, result.repair_plans[index], repair_execution_for(result.repair_plans[index]))
+      issues = PerformanceLogging.phase("admin_stuck.reconciler") { result.issues }
+      PerformanceLogging.phase("admin_stuck.preload_records") { preload_records(issues) }
+      PerformanceLogging.phase("admin_stuck.build_items") do
+        issues.each_with_index.map do |issue, index|
+          build_item(issue, result.repair_plans[index], repair_execution_for(result.repair_plans[index]))
+        end
       end
     end
 

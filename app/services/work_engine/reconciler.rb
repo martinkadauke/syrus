@@ -1281,48 +1281,67 @@ module WorkEngine
         solid_queue_jobs: solid_queue[:jobs],
         solid_queue_processes: solid_queue[:processes],
         solid_queue_pauses: solid_queue[:pauses],
-        spawned_process_ids: SpawnedProcess.where(run_id: runs.map(&:id)).or(SpawnedProcess.where(workflow_id: workflows.map(&:id))).pluck(:id),
-        instance_version_ids: InstanceVersion.fresh.pluck(:id),
-        main_health: repositories.index_with(&:main_health).transform_keys(&:slug),
-        rate_limits: ProviderCircuitBreaker.open_circuits(now: now),
-        workspaces: workflows.to_h { |workflow| [ workflow.id, workspace_snapshot_for(workflow) ] }
+        spawned_process_ids: PerformanceLogging.phase("work_engine.reconciler.snapshot_spawned_processes") {
+          SpawnedProcess.where(run_id: runs.map(&:id)).or(SpawnedProcess.where(workflow_id: workflows.map(&:id))).pluck(:id)
+        },
+        instance_version_ids: PerformanceLogging.phase("work_engine.reconciler.snapshot_instance_versions") { InstanceVersion.fresh.pluck(:id) },
+        main_health: PerformanceLogging.phase("work_engine.reconciler.snapshot_main_health") { repositories.index_with(&:main_health).transform_keys(&:slug) },
+        rate_limits: PerformanceLogging.phase("work_engine.reconciler.snapshot_rate_limits") { ProviderCircuitBreaker.open_circuits(now: now) },
+        workspaces: PerformanceLogging.phase("work_engine.reconciler.snapshot_workspaces") {
+          workflows.to_h { |workflow| [ workflow.id, workspace_snapshot_for(workflow) ] }
+        }
       )
     end
 
     def capture_solid_queue
-      root_ids = solid_queue_root_run_ids
-      ready_job_ids = SolidQueue::ReadyExecution.pluck(:job_id).to_set
-      jobs = SolidQueue::Job.where(class_name: "RunJob").where(finished_at: nil).includes(:claimed_execution, :failed_execution, :scheduled_execution).to_a
-      parsed = jobs.filter_map do |job|
-        root_run_id = run_id_from_solid_queue_arguments(job.arguments)
-        next if root_ids.any? && !root_ids.include?(root_run_id)
+      PerformanceLogging.phase("work_engine.reconciler.capture_solid_queue") do
+        root_ids = PerformanceLogging.phase("work_engine.reconciler.solid_queue_root_run_ids") { solid_queue_root_run_ids }
+        ready_job_ids = PerformanceLogging.phase("work_engine.reconciler.solid_queue_ready_ids") { SolidQueue::ReadyExecution.pluck(:job_id).to_set }
+        jobs = PerformanceLogging.phase("work_engine.reconciler.solid_queue_run_jobs") do
+          SolidQueue::Job
+            .where(class_name: "RunJob")
+            .where(finished_at: nil)
+            .select(:id, :arguments, :queue_name, :priority, :finished_at)
+            .includes(:claimed_execution, :failed_execution, :scheduled_execution)
+            .to_a
+        end
+        parsed = PerformanceLogging.phase("work_engine.reconciler.solid_queue_parse") do
+          jobs.filter_map do |job|
+            root_run_id = run_id_from_solid_queue_arguments(job.arguments)
+            next if root_ids.any? && !root_ids.include?(root_run_id)
 
-        claim = job.claimed_execution
-        failed = job.failed_execution
-        scheduled = job.scheduled_execution
+            claim = job.claimed_execution
+            failed = job.failed_execution
+            scheduled = job.scheduled_execution
+            {
+              id: job.id,
+              root_run_id: root_run_id,
+              queue_name: job.queue_name,
+              priority: job.priority,
+              finished_at: job.finished_at,
+              ready: ready_job_ids.include?(job.id),
+              claimed: claim.present?,
+              claimed_at: claim&.created_at,
+              process_id: claim&.process_id,
+              scheduled: scheduled.present?,
+              scheduled_at: scheduled&.scheduled_at,
+              failed: failed.present?,
+              error: failed&.error
+            }
+          end
+        end
+
         {
-          id: job.id,
-          root_run_id: root_run_id,
-          queue_name: job.queue_name,
-          priority: job.priority,
-          finished_at: job.finished_at,
-          ready: ready_job_ids.include?(job.id),
-          claimed: claim.present?,
-          claimed_at: claim&.created_at,
-          process_id: claim&.process_id,
-          scheduled: scheduled.present?,
-          scheduled_at: scheduled&.scheduled_at,
-          failed: failed.present?,
-          error: failed&.error
+          available: true,
+          jobs: parsed,
+          processes: PerformanceLogging.phase("work_engine.reconciler.solid_queue_processes") {
+            SolidQueue::Process.all.map { |process| { id: process.id, hostname: process.hostname, last_heartbeat_at: process.last_heartbeat_at } }
+          },
+          pauses: PerformanceLogging.phase("work_engine.reconciler.solid_queue_pauses") {
+            SolidQueue::Pause.all.map { |pause| { id: pause.id, queue_name: pause.queue_name, created_at: pause.created_at } }
+          }
         }
       end
-
-      {
-        available: true,
-        jobs: parsed,
-        processes: SolidQueue::Process.all.map { |process| { id: process.id, hostname: process.hostname, last_heartbeat_at: process.last_heartbeat_at } },
-        pauses: SolidQueue::Pause.all.map { |pause| { id: pause.id, queue_name: pause.queue_name, created_at: pause.created_at } }
-      }
     rescue ActiveRecord::StatementInvalid, NameError
       { available: false, jobs: [], processes: [], pauses: [] }
     end

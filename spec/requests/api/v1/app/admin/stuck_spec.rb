@@ -57,6 +57,30 @@ RSpec.describe "API: /api/v1/app/admin/stuck", type: :request do
     expect(parse_body["items"].first["repair_plan"]).to include("action" => "mark_worker_died")
   end
 
+  it "uses a fresh stuck snapshot instead of recomputing the reconciler on normal page loads" do
+    sign_in_as(admin)
+    snapshot = Admin::StuckItemsCache::Snapshot.new(
+      items: [ {
+        "kind" => "cached_stuck_item",
+        "severity" => "warn",
+        "detail" => "cached",
+        "age_label" => "1m",
+        "run_id" => nil,
+        "workflow_id" => nil,
+        "job_id" => nil
+      } ],
+      captured_at: Time.current
+    )
+    allow(Admin::StuckItemsCache).to receive(:read).and_return(snapshot)
+    expect(Admin::StuckItems).not_to receive(:all)
+
+    get "/api/v1/app/admin/stuck"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["items"]).to eq(snapshot.items)
+    expect(parse_body.dig("snapshot", "stale")).to eq(false)
+  end
+
   it "paginates stuck items 50 at a time" do
     sign_in_as(admin)
     51.times do

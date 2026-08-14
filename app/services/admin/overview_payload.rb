@@ -48,11 +48,12 @@ module Admin
 
     def stuck_json
       PerformanceLogging.phase("admin_stuck_payload") do
-        items = stuck_items
-        ::Admin::StuckItemsCache.write(items: items, captured_at: Time.current)
+        snapshot = PerformanceLogging.phase("admin_stuck.snapshot") { stuck_snapshot_for_request }
+        items = snapshot.items
         {
           items: paginated_items(items),
-          pagination: pagination_for(items)
+          pagination: pagination_for(items),
+          snapshot: snapshot.as_json.except(:items)
         }
       end
     end
@@ -182,7 +183,20 @@ module Admin
     end
 
     def stuck_items
-      @stuck_items ||= ::Admin::StuckItems.all.map { |item| ::Admin::StuckItemPayload.serialize(item: item) }
+      @stuck_items ||= PerformanceLogging.phase("admin_stuck.compute_items") do
+        ::Admin::StuckItems.all.map { |item| ::Admin::StuckItemPayload.serialize(item: item) }
+      end
+    end
+
+    def stuck_snapshot_for_request
+      cached = cached_stuck_snapshot
+      return cached unless stuck_refresh_requested? || cached.stale?
+
+      ::Admin::StuckItemsCache.write(items: stuck_items, captured_at: Time.current)
+    end
+
+    def stuck_refresh_requested?
+      params.respond_to?(:[]) && ActiveModel::Type::Boolean.new.cast(params[:refresh])
     end
 
     def paginated_stuck_items

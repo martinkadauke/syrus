@@ -1,6 +1,6 @@
 import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { ReactNode } from "react"
+import { useRef, type ReactNode } from "react"
 import { Link, useLocation, useSearchParams } from "react-router-dom"
 import { forceFailStuckJob, fetchAdminStuck, type StuckItem } from "../api/adminStuck"
 import { workflowSlug } from "../lib/slugs"
@@ -17,9 +17,14 @@ export function AdminStuck() {
   const [searchParams] = useSearchParams()
   const page = parsePage(searchParams.get("page"))
   const prefix = routePrefix(location.pathname)
+  const refreshNext = useRef(false)
   const stuck = useQuery({
     queryKey: ["admin", "stuck", page],
-    queryFn: ({ signal }) => fetchAdminStuck(page, signal),
+    queryFn: async ({ signal }) => {
+      const refresh = refreshNext.current
+      refreshNext.current = false
+      return fetchAdminStuck(page, signal, refresh)
+    },
     refetchInterval: POLL_INTERVAL_MS
   })
 
@@ -33,7 +38,10 @@ export function AdminStuck() {
         <button
           className="inline-flex shrink-0 items-center justify-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-400 dark:disabled:text-gray-500"
           disabled={stuck.isFetching}
-          onClick={() => void stuck.refetch()}
+          onClick={() => {
+            refreshNext.current = true
+            void stuck.refetch()
+          }}
           type="button"
         >
           {stuck.isFetching ? t("stuck.refreshing") : t("stuck.refresh")}
