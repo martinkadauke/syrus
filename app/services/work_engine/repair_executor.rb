@@ -301,6 +301,25 @@ module WorkEngine
         end
       end
 
+      class ReleaseLandingSlotForMainRepair < Base
+        def perform
+          workflow = target_workflow
+          return skipped("Workflow no longer exists") unless workflow
+          return skipped("Workflow is #{workflow.state}, not queued") unless workflow.queued?
+          return skipped("Workflow is not a landing workflow") unless workflow.landing_workflow?
+          return skipped("Workflow first step already has a Run") if workflow.first_step&.runs&.exists?
+          return skipped("Workflow is not main-health blocked") unless workflow.artifact("start_blocked_reason") == StepDispatcher::MAIN_HEALTH_BLOCK_REASON
+
+          repair_job = Job.find_by(id: plan.preconditions["repair_job_id"])
+          return skipped("Main repair Job no longer exists") unless repair_job
+          return skipped("#{repair_job.slug} is #{repair_job.state}, not approved") unless repair_job.approved?
+          return skipped("#{repair_job.slug} is not a main-branch repair Job") unless MainHealthChangedService.fix_main_job?(repair_job)
+
+          repair_workflow = LandingQueueProcessor.try_land!(repair_job)
+          repair_workflow ? success("released blocked landing slot and dispatched #{repair_workflow.slug} for #{repair_job.slug}") : skipped("main repair Job did not land")
+        end
+      end
+
       class ClearStaleStartBlockAndStartWorkflow < Base
         def perform
           workflow = target_workflow

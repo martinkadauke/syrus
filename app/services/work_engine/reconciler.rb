@@ -505,18 +505,28 @@ module WorkEngine
             reason = workflow.artifact("start_blocked_reason")
             check_after = parse_time(workflow.artifact("start_blocked_next_check_at"))
             wait_for_retry = check_after.present? && check_after.future?
+            main_repair_job = eligible_main_repair_job_for_blocked_landing(workflow)
+            repair_action = if main_repair_job
+              "release_landing_slot_for_main_repair"
+            elsif wait_for_retry
+              "wait_for_landing_start_block_to_clear"
+            else
+              "start_workflow"
+            end
             next issue(
               kind: :landing_start_blocked,
-              severity: wait_for_retry ? :info : :warning,
+              severity: wait_for_retry && !main_repair_job ? :info : :warning,
               affected_ids: ids_for(workflow),
-              safe_to_auto_repair: !wait_for_retry,
-              recommended_repair_action: wait_for_retry ? "wait_for_landing_start_block_to_clear" : "start_workflow",
-              check_after: check_after,
+              safe_to_auto_repair: main_repair_job.present? || !wait_for_retry,
+              recommended_repair_action: repair_action,
+              check_after: main_repair_job ? nil : check_after,
               evidence: workflow_evidence(workflow).merge(
                 first_step_id: workflow.first_step&.id,
                 start_blocked_reason: reason,
                 start_blocked_details: workflow.artifact("start_blocked_details"),
                 landing_failure_reason: workflow.failure_reason.presence || workflow.artifact("failure_reason"),
+                main_repair_job_id: main_repair_job&.id,
+                main_repair_job_slug: main_repair_job&.slug,
                 landing_queue_entry: landing_queue_evidence(workflow.job)
               ),
               explanation: "Landing Workflow ##{workflow.id} is queued with no first Run because start is intentionally blocked: #{reason}."
@@ -1501,6 +1511,19 @@ module WorkEngine
       else
         true
       end
+    end
+
+    def eligible_main_repair_job_for_blocked_landing(workflow)
+      return nil unless workflow.artifact("start_blocked_reason") == StepDispatcher::MAIN_HEALTH_BLOCK_REASON
+      return nil unless workflow.job&.repository_id
+
+      candidates = Job.approved.where(repository_id: workflow.job.repository_id).to_a
+      repair_ids = candidates.select { |job| MainHealthChangedService.fix_main_job?(job) }.map(&:id)
+      return nil if repair_ids.empty?
+
+      LandingQueueProcessor.entries(Job.where(id: repair_ids))
+                           .find(&:eligible?)
+                           &.job
     end
 
     def run_stale?(run)

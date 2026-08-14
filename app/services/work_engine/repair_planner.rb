@@ -701,6 +701,23 @@ module WorkEngine
 
       class LandingStartBlocked < Base
         def plan
+          if issue.recommended_repair_action == "release_landing_slot_for_main_repair"
+            return automatic_plan(
+              "release_landing_slot_for_main_repair",
+              primary_workflow,
+              "A main-branch repair Job is eligible, so the blocked landing workflow should release the repository slot and let the repair land.",
+              execution_steps: [ "LandingQueueProcessor.try_land!" ],
+              preconditions: {
+                job_state: "landing",
+                workflow_state: "queued",
+                landing_workflow: true,
+                first_step_has_no_runs: true,
+                start_blocked_reason: StepDispatcher::MAIN_HEALTH_BLOCK_REASON,
+                repair_job_id: issue.evidence["main_repair_job_id"]
+              }
+            )
+          end
+
           unless issue.safe_to_auto_repair
             return waiting_plan(
               "wait_for_landing_start_block_to_clear",
