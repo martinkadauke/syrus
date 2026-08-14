@@ -88,6 +88,24 @@ RSpec.describe PreviewProxyMiddleware do
       expect(body).to eq(["host ok"])
     end
 
+    it "normalizes same-origin browser Origin and Referer headers for the proxied app" do
+      stub_request(:post, "http://127.0.0.1:25000/api/signup")
+        .with(headers: {
+          "Origin" => "http://localhost:25000",
+          "Referer" => "http://localhost:25000/signup"
+        })
+        .to_return(status: 201, body: "created", headers: {})
+
+      env = env_for(host: "preview-#{job.id}.lvh.me", path: "/api/signup", method: "POST")
+      env["HTTP_ORIGIN"] = "http://preview-#{job.id}.lvh.me"
+      env["HTTP_REFERER"] = "http://preview-#{job.id}.lvh.me/signup"
+
+      status, _, body = middleware.call(env)
+
+      expect(status).to eq(201)
+      expect(body).to eq(["created"])
+    end
+
     it "proxies with path and query string" do
       stub_request(:get, "http://127.0.0.1:25000/dashboard?tab=logs")
         .to_return(status: 200, body: "dashboard", headers: {})

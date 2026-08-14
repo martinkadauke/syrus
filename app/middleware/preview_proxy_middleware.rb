@@ -69,6 +69,7 @@ class PreviewProxyMiddleware
     proxy_req["X-Forwarded-Proto"] = "http"
     proxy_req["X-Syrus-Preview-Host"] = request.host_with_port
     proxy_req["X-Syrus-Preview-Proto"] = request.scheme
+    normalize_browser_origin_headers!(request, proxy_req, target_port)
 
     if request.body
       body = request.body.read
@@ -127,6 +128,29 @@ class PreviewProxyMiddleware
     end
     proxy_req["Content-Type"] = env["CONTENT_TYPE"] if env["CONTENT_TYPE"].present?
     proxy_req["Content-Length"] = env["CONTENT_LENGTH"] if env["CONTENT_LENGTH"].present?
+  end
+
+  def normalize_browser_origin_headers!(request, proxy_req, target_port)
+    internal_origin = "http://localhost:#{target_port}"
+    origin = proxy_req["Origin"].to_s
+    proxy_req["Origin"] = internal_origin if preview_origin?(origin, request)
+
+    referer = proxy_req["Referer"].to_s
+    if preview_origin?(referer, request)
+      uri = URI.parse(referer)
+      proxy_req["Referer"] = "#{internal_origin}#{uri.request_uri}"
+    end
+  rescue URI::InvalidURIError
+    nil
+  end
+
+  def preview_origin?(value, request)
+    return false if value.blank?
+
+    uri = URI.parse(value)
+    uri.host == request.host
+  rescue URI::InvalidURIError
+    false
   end
 
   def not_available_response
