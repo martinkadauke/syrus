@@ -47,6 +47,13 @@ RSpec.describe "Docker image scripts" do
     expect(deploy).to include("syrus_verify_pushed \"$1\" \"$2\"")
   end
 
+  it "restores the local bundle before deploy's eager-load preflight" do
+    eager_load_preflight = deploy[/echo "→ eager_load probe"[\s\S]*?bin\/check-eager-load --quiet/]
+
+    expect(eager_load_preflight).to include("bundle check >/dev/null || bundle install")
+    expect(eager_load_preflight.index("bundle check")).to be < eager_load_preflight.index("bin/check-eager-load --quiet")
+  end
+
   it "bakes the release version into published images via the shared helpers" do
     # The Dockerfile declares SYRUS_VERSION next to GIT_SHA in BOTH runnable
     # stages (app for web pods, worker-dev for the distribution image), the

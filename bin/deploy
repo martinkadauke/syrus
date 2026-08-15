@@ -78,6 +78,7 @@ echo "→ deploying ${SHA} (branch ${BRANCH})"
 # tagged and pushed.
 if [ "$SKIP_BUILD" = false ] && [ -x bin/check-eager-load ]; then
   echo "→ eager_load probe"
+  bundle check >/dev/null || bundle install
   bin/check-eager-load --quiet
 fi
 
