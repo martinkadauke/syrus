@@ -170,7 +170,7 @@ handoff succeeds.
 
 ## main_branch_repair
 
-**When it fires:** Spawned automatically by `MainHealthChangedService` when the repository's main branch is detected as broken (grader health transitions to broken).
+**When it fires:** Spawned automatically by `MainHealthChangedService` when the repository's main branch is detected as broken and Syrus has a settled broken signal from either CI or the main-grader workflow. Repair does not wait for both probes to finish: if CI has already failed, the repair job can start while the main-grader is still running, and vice versa.
 
 **Step chain:** `preflight_grader_fanout → [preflight_grader steps] → preflight_grader_collect → prepare → retry_until(implement, grader_fanout, grader_collect) → summarize → test_plan → pr_open`
 

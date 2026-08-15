@@ -45,9 +45,9 @@ RSpec.describe MainGraderWorkflowJob do
     described_class.perform_now(repository.id, sha)
   end
 
-  it "records last_graded_sha on the repository when creating a grading job" do
+  it "does not record last_graded_sha before the grader workflow settles" do
     described_class.perform_now(repository.id, sha)
-    expect(repository.reload.last_graded_sha).to eq(sha)
+    expect(repository.reload.last_graded_sha).to be_nil
   end
 
   it "returns early when the repository does not exist" do

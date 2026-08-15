@@ -1587,7 +1587,7 @@ RSpec.describe PollPullRequestJob, :ci_only do
       expect(job.reload.needs_attention?).to be false
     end
 
-    it "blocks auto-merge (via landing queue) when CHANGES_REQUESTED is outstanding" do
+    it "excludes auto-merge jobs from the landing queue when CHANGES_REQUESTED is outstanding" do
       repository.update!(auto_merge_enabled: true)
       job.update!(needs_attention: true, needs_attention_reason: "upstream_pr_changes_requested")
       job.mark_implemented! if job.may_mark_implemented?
@@ -1596,8 +1596,7 @@ RSpec.describe PollPullRequestJob, :ci_only do
       job.save!
 
       entry = LandingQueueProcessor.entries(Job.where(id: job.id)).first
-      expect(entry).to be_present
-      expect(entry.blocked_reason).to eq({ key: "review_requested_changes" })
+      expect(entry).to be_nil
     end
   end
 end

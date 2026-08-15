@@ -131,7 +131,7 @@ RSpec.describe MainHealthChangedService do
         expect(PollMainBranchHealthJob).to have_been_enqueued.with(repository.id)
       end
 
-      it "waits for both CI and grader signal before spawning a fix Job" do
+      it "spawns a fix Job as soon as a settled CI failure is available" do
         repository.update!(
           last_health_checked_sha: "wait123def456",
           last_ci_evaluated_sha: "wait123def456",
@@ -145,6 +145,22 @@ RSpec.describe MainHealthChangedService do
           ci_failed_checks: [
             { name: "RSpec", url: "https://github.com/tkadauke/syrus/actions/runs/42" }
           ]
+        )
+
+        expect {
+          described_class.on_health_change!(repository)
+        }.to change { repository.jobs.where(kind: "direct").count }.by(1)
+
+        status = MainHealthChangedService.new(repository.reload).repair_status
+        expect(status).to include(blocked_reason: "active", can_request: false, can_spawn: false)
+      end
+
+      it "still waits when main is broken but no settled broken signal has been recorded" do
+        repository.update!(
+          last_health_checked_sha: "wait123def456",
+          last_ci_evaluated_sha: nil,
+          ci_health: "broken",
+          grader_health: "unknown"
         )
 
         expect {

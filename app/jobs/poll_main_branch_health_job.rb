@@ -37,8 +37,8 @@ class PollMainBranchHealthJob < ApplicationJob
     # Fire the grader workflow when the SHA hasn't been graded yet.
     # MainGraderWorkflowJob enforces at-most-one active grading job per repo;
     # if one is already running it will skip and PollMainBranchHealthJob will
-    # retry on the next tick (grading_needed stays true until last_graded_sha
-    # is updated by MainGraderWorkflowJob on successful job creation).
+    # retry on the next tick (grading_needed stays true until the workflow
+    # records a settled grader result).
     MainGraderWorkflowJob.perform_later(repository.id, sha) if grading_needed
 
     # Skip CI health check when SHA unchanged, health is already known, and

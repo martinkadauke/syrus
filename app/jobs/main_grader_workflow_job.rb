@@ -8,8 +8,8 @@ class MainGraderWorkflowJob < ApplicationJob
   #
   # At most one active grading workflow is allowed per repository. If another
   # is already running (for any SHA), this is a no-op — the poll job will
-  # re-trigger for the latest SHA once the active one finishes, guided by
-  # repository.last_graded_sha.
+  # re-trigger for the latest SHA once the active one finishes. The repository's
+  # last_graded_sha advances only after the workflow records a settled result.
   def perform(repository_id, sha)
     repository = Repository.find_by(id: repository_id)
     return unless repository
@@ -33,8 +33,6 @@ class MainGraderWorkflowJob < ApplicationJob
         job: job,
         artifacts: { "main_sha" => sha }
       )
-
-      repository.update_columns(last_graded_sha: sha)
 
       StepDispatcher.start_workflow(workflow)
     end

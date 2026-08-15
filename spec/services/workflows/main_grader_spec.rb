@@ -53,6 +53,12 @@ RSpec.describe Workflows::MainGrader do
       expect(repository.reload.grader_health).to eq("healthy")
     end
 
+    it "records last_graded_sha when the workflow settles healthy" do
+      described_class.after_success(workflow)
+
+      expect(repository.reload.last_graded_sha).to eq(sha)
+    end
+
     it "links the created health check record to the workflow" do
       described_class.after_success(workflow)
 
@@ -104,6 +110,14 @@ RSpec.describe Workflows::MainGrader do
       described_class.after_fail(workflow)
 
       expect(repository.reload.grader_health).to eq("broken")
+    end
+
+    it "records last_graded_sha when the workflow settles broken" do
+      create_failed_required_grader!(workflow)
+
+      described_class.after_fail(workflow)
+
+      expect(repository.reload.last_graded_sha).to eq(sha)
     end
 
     it "records the failing grader names in the health-check history" do

@@ -67,11 +67,14 @@ module Workflows
       repository = workflow.job.repository
       previous_health = repository.main_health
       was_landing_paused = repository.landing_paused?
-      repository.update!(grader_health: health)
+      sha = workflow.artifact("main_sha").to_s.presence
+      updates = { grader_health: health }
+      updates[:last_graded_sha] = sha if sha
+      repository.update!(updates)
       MainBranchHealthCheck.record_grader_workflow(
         repository: repository,
         workflow: workflow,
-        sha: workflow.artifact("main_sha").to_s.presence || "unknown",
+        sha: sha || "unknown",
         grader_health: health,
         grader_failed_names: failed_names
       )

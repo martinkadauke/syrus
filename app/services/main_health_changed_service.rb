@@ -83,10 +83,10 @@ class MainHealthChangedService
     # blocked when the live default-branch SHA is momentarily unfetchable).
     return unless force || repair_target_sha_current?
 
-    unless force || repair_signals_ready?
+    unless force || repair_evidence_ready?
       Rails.logger.info(
         "[MainHealthChangedService] #{@repository.slug} not spawning main repair job; " \
-        "waiting for settled CI and grader signals for #{checked_sha}"
+        "waiting for a settled broken CI or grader signal for #{checked_sha}"
       )
       return
     end
@@ -149,7 +149,7 @@ class MainHealthChangedService
     below_failed_cap = failed_count < MAX_OPEN_FAILED_FIX_JOBS
     blocked_reason = if blocking
       blocking_fix_job_reason(blocking)
-    elsif eligible && !repair_signals_ready?
+    elsif eligible && !repair_evidence_ready?
       "waiting_for_health_signals"
     elsif eligible && !below_failed_cap
       "failed_open_cap"
@@ -164,7 +164,7 @@ class MainHealthChangedService
       blocked_reason: blocked_reason,
       blocking_job: blocking,
       can_request: can_request,
-      can_spawn: can_request && repair_signals_ready?
+      can_spawn: can_request && repair_evidence_ready?
     }
   end
 
@@ -321,11 +321,11 @@ class MainHealthChangedService
       .to_a
   end
 
-  def repair_signals_ready?
+  def repair_evidence_ready?
     sha = checked_sha
     return false if sha == "unknown"
 
-    settled_ci_signal?(sha) && settled_grader_signal?(sha)
+    settled_broken_ci_signal?(sha) || settled_broken_grader_signal?(sha)
   end
 
   def repair_target_sha_current?
@@ -363,14 +363,14 @@ class MainHealthChangedService
     end
   end
 
-  def settled_ci_signal?(sha)
+  def settled_broken_ci_signal?(sha)
     @repository.last_ci_evaluated_sha == sha &&
-      @repository.ci_health.in?(MainBranchHealthCheck::SETTLED_CI_HEALTH) &&
+      @repository.ci_health_broken? &&
       MainBranchHealthCheck.settled_ci_result_exists?(repository: @repository, sha: sha)
   end
 
-  def settled_grader_signal?(sha)
-    @repository.grader_health.in?(MainBranchHealthCheck::SETTLED_GRADER_HEALTH) &&
+  def settled_broken_grader_signal?(sha)
+    @repository.grader_health_broken? &&
       MainBranchHealthCheck.settled_grader_result_exists?(repository: @repository, sha: sha)
   end
 
