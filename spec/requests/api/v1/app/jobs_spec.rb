@@ -261,6 +261,7 @@ RSpec.describe "App API job detail", type: :request do
     run.run_health_snapshots.create!(run_state: "running", health_status: "stale", log_count: 0, created_at: 1.minute.ago, updated_at: 1.minute.ago)
     run.run_health_snapshots.create!(run_state: "running", health_status: "healthy", log_count: 1)
     run.create_run_diagnostic!(error_class: "Timeout::Error", error_message: "too much marble")
+    ProviderSession.create!(resumable: run, provider: "codex", session_id: "session-1", transcript_jsonl: "first\nsecond\n")
     run.command_spans.create!(
       job: job,
       workflow: run.workflow,
@@ -285,9 +286,15 @@ RSpec.describe "App API job detail", type: :request do
       classified_at: Time.current
     )
 
+    sql = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _started, _finished, _id, payload|
+      sql << payload[:sql].to_s if payload[:sql].to_s.match?(/provider_sessions/i)
+    end
     get "/api/v1/app/jobs/#{job.id}"
+    ActiveSupport::Notifications.unsubscribe(subscriber)
 
     expect(response).to have_http_status(:ok)
+    expect(sql).not_to include(match(/SELECT\s+["`]provider_sessions["`]\.\*/i))
     body = parse_body
     expect(body.dig("job", "id")).to eq(job.id)
     expect(body.dig("job", "issue_title")).to eq("Repair aqueduct")
@@ -354,6 +361,13 @@ RSpec.describe "App API job detail", type: :request do
       "can_diagnose" => true,
       "app_artifacts_path" => "/api/v1/app/jobs/#{job.id}/runs/#{run.id}/artifacts",
       "app_stop_path" => "/api/v1/app/jobs/#{job.id}/runs/#{run.id}/stop"
+    )
+    expect(first_run["agent_session"]).to include(
+      "session_id" => "session-1",
+      "provider" => "codex",
+      "transcript_pruned" => false,
+      "transcript_bytes" => 13,
+      "transcript_lines" => 2
     )
     expect(first_run["health_snapshots"]).to contain_exactly(include("health_status" => "healthy", "run_state" => "running"))
     expect(first_run["failure_classification"]).to include(

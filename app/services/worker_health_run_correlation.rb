@@ -6,8 +6,8 @@ class WorkerHealthRunCorrelation
     new(run: run, sample_limit: sample_limit, now: now).as_json
   end
 
-  def self.for_span(span, sample_limit: 0, now: Time.current)
-    SpanCorrelation.new(span: span, sample_limit: sample_limit, now: now).as_json
+  def self.for_span(span, sample_limit: 0, now: Time.current, samples: nil)
+    SpanCorrelation.new(span: span, sample_limit: sample_limit, now: now, samples: samples).as_json
   end
 
   def self.for_job(job, run_limit: JOB_RUN_LIMIT, now: Time.current)
@@ -211,10 +211,11 @@ class WorkerHealthRunCorrelation
   end
 
   class SpanCorrelation
-    def initialize(span:, sample_limit:, now:)
+    def initialize(span:, sample_limit:, now:, samples: nil)
       @span = span
       @sample_limit = sample_limit.to_i.clamp(0, 100)
       @now = now
+      @samples_override = samples
     end
 
     def as_json
@@ -285,6 +286,8 @@ class WorkerHealthRunCorrelation
     end
 
     def samples
+      return @samples_override unless @samples_override.nil?
+
       @samples ||= begin
         if span.hostname.blank? || effective_since.blank? || range_finish.blank?
           []

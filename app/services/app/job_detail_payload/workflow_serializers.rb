@@ -10,6 +10,8 @@ module App
       # WORKFLOWS_PER_PAGE constant on the class body, and the shared iso8601 /
       # owner_json helpers through the include ancestry.
 
+      AgentSessionSummary = Data.define(:session_id, :provider, :transcript_pruned, :transcript_bytes, :transcript_lines)
+
       def workflows_json
         PerformanceLogging.phase("job_detail.workflows.serialize", job_id: @job.id, page: workflows_page) do
           paginated_workflows.map do |workflow|
@@ -77,7 +79,7 @@ module App
 
       def workflows_scope
         @job.workflows
-            .includes(steps: { runs: [ :provider_session, :run_diagnostic, :run_failure_classification, :run_health_snapshots, :spawned_processes, :command_spans ] })
+            .includes(steps: { runs: [ :run_diagnostic, :run_failure_classification ] })
             .reorder(created_at: :desc, id: :desc)
       end
 
@@ -111,7 +113,7 @@ module App
       end
 
       def ordered_command_spans_for(run)
-        run.command_spans.to_a.sort_by { |span| [ span.sequence || 0, span.id || 0 ] }
+        command_spans_by_run_id.fetch(run.id, [])
       end
 
       def step_json(step, workflow:, latest_step:)
@@ -154,7 +156,7 @@ module App
       end
 
       def run_json(run, workflow:)
-        session = run.provider_session
+        session = agent_session_summary_for(run)
         command_spans = PerformanceLogging.phase("job_detail.run.command_spans", job_id: @job.id, run_id: run.id) do
           ordered_command_spans_for(run).map { |span| command_span_json(span) }
         end
@@ -222,7 +224,7 @@ module App
       end
 
       def command_span_json(span)
-        WorkerHealthRunCorrelation.for_span(span, sample_limit: 0)
+        WorkerHealthRunCorrelation.for_span(span, sample_limit: 0, samples: worker_samples_for_span(span))
       end
 
       def workflow_failure_classification_json(workflow)
@@ -302,6 +304,89 @@ module App
             SpawnedProcess.where(run_id: ids, finished_at: nil)
                           .order(:run_id, started_at: :asc, id: :asc)
                           .each_with_object({}) { |process, memo| memo[process.run_id] = process }
+          end
+        end
+      end
+
+      def command_spans_by_run_id
+        @command_spans_by_run_id ||= begin
+          ids = visible_run_ids
+          if ids.empty?
+            {}
+          else
+            CommandSpan.where(run_id: ids).order(:run_id, :sequence, :id).group_by(&:run_id)
+          end
+        end
+      end
+
+      def visible_command_spans
+        @visible_command_spans ||= command_spans_by_run_id.values.flatten
+      end
+
+      def worker_samples_for_span(span)
+        return [] if span.hostname.blank? || span.started_at.blank?
+
+        range_finish = span.finished_at || Time.current
+        effective_since = [ span.started_at, WorkerHostHealthSample::RETAIN_AFTER.ago ].max
+        worker_samples_by_hostname.fetch(span.hostname, []).select do |sample|
+          sample.observed_at >= effective_since && sample.observed_at <= range_finish
+        end
+      end
+
+      def worker_samples_by_hostname
+        @worker_samples_by_hostname ||= begin
+          spans = visible_command_spans.select { |span| span.hostname.present? && span.started_at.present? }
+          if spans.empty?
+            {}
+          else
+            since = spans.map { |span| [ span.started_at, WorkerHostHealthSample::RETAIN_AFTER.ago ].max }.min
+            until_time = spans.map { |span| span.finished_at || Time.current }.max
+            WorkerHostHealthSample
+              .where(hostname: spans.map(&:hostname).uniq, observed_at: since..until_time)
+              .order(:hostname, :observed_at)
+              .group_by(&:hostname)
+          end
+        end
+      end
+
+      def agent_session_summary_for(run)
+        agent_session_summaries_by_run_id[run.id]
+      end
+
+      def agent_session_summaries_by_run_id
+        @agent_session_summaries_by_run_id ||= begin
+          ids = visible_run_ids
+          if ids.empty?
+            {}
+          else
+            line_count_sql = <<~SQL.squish
+              CASE
+                WHEN transcript_jsonl IS NULL THEN NULL
+                ELSE LENGTH(transcript_jsonl) - LENGTH(REPLACE(transcript_jsonl, CHAR(10), ''))
+              END
+            SQL
+            ProviderSession
+              .where(run_id: ids)
+              .pluck(
+                :run_id,
+                :session_id,
+                :provider,
+                Arel.sql("transcript_jsonl IS NULL"),
+                Arel.sql("LENGTH(transcript_jsonl)"),
+                Arel.sql(line_count_sql)
+              )
+              .to_h do |run_id, session_id, provider, transcript_pruned, transcript_bytes, transcript_lines|
+                [
+                  run_id,
+                  AgentSessionSummary.new(
+                    session_id: session_id,
+                    provider: provider,
+                    transcript_pruned: ActiveModel::Type::Boolean.new.cast(transcript_pruned),
+                    transcript_bytes: transcript_bytes,
+                    transcript_lines: transcript_lines
+                  )
+                ]
+              end
           end
         end
       end
@@ -398,9 +483,9 @@ module App
         {
           session_id: session.session_id,
           provider: session.provider,
-          transcript_pruned: session.transcript_jsonl.nil?,
-          transcript_bytes: session.transcript_jsonl&.bytesize,
-          transcript_lines: session.transcript_jsonl&.count("\n")
+          transcript_pruned: session.transcript_pruned,
+          transcript_bytes: session.transcript_bytes,
+          transcript_lines: session.transcript_lines
         }
       end
 
