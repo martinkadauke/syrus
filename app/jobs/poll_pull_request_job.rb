@@ -400,7 +400,10 @@ class PollPullRequestJob < ApplicationJob
     cache_pr_checks_state(head_sha, detail)
     return if ci_infrastructure_failure_only?(head_sha, detail)
 
-    record_no_effective_ci_repair!(head_sha, detail) if no_effective_ci_repair?(head_sha, detail)
+    if no_effective_ci_repair?(head_sha, detail)
+      record_no_effective_ci_repair!(head_sha, detail)
+      return
+    end
 
     return if @job.last_ci_handled_sha == head_sha   # already reacted to this commit
     return if ci_failure_cap_reached?
@@ -549,12 +552,12 @@ class PollPullRequestJob < ApplicationJob
       }
     )
     @job.update!(
-      last_ci_handled_sha: nil,
+      last_ci_handled_sha: head_sha,
       landing_failure_reason: "#{NO_EFFECTIVE_CI_REPAIR_REASON} on #{head_sha[0, 7]}"
     )
     Rails.logger.warn(
       "[PollPullRequestJob] #{@job.slug}: CI repair WF-#{workflow.id} made no effective change " \
-      "for #{head_sha[0, 7]}; clearing last_ci_handled_sha"
+      "for #{head_sha[0, 7]}; suppressing further automatic retries for this SHA"
     )
   end
 

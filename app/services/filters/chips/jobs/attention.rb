@@ -213,7 +213,7 @@ module Filters
         end
 
         def apply_landing_queue
-          scope.landing_queue
+          scope.landing_queue.without_requested_changes_attention
         end
 
         def latest_failed_run_ids

@@ -558,6 +558,45 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(positions).to include(first.id => 1, second.id => 2)
     end
 
+    it "keeps jobs with requested changes out of the landing smart folder" do
+      repo.update!(auto_merge_enabled: true)
+      requested_changes = Factories.job_record(
+        repository: repo,
+        owner_user: user,
+        issue_number: 21,
+        issue_title: "Needs review follow-up",
+        state: "approved",
+        pr_number: 21,
+        approved_at: 2.hours.ago,
+        needs_attention: true,
+        needs_attention_reason: Job::REQUESTED_CHANGES_ATTENTION_REASON,
+        needs_attention_since: Time.current
+      )
+      eligible = Factories.job_record(
+        repository: repo,
+        owner_user: user,
+        issue_number: 22,
+        issue_title: "Ready to land",
+        state: "approved",
+        pr_number: 22,
+        approved_at: 1.hour.ago
+      )
+      folder = SmartFolder.create!(
+        user: user,
+        subject_type: "job",
+        name: "Landing queue",
+        kind: "user_defined",
+        filter: SmartFolder.attention_preset_filter("landing_queue")
+      )
+
+      get "/api/v1/app/dashboard", params: { subject: "job", smart_folder_id: folder.id }
+
+      expect(response).to have_http_status(:ok)
+      ids = parse_body.fetch("items").map { |item| item.fetch("id") }
+      expect(ids).to include(eligible.id)
+      expect(ids).not_to include(requested_changes.id)
+    end
+
     it "sorts numbered landing queue rows before blocked unnumbered rows" do
       repo.update!(auto_merge_enabled: true)
       blocked = Factories.job_record(

@@ -27,6 +27,7 @@ class Job < ApplicationRecord
   CREDENTIAL_MODES = %w[ app pat ].freeze
   PREPARE_SKIP_LABEL = "syrus-skip-prepare".freeze
   TERMINAL_STATES = %w[ closed no_change_needed ].freeze
+  REQUESTED_CHANGES_ATTENTION_REASON = "upstream_pr_changes_requested".freeze
 
   PRIORITIES = %w[ urgent high medium low ].freeze
   PROVIDER_SETTINGS = Job::ProviderSetting::Base.values.freeze
@@ -149,6 +150,9 @@ class Job < ApplicationRecord
     where("jobs.owner_user_id = :id OR (jobs.owner_user_id IS NULL AND jobs.user_id = :id)", id: user.id)
   }
   scope :landing_queue, -> { where(state: %w[ approved landing ]) }
+  scope :without_requested_changes_attention, -> {
+    where(needs_attention_reason: nil).or(where.not(needs_attention_reason: REQUESTED_CHANGES_ATTENTION_REASON))
+  }
   scope :issue_kind, -> { where(kind: "issue") }
   scope :cron_kind,  -> { where(kind: "cron") }
   scope :direct_kind, -> { where(kind: "direct") }

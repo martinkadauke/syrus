@@ -100,6 +100,34 @@ RSpec.describe LandingQueueProcessor do
     )
   end
 
+  it "keeps jobs with requested changes out of the landing queue entirely" do
+    requested_changes = queue_job(issue_number: 1, approved_at: 2.minutes.ago)
+    ready = queue_job(issue_number: 2, approved_at: 1.minute.ago)
+    requested_changes.update!(
+      needs_attention: true,
+      needs_attention_reason: Job::REQUESTED_CHANGES_ATTENTION_REASON,
+      needs_attention_since: Time.current,
+      landing_queue_position: 1,
+      landing_queue_entry_position: 1,
+      landing_queue_blocked_reason: { key: "review_requested_changes" },
+      landing_queue_entry_key: "job:#{requested_changes.id}",
+      landing_queue_cached_at: Time.current
+    )
+
+    entries = described_class.refresh_snapshot!(Job.landing_queue)
+    workflow = described_class.call
+
+    expect(entries.map(&:job)).to eq([ ready ])
+    expect(workflow.job).to eq(ready)
+    expect(ready.reload).to be_landing
+    expect(requested_changes.reload).to be_approved
+    expect(requested_changes.landing_queue_position).to be_nil
+    expect(requested_changes.landing_queue_entry_position).to be_nil
+    expect(requested_changes.landing_queue_blocked_reason).to be_nil
+    expect(requested_changes.landing_queue_entry_key).to be_nil
+    expect(requested_changes.landing_queue_cached_at).to be_nil
+  end
+
   it "shows active admission-blocked landing workflows as retrying without failing the job" do
     blocked = queue_job(issue_number: 1, approved_at: 2.minutes.ago)
     ready = queue_job(issue_number: 2, approved_at: 1.minute.ago)

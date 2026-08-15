@@ -293,7 +293,8 @@ class LandingQueueProcessor
   end
 
   def queue_candidates(scope)
-    scope.where(state: %w[ approved landing ])
+    scope.without_requested_changes_attention
+         .where(state: %w[ approved landing ])
          .includes(:user, :repository, :epic, :parent_job, dependencies: [ :depends_on_job, :depends_on_epic ])
          .order(Arel.sql(PRIORITY_ORDER_SQL), Arel.sql("COALESCE(jobs.approved_at, jobs.updated_at) ASC"), :id)
          .to_a
@@ -604,7 +605,7 @@ class LandingQueueProcessor
     # auto_merge_enabled=true the queue picks it up immediately. Simple-mode
     # Epic children can opt in per Job without exposing the repository setting.
     return override_or_block(job, { key: "auto_merge_not_enabled" }, consume: consume_override) unless job.auto_merge_enabled?
-    return override_or_block(job, { key: "review_requested_changes" }, consume: consume_override) if job.needs_attention_reason == "upstream_pr_changes_requested"
+    return override_or_block(job, { key: "review_requested_changes" }, consume: consume_override) if job.needs_attention_reason == Job::REQUESTED_CHANGES_ATTENTION_REASON
     return blocked({ key: "missing_pull_request" }) if job.pr_number.blank? && job.external_pr_number.blank?
     # Surface a specific reason when a ci_failure workflow is the active one, so
     # operators can distinguish "agent is fixing CI" from other in-progress workflow types.

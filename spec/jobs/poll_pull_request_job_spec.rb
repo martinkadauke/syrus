@@ -776,7 +776,7 @@ RSpec.describe PollPullRequestJob, :ci_only do
       expect { described_class.perform_now(job.id) }.not_to change { job.workflows.where(trigger_kind: "ci_failure").count }
     end
 
-    it "detects a successful no-op ci_failure workflow and dispatches a fresh repair for the still-failing SHA" do
+    it "detects a successful no-op ci_failure workflow and suppresses automatic retries for the same SHA" do
       prior = Workflow.create!(
         job: job,
         trigger_kind: "ci_failure",
@@ -792,7 +792,7 @@ RSpec.describe PollPullRequestJob, :ci_only do
 
       expect {
         described_class.perform_now(job.id)
-      }.to change { job.workflows.where(trigger_kind: "ci_failure").count }.by(1)
+      }.not_to change { job.workflows.where(trigger_kind: "ci_failure").count }
 
       prior.reload
       expect(prior.artifact("no_effective_ci_repair")).to include(
@@ -802,10 +802,9 @@ RSpec.describe PollPullRequestJob, :ci_only do
       )
       expect(job.reload.landing_failure_reason).to start_with(PollPullRequestJob::NO_EFFECTIVE_CI_REPAIR_REASON)
       expect(job.last_ci_handled_sha).to eq(sha)
-      expect(job.workflows.where(trigger_kind: "ci_failure").last.id).not_to eq(prior.id)
     end
 
-    it "clears the handled SHA and records operator-visible state when a no-op ci_failure repair cannot be re-dispatched" do
+    it "records operator-visible state when a no-op ci_failure repair hits the rolling cap" do
       prior = Workflow.create!(
         job: job,
         trigger_kind: "ci_failure",
@@ -826,7 +825,7 @@ RSpec.describe PollPullRequestJob, :ci_only do
       }.not_to change { job.workflows.where(trigger_kind: "ci_failure").count }
 
       expect(prior.reload.artifact("no_effective_ci_repair")).to include("head_sha" => sha, "checks_state" => "failing")
-      expect(job.reload.last_ci_handled_sha).to be_nil
+      expect(job.reload.last_ci_handled_sha).to eq(sha)
       expect(job.landing_failure_reason).to start_with(PollPullRequestJob::NO_EFFECTIVE_CI_REPAIR_REASON)
     end
 
