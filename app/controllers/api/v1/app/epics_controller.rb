@@ -293,8 +293,9 @@ module Api
 
         def detail_payload(epic, message: nil)
           jobs = PerformanceLogging.phase("epic_detail.jobs", epic_id: epic.id) do
-            epic.jobs.includes(:repository, :deployment_stage_statuses, :dependencies, :dependent_links, :workflows).order(:id).to_a
+            epic.jobs.includes(:repository, :owner_user, :deployment_stage_statuses, :dependencies, :dependent_links, :workflows).order(:id).to_a
           end
+          preload_epic_job_provider_availability(jobs)
           deployment_stages_plan = PerformanceLogging.phase("epic_detail.deployment_stages_plan", epic_id: epic.id) do
             RepoDeploymentStagesReader.for_repository(epic.repository)
           end
@@ -502,7 +503,7 @@ module Api
             state: job_summary_state(job),
             agent_provider: job.workflow_agent_provider,
             job_provider_setting: job.job_provider_setting,
-            provider_availability: ::App::ProviderAvailability.for_user(Current.user, job.workflow_agent_provider),
+            provider_availability: provider_availability_for_job(job),
             landed: job.landed_sha.present?,
             pr_number: job.pr_number,
             pr_url: ::App::Presentation.job_pr_url(job),
@@ -514,6 +515,22 @@ module Api
           }
           stages = ::App::DeploymentStagesPayload.for_job(job, plan: deployment_stages_plan)
           stages ? result.merge(deployment_stages: stages) : result
+        end
+
+        def preload_epic_job_provider_availability(jobs)
+          @epic_job_provider_availability_by_provider = PerformanceLogging.phase("epic_detail.preload_provider_availability", count: jobs.size) do
+            jobs.map(&:workflow_agent_provider).compact.uniq.index_with do |provider|
+              ::App::ProviderAvailability.for_user(Current.user, provider)
+            end
+          end
+        end
+
+        def provider_availability_for_job(job)
+          availability_by_provider = @epic_job_provider_availability_by_provider
+          provider = job.workflow_agent_provider
+          return availability_by_provider[provider] if availability_by_provider&.key?(provider)
+
+          ::App::ProviderAvailability.for_user(Current.user, provider)
         end
 
         def repository_json(repository)

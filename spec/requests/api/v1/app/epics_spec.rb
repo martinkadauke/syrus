@@ -275,6 +275,23 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
     expect(rendered).not_to have_key("deployment_stages")
   end
 
+  it "batches provider availability lookups for Epic detail child Jobs" do
+    sign_in_as(user)
+    epic = Factories.epic(user: user, repository: repository, title: "Raise the forum")
+    first = Factories.job_record(user: user, repository: repository, epic: epic, job_provider_setting: "codex")
+    second = Factories.job_record(user: user, repository: repository, epic: epic, job_provider_setting: "codex")
+    availability = { provider: "codex", state: "available" }
+    allow(App::ProviderAvailability).to receive(:for_user).and_call_original
+    expect(App::ProviderAvailability).to receive(:for_user).with(user, "codex").once.and_return(availability)
+
+    get "/api/v1/app/epics/#{epic.id}"
+
+    expect(response).to have_http_status(:ok)
+    jobs = parse_body.fetch("jobs").index_by { |job| job.fetch("id") }
+    expect(jobs.fetch(first.id).fetch("provider_availability")).to eq(availability.stringify_keys)
+    expect(jobs.fetch(second.id).fetch("provider_availability")).to eq(availability.stringify_keys)
+  end
+
   it "includes aggregate deployment_stages on the epic payload for a done epic with landed jobs" do
     sign_in_as(user)
     staging = SyrusYml::DeploymentStage.new(name: "staging", label: "Staging", tag: "staging", tag_pattern: nil)
