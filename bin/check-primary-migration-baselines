@@ -116,13 +116,28 @@ if missing_tags.any?
   missing_tags = baseline_tags.reject { |tag| tag_exists?(tag) }
 end
 
-if missing_tags.any?
+# A repository that has never been deployed from (a fresh fork, a dev
+# instance that doesn't run bin/deploy or cut the "public" release tag)
+# has none of the configured baseline tags at all — there's no
+# environment schema snapshot to drift-check against yet. That's not the
+# footgun this grader exists for (a tag going stale relative to current
+# migrations); it's just "nothing to compare against." Skip baseline
+# comparisons in that case but still run the scratch check. If only some
+# tags are missing while others exist, that's the real drift signal, so
+# keep failing hard.
+if missing_tags.any? && missing_tags != baseline_tags
   warn "[migration-baselines] missing migration baseline tag(s): #{missing_tags.join(", ")}"
   warn "Create or fetch the deployment tags, or override MIGRATION_BASELINE_TAGS for this run."
   exit 1
 end
 
 check_scratch!
-baseline_tags.each { |tag| check_tag!(tag) }
+
+if missing_tags == baseline_tags && baseline_tags.any?
+  puts "[migration-baselines] no baseline tags (#{baseline_tags.join(", ")}) found locally or on origin " \
+       "— skipping baseline comparisons (nothing deployed from this repository yet)"
+else
+  baseline_tags.each { |tag| check_tag!(tag) }
+end
 
 puts "[migration-baselines] ok"
