@@ -113,11 +113,7 @@ module Observability
     end
 
     def persisted_recent(kind, limit:)
-      case kind
-      when :performance
-        Observability::EventStream.fetch(kind).recent(limit: limit)
-      else []
-      end
+      Observability::EventStream.fetch(kind).recent(limit: limit)
     end
 
     def append_memory(kind, event)

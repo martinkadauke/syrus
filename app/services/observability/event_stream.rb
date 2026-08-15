@@ -63,6 +63,7 @@ module Observability
     def register_defaults
       register(:performance, model: "PerformanceLogEvent")
       register(:operational, model: "OperationalLogEvent", durable: true, persist: :create_each)
+      register(:work_engine_reconciler_activity, model: "WorkEngineReconcilerActivityEvent")
     end
   end
 end
