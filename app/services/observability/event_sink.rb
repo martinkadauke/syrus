@@ -3,11 +3,9 @@ require "securerandom"
 
 module Observability
   module EventSink
-    KINDS = %i[ performance operational ].freeze
     MEMORY_LIMIT = Integer(ENV["SYRUS_OBSERVABILITY_MEMORY_EVENTS"], exception: false) || 500
     FLUSH_BATCH_SIZE = Integer(ENV["SYRUS_OBSERVABILITY_FLUSH_BATCH_SIZE"], exception: false) || 250
     FLUSH_INTERVAL = (Integer(ENV["SYRUS_OBSERVABILITY_FLUSH_INTERVAL_SECONDS"], exception: false) || 15).seconds
-    SPOOL_KINDS = %i[ operational ].freeze
 
     @mutex = Mutex.new
     @buffers = Hash.new { |hash, key| hash[key] = [] }
@@ -20,7 +18,7 @@ module Observability
       kind = normalize_kind(kind)
       event = normalized_event(event)
       append_memory(kind, event)
-      append_spool(kind, event) if durable || SPOOL_KINDS.include?(kind)
+      append_spool(kind, event) if durable || Observability::EventStream.fetch(kind).durable?
       start_background_flusher
       event
     rescue StandardError => e
@@ -42,7 +40,7 @@ module Observability
       buffered_events(kind).last(limit).reverse
     end
 
-    def flush!(kinds: KINDS)
+    def flush!(kinds: Observability::EventStream.kinds)
       Array(kinds).each { |kind| flush_kind!(normalize_kind(kind)) }
     end
 
@@ -54,7 +52,7 @@ module Observability
           clear_spool(kind)
         else
           @buffers.clear
-          KINDS.each { |event_kind| clear_spool(event_kind) }
+          Observability::EventStream.kinds.each { |event_kind| clear_spool(event_kind) }
         end
       end
     end
@@ -80,23 +78,7 @@ module Observability
       events = events.uniq { |event| event_identity(event) }
       return if events.empty?
 
-      case kind
-      when :performance
-        PerformanceLogging.suppress do
-          events.each_slice(FLUSH_BATCH_SIZE) do |batch|
-            PerformanceLogEvent.insert_all(batch.map { |event| PerformanceLogEvent.from_event_hash(event) }) # rubocop:disable Rails/SkipsModelValidations
-          end
-        end
-      when :operational
-        OperationalLogging.suppress do
-          events.each_slice(FLUSH_BATCH_SIZE) do |batch|
-            batch.each do |event|
-              row = operational_row(event)
-              OperationalLogEvent.create!(row) if row
-            end
-          end
-        end
-      end
+      Observability::EventStream.fetch(kind).persist!(events, batch_size: FLUSH_BATCH_SIZE)
     rescue StandardError => e
       Rails.logger.error("[Observability::EventSink] flush failed for #{kind}, #{events.size} event(s) restored to buffer: #{e.class}: #{e.message}")
       restore_memory(kind, events)
@@ -133,11 +115,8 @@ module Observability
     def persisted_recent(kind, limit:)
       case kind
       when :performance
-        PerformanceLogEvent.recent_first.limit(limit).map(&:as_event_hash)
-      when :operational
-        []
-      else
-        []
+        Observability::EventStream.fetch(kind).recent(limit: limit)
+      else []
       end
     end
 
@@ -223,10 +202,7 @@ module Observability
     end
 
     def normalize_kind(kind)
-      kind = kind.to_sym
-      return kind if KINDS.include?(kind)
-
-      raise ArgumentError, "unknown observability event kind: #{kind}"
+      Observability::EventStream.fetch(kind).kind
     end
 
     def normalized_event(event)
@@ -235,26 +211,6 @@ module Observability
 
     def event_identity(event)
       [ event["occurred_at"], event["event"], event["request_id"], event["phase"], event["name"], event["message"] ]
-    end
-
-    def operational_row(event)
-      {
-        occurred_at: PerformanceLogEvent.parse_time(event["occurred_at"]) || Time.current,
-        level: event["level"],
-        role: event["role"],
-        hostname: event["hostname"],
-        app_revision: event["app_revision"],
-        pid: event["pid"],
-        source: event["source"],
-        request_id: event["request_id"],
-        job_id: event["job_id"],
-        workflow_id: event["workflow_id"],
-        run_id: event["run_id"],
-        message: event["message"],
-        context: event["context"] || {},
-        created_at: Time.current,
-        updated_at: Time.current
-      }.compact
     end
 
   end

@@ -1,17 +1,18 @@
 class PerformanceLogEvent < ApplicationRecord
+  include ObservabilityEventRecord
+
   RETENTION = 6.hours
 
   attribute :payload, :json, default: -> { {} }
 
   validates :occurred_at, :event_name, presence: true
 
-  scope :recent_first, -> { order(occurred_at: :desc, id: :desc) }
   scope :expired, -> { where(occurred_at: ...RETENTION.ago) }
 
   def self.from_event_hash(event)
     attrs = event.to_h
     {
-      occurred_at: parse_time(attrs["occurred_at"]) || Time.current,
+      occurred_at: parse_event_time(attrs["occurred_at"]) || Time.current,
       app_revision: attrs["app_revision"],
       event_name: attrs["event"],
       request_id: attrs["request_id"],
@@ -54,13 +55,7 @@ class PerformanceLogEvent < ApplicationRecord
     ).compact
   end
 
-  def self.parse_time(value)
-    return value if value.is_a?(Time)
-    return value.to_time if value.respond_to?(:to_time)
-    return if value.blank?
-
-    Time.zone.parse(value.to_s)
-  rescue ArgumentError, TypeError
-    nil
+  def self.as_recent_event_hashes(limit:)
+    recent_first.limit(limit).map(&:as_event_hash)
   end
 end
