@@ -324,6 +324,7 @@ Rails.application.routes.draw do
           get "queue/:tab", to: "queue#show", as: :queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
           post "queue/reap_stale_runs", to: "queue#reap_stale_runs"
           get "stuck", to: "stuck#index"
+          get "activity", to: "workflow_activity#index"
           get "reconciler_activity", to: "reconciler_activity#index"
           get "github_app/register", to: "github_app#register"
           get "github_app/confirm", to: "github_app#confirm"
@@ -415,6 +416,7 @@ Rails.application.routes.draw do
         # Overview + stuck list (mirror F).
         get "overview", to: "overview#show"
         get "stuck",    to: "overview#stuck"
+        get "activity", to: "workflow_activity#index"
         get "reconciler_activity", to: "reconciler_activity#index"
         get "worker_health", to: "worker_health#show"
         get "plugins",  to: "plugins#index"
@@ -543,6 +545,7 @@ Rails.application.routes.draw do
   get "admin", to: "spa#show", as: :admin_root
   get "admin/resource_admission", to: "spa#show", as: :admin_resource_admission
   get "admin/scoped_chat_events", to: "spa#show", as: :admin_scoped_chat_events
+  get "admin/activity", to: "spa#show", as: :admin_activity
   get "admin/reconciler_activity", to: "spa#show", as: :admin_reconciler_activity
   get "admin/queue", to: "spa#show", as: :admin_queue_root
   get "admin/queue/:tab", to: "spa#show", as: :admin_queue, constraints: { tab: /active|pending|failed|recurring|workers/ }

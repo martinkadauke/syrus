@@ -221,20 +221,47 @@ class LandingQueueProcessor
       position = if entry.eligible?
         eligible_position += 1
       end
+      before_snapshot = landing_queue_snapshot_for(entry.job)
+      after_snapshot = {
+        "landing_queue_position" => position,
+        "landing_queue_entry_position" => entry.position,
+        "landing_queue_blocked_reason" => entry.blocked_reason,
+        "landing_queue_entry_key" => entry.landing_unit_key,
+        "landing_queue_blocker_job_ids" => entry.blocker_jobs.map(&:id),
+        "landing_queue_waiting_job_ids" => landing_queue_waiting_job_ids(entry),
+        "landing_queue_dependency_edges" => entry.dependency_edges
+      }
 
       entry.job.update_columns(
-        landing_queue_position: position,
-        landing_queue_entry_position: entry.position,
-        landing_queue_blocked_reason: entry.blocked_reason,
-        landing_queue_entry_key: entry.landing_unit_key,
-        landing_queue_blocker_job_ids: entry.blocker_jobs.map(&:id),
-        landing_queue_waiting_job_ids: landing_queue_waiting_job_ids(entry),
-        landing_queue_dependency_edges: entry.dependency_edges,
+        landing_queue_position: after_snapshot.fetch("landing_queue_position"),
+        landing_queue_entry_position: after_snapshot.fetch("landing_queue_entry_position"),
+        landing_queue_blocked_reason: after_snapshot.fetch("landing_queue_blocked_reason"),
+        landing_queue_entry_key: after_snapshot.fetch("landing_queue_entry_key"),
+        landing_queue_blocker_job_ids: after_snapshot.fetch("landing_queue_blocker_job_ids"),
+        landing_queue_waiting_job_ids: after_snapshot.fetch("landing_queue_waiting_job_ids"),
+        landing_queue_dependency_edges: after_snapshot.fetch("landing_queue_dependency_edges"),
         landing_queue_cached_at: now
       )
+      WorkflowActivity.landing_queue_changed!(entry.job, before: before_snapshot, after: after_snapshot) if landing_queue_snapshot_changed?(before_snapshot, after_snapshot)
     end
 
     clear_stale_snapshot!(scope, cached_ids)
+  end
+
+  def landing_queue_snapshot_for(job)
+    {
+      "landing_queue_position" => job.landing_queue_position,
+      "landing_queue_entry_position" => job.landing_queue_entry_position,
+      "landing_queue_blocked_reason" => job.landing_queue_blocked_reason,
+      "landing_queue_entry_key" => job.landing_queue_entry_key,
+      "landing_queue_blocker_job_ids" => Array(job.landing_queue_blocker_job_ids),
+      "landing_queue_waiting_job_ids" => Array(job.landing_queue_waiting_job_ids),
+      "landing_queue_dependency_edges" => Array(job.landing_queue_dependency_edges)
+    }
+  end
+
+  def landing_queue_snapshot_changed?(before_snapshot, after_snapshot)
+    before_snapshot != JSON.parse(JSON.generate(after_snapshot))
   end
 
   def landing_queue_waiting_job_ids(entry)
@@ -463,6 +490,7 @@ class LandingQueueProcessor
       workflow_class = job.external_pr? ? Workflows::ExternalPrMerge : Workflows::AutoMerge
       workflow = workflow_class.instantiate(job: job)
       audit(job, "landing_queue: dispatching #{workflow.trigger_kind} #{workflow.slug}")
+      WorkflowActivity.landing_workflow_dispatched!(job, workflow)
       landed = true
     end
     return unless landed

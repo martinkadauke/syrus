@@ -123,6 +123,7 @@ class Run < ApplicationRecord
                        if: :saved_change_to_state_to_terminal?
   after_update_commit :wake_workflow_admission_after_completion!,
                        if: :saved_change_to_state_to_terminal?
+  after_update_commit :record_workflow_activity_state_change!, if: :saved_change_to_state?
 
   def saved_change_to_state_to_cancelled?
     saved_change_to_state? && state == "cancelled"
@@ -145,6 +146,10 @@ class Run < ApplicationRecord
   rescue StandardError => e
     Rails.logger.warn("[WorkflowAdmissionCapacityWakeup] failed to enqueue after Run ##{id}: #{e.class}: #{e.message}")
     nil
+  end
+
+  def record_workflow_activity_state_change!
+    WorkflowActivity.run_state_changed!(self)
   end
 
   def cascade_cancel_to_workflow!

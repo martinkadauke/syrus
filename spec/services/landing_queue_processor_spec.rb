@@ -631,6 +631,19 @@ RSpec.describe LandingQueueProcessor do
       expect(low.reload.landing_queue_entry_position).to eq(4)
     end
 
+    it "records landing queue activity only when the cached snapshot changes" do
+      job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+
+      WorkflowActivity.synchronously do
+        described_class.refresh_snapshot!(Job.where(id: job.id))
+        described_class.refresh_snapshot!(Job.where(id: job.id))
+      end
+
+      events = WorkflowActivityEvent.where(job_id: job.id, event_type: "landing_queue_changed")
+      expect(events.count).to eq(1)
+      expect(events.first.metadata.dig("after", "landing_queue_entry_position")).to eq(1)
+    end
+
     it "keeps dependency prerequisites ahead of urgent dependents" do
       dependent = queue_job(issue_number: 2, approved_at: 1.minute.ago).tap { |j| j.update!(priority: "urgent") }
       prerequisite = queue_job(issue_number: 1, approved_at: 10.minutes.ago)

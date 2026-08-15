@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_15_024500) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_15_040000) do
 
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
@@ -1998,6 +1998,46 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_15_024500) do
     t.index ["observed_at"], name: "index_worker_host_health_samples_on_observed_at"
   end
 
+  create_table "workflow_activity_events", force: :cascade do |t|
+    t.string "app_revision"
+    t.datetime "created_at", null: false
+    t.float "duration_ms"
+    t.integer "epic_id"
+    t.string "event_type", null: false
+    t.string "hostname"
+    t.integer "job_id"
+    t.text "message", null: false
+    t.json "metadata", null: false
+    t.datetime "occurred_at", null: false
+    t.integer "pid"
+    t.string "reason_key"
+    t.integer "repository_id"
+    t.integer "run_id"
+    t.string "run_state"
+    t.string "severity", default: "info", null: false
+    t.string "source", null: false
+    t.integer "step_id"
+    t.string "step_kind"
+    t.string "trigger_kind"
+    t.datetime "updated_at", null: false
+    t.integer "workflow_id"
+    t.string "workflow_state"
+    t.index ["epic_id"], name: "index_workflow_activity_events_on_epic_id"
+    t.index ["event_type", "occurred_at"], name: "idx_workflow_activity_type_occurred"
+    t.index ["job_id", "occurred_at"], name: "idx_workflow_activity_job_occurred"
+    t.index ["job_id"], name: "index_workflow_activity_events_on_job_id"
+    t.index ["occurred_at"], name: "index_workflow_activity_events_on_occurred_at"
+    t.index ["reason_key", "occurred_at"], name: "idx_workflow_activity_reason_occurred"
+    t.index ["repository_id", "occurred_at"], name: "idx_workflow_activity_repo_occurred"
+    t.index ["repository_id"], name: "index_workflow_activity_events_on_repository_id"
+    t.index ["run_id", "occurred_at"], name: "idx_workflow_activity_run_occurred"
+    t.index ["run_id"], name: "index_workflow_activity_events_on_run_id"
+    t.index ["step_id"], name: "index_workflow_activity_events_on_step_id"
+    t.index ["trigger_kind", "occurred_at"], name: "idx_workflow_activity_trigger_occurred"
+    t.index ["workflow_id", "occurred_at"], name: "idx_workflow_activity_workflow_occurred"
+    t.index ["workflow_id"], name: "index_workflow_activity_events_on_workflow_id"
+  end
+
   create_table "workflow_step_resource_profiles", force: :cascade do |t|
     t.string "agent_provider", limit: 64, null: false
     t.integer "attributed_sample_count", default: 0, null: false
@@ -2298,6 +2338,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_15_024500) do
   add_foreign_key "work_engine_reconciler_activity_events", "runs"
   add_foreign_key "work_engine_reconciler_activity_events", "steps"
   add_foreign_key "work_engine_reconciler_activity_events", "workflows"
+  add_foreign_key "workflow_activity_events", "epics"
+  add_foreign_key "workflow_activity_events", "jobs"
+  add_foreign_key "workflow_activity_events", "repositories"
+  add_foreign_key "workflow_activity_events", "runs"
+  add_foreign_key "workflow_activity_events", "steps"
+  add_foreign_key "workflow_activity_events", "workflows"
   add_foreign_key "workflow_step_resource_profiles", "repositories"
   add_foreign_key "workflows", "jobs"
   add_foreign_key "workflows", "users"

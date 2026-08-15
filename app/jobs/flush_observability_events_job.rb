@@ -4,5 +4,6 @@ class FlushObservabilityEventsJob < ApplicationJob
   def perform
     Observability::EventSink.flush!
     PerformanceLogEvent.expired.delete_all
+    WorkflowActivityEvent.expired.delete_all
   end
 end
