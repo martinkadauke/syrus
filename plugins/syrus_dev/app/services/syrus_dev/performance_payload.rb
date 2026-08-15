@@ -7,7 +7,6 @@ module SyrusDev
     end
 
     def as_json(*)
-      PerformanceLogging::Store.flush!
       raw_events = PerformanceLogging::Store.recent(limit: limit)
       events = filter_events(raw_events)
       summaries = summaries_payload(events)

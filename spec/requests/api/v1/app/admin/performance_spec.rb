@@ -129,6 +129,16 @@ RSpec.describe "API: /api/v1/app/admin/performance", type: :request do
     )
   end
 
+  it "does not synchronously flush performance events while rendering diagnostics" do
+    sign_in_as(admin)
+    allow(PerformanceLogging::Store).to receive(:flush!).and_call_original
+
+    get "/api/v1/app/admin/performance"
+
+    expect(response).to have_http_status(:ok)
+    expect(PerformanceLogging::Store).not_to have_received(:flush!)
+  end
+
   it "can include events from all app revisions" do
     sign_in_as(admin)
 
