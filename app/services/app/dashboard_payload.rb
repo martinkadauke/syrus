@@ -376,7 +376,7 @@ module App
         total = PerformanceLogging.phase("dashboard_jobs.total", exact: !rows_only_estimate) do
           rows_only_estimate ? nil : scope.count
         end
-        scope = scope.with_latest_workflow_snapshot.preload(
+        scope = scope.preload(
           :repository,
           :user,
           :owner_user,
@@ -616,22 +616,35 @@ module App
     end
 
     def latest_runs_for_jobs(jobs)
-      latest_ids = jobs.filter_map(&:latest_run_id)
-      latest_ids.empty? ? {} : Run.where(id: latest_ids).index_by(&:job_id)
+      job_ids = jobs.map(&:id)
+      return {} if job_ids.empty?
+
+      latest_ids = Run.where(job_id: job_ids).group(:job_id).maximum(:id).values
+      latest_ids.empty? ? {} : Run.where(id: latest_ids).select(:id, :job_id, :state, :finished_at, :updated_at).index_by(&:job_id)
     end
 
     def latest_workflows_by_job_id(job_ids)
       return {} if job_ids.empty?
 
-      latest_active_ids = Workflow.where(job_id: job_ids, state: %w[ queued running ]).group(:job_id).maximum(:id)
-      latest_ids = Workflow.where(job_id: job_ids).group(:job_id).maximum(:id)
-      selected_ids = latest_ids.merge(latest_active_ids).values
-      selected_ids.empty? ? {} : Workflow.where(id: selected_ids).index_by(&:job_id)
+      ranked = Workflow
+        .where(job_id: job_ids)
+        .select(
+          "workflows.id",
+          "workflows.job_id",
+          "ROW_NUMBER() OVER (PARTITION BY workflows.job_id ORDER BY (workflows.finished_at IS NULL) DESC, workflows.finished_at DESC, workflows.id DESC) AS syrus_row_number"
+        )
+      selected_ids = Workflow
+        .from("(#{ranked.to_sql}) workflows")
+        .where("syrus_row_number = 1")
+        .pluck(:id)
+      selected_ids.empty? ? {} : Workflow
+        .where(id: selected_ids)
+        .select(:id, :job_id, :state, :trigger_kind, :created_at, :finished_at, :failure_count, :failure_reason, :artifacts, :cleaned_up_at)
+        .index_by(&:job_id)
     end
 
     def latest_workflows_for_jobs(jobs)
-      latest_ids = jobs.filter_map(&:latest_workflow_id)
-      latest_ids.empty? ? {} : Workflow.where(id: latest_ids).index_by(&:job_id)
+      latest_workflows_by_job_id(jobs.map(&:id))
     end
 
     def total_pages(total)
@@ -707,7 +720,28 @@ module App
     def active_workflow_trigger_kind(job)
       return nil unless summary_state(job) == "running"
 
+      latest = latest_workflow_for(job)
+      return latest.trigger_kind if latest&.state.in?(%w[queued running])
+
       job.active_workflow_trigger_kind
+    end
+
+    def latest_workflow_for(job)
+      return @job_runtime_latest_workflows_by_job_id[job.id] if defined?(@job_runtime_latest_workflows_by_job_id)
+
+      job.latest_workflow
+    end
+
+    def latest_workflow_id_for(job)
+      latest_workflow_for(job)&.id
+    end
+
+    def latest_workflow_state_for(job)
+      latest_workflow_for(job)&.state || "queued"
+    end
+
+    def latest_workflow_trigger_kind_for(job)
+      latest_workflow_for(job)&.trigger_kind
     end
 
     def job_apparently_paused?(job)

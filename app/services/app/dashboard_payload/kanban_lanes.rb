@@ -31,7 +31,6 @@ module App
         records = PerformanceLogging.phase("dashboard_kanban_jobs.query", lanes: visible_lanes.join(","), limit: kanban_limit) do
           filtered_jobs_scope
             .where(state: job_kanban_candidate_states(visible_lanes))
-            .with_latest_workflow_snapshot
             .preload(
               :repository,
               :user,
