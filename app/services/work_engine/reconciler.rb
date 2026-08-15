@@ -1,3 +1,5 @@
+require "set"
+
 module WorkEngine
   class Reconciler
     ORPHAN_RUN_GRACE_PERIOD = ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD
@@ -1306,23 +1308,34 @@ module WorkEngine
     def capture_solid_queue
       PerformanceLogging.phase("work_engine.reconciler.capture_solid_queue") do
         root_ids = PerformanceLogging.phase("work_engine.reconciler.solid_queue_root_run_ids") { solid_queue_root_run_ids }
-        ready_job_ids = PerformanceLogging.phase("work_engine.reconciler.solid_queue_ready_ids") { SolidQueue::ReadyExecution.pluck(:job_id).to_set }
         jobs = PerformanceLogging.phase("work_engine.reconciler.solid_queue_run_jobs") do
           SolidQueue::Job
             .where(class_name: "RunJob")
             .where(finished_at: nil)
             .select(:id, :arguments, :queue_name, :priority, :finished_at)
-            .includes(:claimed_execution, :failed_execution, :scheduled_execution)
             .to_a
+        end
+        solid_queue_job_ids = jobs.map(&:id)
+        ready_job_ids = PerformanceLogging.phase("work_engine.reconciler.solid_queue_ready_ids", count: solid_queue_job_ids.size) do
+          solid_queue_job_ids.empty? ? Set.new : SolidQueue::ReadyExecution.where(job_id: solid_queue_job_ids).pluck(:job_id).to_set
+        end
+        claimed_by_job_id = PerformanceLogging.phase("work_engine.reconciler.solid_queue_claimed", count: solid_queue_job_ids.size) do
+          solid_queue_job_ids.empty? ? {} : SolidQueue::ClaimedExecution.where(job_id: solid_queue_job_ids).select(:job_id, :process_id, :created_at).index_by(&:job_id)
+        end
+        failed_by_job_id = PerformanceLogging.phase("work_engine.reconciler.solid_queue_failed", count: solid_queue_job_ids.size) do
+          solid_queue_job_ids.empty? ? {} : SolidQueue::FailedExecution.where(job_id: solid_queue_job_ids).select(:job_id, :error).index_by(&:job_id)
+        end
+        scheduled_by_job_id = PerformanceLogging.phase("work_engine.reconciler.solid_queue_scheduled", count: solid_queue_job_ids.size) do
+          solid_queue_job_ids.empty? ? {} : SolidQueue::ScheduledExecution.where(job_id: solid_queue_job_ids).select(:job_id, :scheduled_at).index_by(&:job_id)
         end
         parsed = PerformanceLogging.phase("work_engine.reconciler.solid_queue_parse") do
           jobs.filter_map do |job|
             root_run_id = run_id_from_solid_queue_arguments(job.arguments)
             next if root_ids.any? && !root_ids.include?(root_run_id)
 
-            claim = job.claimed_execution
-            failed = job.failed_execution
-            scheduled = job.scheduled_execution
+            claim = claimed_by_job_id[job.id]
+            failed = failed_by_job_id[job.id]
+            scheduled = scheduled_by_job_id[job.id]
             {
               id: job.id,
               root_run_id: root_run_id,

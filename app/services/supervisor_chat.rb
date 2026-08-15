@@ -14,6 +14,15 @@ class SupervisorChat
     new(admin_user).ensure_for!
   end
 
+  def self.for_index(admin_user)
+    raise ArgumentError, "Supervisor chat requires an admin user" unless admin_user&.admin?
+
+    admin_user.chat_sessions
+      .includes(:chat_participants)
+      .find_by(system_kind: "supervisor") ||
+      new(admin_user).ensure_for!
+  end
+
   def initialize(admin_user)
     @admin_user = admin_user
   end

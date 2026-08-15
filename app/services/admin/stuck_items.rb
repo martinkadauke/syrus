@@ -1,3 +1,5 @@
+require "set"
+
 module Admin
   # Reconciler-backed "stuck things" watchlist used by the admin overview,
   # dedicated stuck page, token API, and chat MCP admin tools.
@@ -13,6 +15,7 @@ module Admin
       :run,
       :workflow,
       :job,
+      :has_provider_session,
       :issue,
       :repair_plan,
       :repair_execution,
@@ -79,6 +82,7 @@ module Admin
         run: run,
         workflow: workflow,
         job: job,
+        has_provider_session: run ? provider_session_run_ids.include?(run.id) : false,
         issue: issue,
         repair_plan: repair_plan,
         repair_execution: repair_execution,
@@ -92,11 +96,17 @@ module Admin
     end
 
     def preload_records(issues)
+      run_ids = affected_ids(issues, :run_ids)
       @record_maps = {
-        Run => Run.where(id: affected_ids(issues, :run_ids)).includes(:job, :provider_session, step: :workflow).index_by(&:id),
+        Run => Run.where(id: run_ids).includes(:job, step: :workflow).index_by(&:id),
         Workflow => Workflow.where(id: affected_ids(issues, :workflow_ids)).includes(:job, :steps).index_by(&:id),
         Job => Job.where(id: affected_ids(issues, :job_ids)).index_by(&:id)
       }
+      @provider_session_run_ids = if run_ids.empty?
+        Set.new
+      else
+        ProviderSession.where(resumable_type: "Run", resumable_id: run_ids).pluck(:resumable_id).to_set
+      end
     end
 
     def affected_ids(issues, key)
@@ -105,6 +115,10 @@ module Admin
 
     def record_maps
       @record_maps ||= {}
+    end
+
+    def provider_session_run_ids
+      @provider_session_run_ids ||= Set.new
     end
 
     def repair_execution_for(repair_plan)

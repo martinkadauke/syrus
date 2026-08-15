@@ -294,17 +294,21 @@ module App
     end
 
     def latest_terminal_provider_run
-      provider_run_scope
-        .includes(:run_diagnostic, :run_failure_classification)
+      run = provider_run_scope
+        .select(:id, :state, :finished_at, :updated_at)
         .where(state: %w[succeeded failed])
         .where.not(finished_at: nil)
         .order(finished_at: :desc, updated_at: :desc, id: :desc)
         .limit(1)
         .first
+      return run unless run&.failed?
+
+      Run.includes(:run_diagnostic, :run_failure_classification).find(run.id)
     end
 
     def usage_limit_failed_runs
       provider_run_scope.left_outer_joins(:run_diagnostic, :run_failure_classification)
+         .select(:id, :job_id, :step_id, :user_id, :agent_provider, :state, :agent_outcome, :finished_at, :updated_at)
          .includes(:run_diagnostic, :run_failure_classification, :step)
          .where(state: "failed")
          .where("runs.finished_at >= ?", now - ProviderCircuitBreaker::USAGE_LIMIT_WINDOW)

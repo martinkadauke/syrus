@@ -182,7 +182,8 @@ class ProviderCircuitBreaker
   end
 
   def recent_failed_runs
-    Run.left_outer_joins(:run_diagnostic)
+    Run
+       .select(:id, :job_id, :user_id, :step_id, :agent_provider, :agent_outcome, :agent_summary, :agent_pr_title, :agent_pr_body, :state, :finished_at, :updated_at)
        .includes(:run_diagnostic, :run_failure_classification)
        .where(state: "failed", agent_provider: provider)
        .where("runs.finished_at >= ?", now - WINDOW)
@@ -254,7 +255,8 @@ class ProviderCircuitBreaker
   end
 
   def usage_limit_failed_runs
-    Run.left_outer_joins(:run_diagnostic, :run_failure_classification)
+    Run
+       .select(:id, :job_id, :user_id, :step_id, :agent_provider, :agent_outcome, :agent_summary, :agent_pr_title, :agent_pr_body, :state, :finished_at, :updated_at)
        .includes(:run_diagnostic, :run_failure_classification, :step)
        .where(state: "failed", agent_provider: provider)
        .where("runs.finished_at >= ?", now - USAGE_LIMIT_WINDOW)

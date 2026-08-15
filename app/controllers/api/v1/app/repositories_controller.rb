@@ -453,6 +453,7 @@ module Api
           PerformanceLogging.phase("repository_detail_payload", repository_id: repository.id, page: page) do
             jobs_scope = repository.jobs
               .includes(:repository, :scheduled_task)
+              .with_latest_workflow_snapshot
               .order(updated_at: :desc)
             total_jobs = PerformanceLogging.phase("repository_detail.total_jobs", repository_id: repository.id) { repository.jobs.count }
             total_pages = [ (total_jobs / PER_PAGE.to_f).ceil, 1 ].max
@@ -462,6 +463,7 @@ module Api
                 .offset((page - 1) * PER_PAGE)
                 .to_a
             end
+            @repository_detail_jobs_by_id = jobs.index_by(&:id)
             PerformanceLogging.phase("repository_detail.preload_job_state", repository_id: repository.id, job_count: jobs.size) do
               preload_repository_detail_job_state(jobs)
             end
@@ -982,7 +984,8 @@ module Api
         end
 
         def health_history_json(repository)
-          checks = repository.main_branch_health_checks.recent.includes(workflow: :job).limit(30)
+          checks = repository.main_branch_health_checks.recent.limit(30).to_a
+          workflow_paths = health_check_workflow_paths(checks)
           {
             ci_health: repository.ci_health,
             grader_health: repository.grader_health,
@@ -994,11 +997,24 @@ module Api
             treat_grader_timeouts_as_failures: repository.treat_grader_timeouts_as_failures?,
             last_health_checked_sha: repository.last_health_checked_sha,
             main_branch_repair: main_branch_repair_json(repository),
-            records: checks.map { |check| health_check_json(check, repository) }
+            records: checks.map { |check| health_check_json(check, repository, workflow_paths: workflow_paths) }
           }
         end
 
         def main_branch_repair_json(repository)
+          unless repository.main_branch_health_enabled? && repository.main_branch_repair_enabled? && repository.main_health_broken?
+            return {
+              enabled: repository.main_branch_repair_enabled?,
+              failed_open_jobs_count: 0,
+              max_open_failed_jobs: MainHealthChangedService::MAX_OPEN_FAILED_FIX_JOBS,
+              blocked_reason: nil,
+              can_request: false,
+              can_spawn: false,
+              blocking_job: nil,
+              failed_jobs: []
+            }
+          end
+
           status = MainHealthChangedService.new(repository).repair_status
           {
             enabled: status[:enabled],
@@ -1024,7 +1040,36 @@ module Api
           }
         end
 
-        def health_check_json(check, repository)
+        def health_check_workflow_paths(checks)
+          workflow_ids = checks.filter_map(&:workflow_id).uniq
+          return {} if workflow_ids.empty?
+
+          workflows_by_id = Workflow
+            .where(id: workflow_ids)
+            .select(:id, :job_id, :created_at)
+            .includes(:job)
+            .index_by(&:id)
+          ranked = Workflow
+            .where(job_id: workflows_by_id.values.map(&:job_id).uniq)
+            .select(
+              "workflows.id",
+              "ROW_NUMBER() OVER (PARTITION BY workflows.job_id ORDER BY workflows.created_at DESC, workflows.id DESC) AS syrus_row_number"
+            )
+          ranks_by_id = Workflow
+            .from("(#{ranked.to_sql}) workflows")
+            .where(id: workflow_ids)
+            .pluck(:id, Arel.sql("syrus_row_number"))
+            .to_h
+
+          workflows_by_id.transform_values do |workflow|
+            page = (((ranks_by_id.fetch(workflow.id, 1).to_i - 1) / ::App::WorkflowNavigation::PER_PAGE) + 1).to_i
+            query = { tab: "workflows" }
+            query[:workflows_page] = page if page > 1
+            "#{job_path(workflow.job)}?#{query.to_query}#workflow-#{workflow.id}"
+          end
+        end
+
+        def health_check_json(check, repository, workflow_paths: {})
           sha_url = "https://github.com/#{repository.slug}/commit/#{check.sha}"
           {
             id: check.id,
@@ -1036,7 +1081,7 @@ module Api
             source: check.source,
             ci_failed_checks: check.ci_failed_checks || [],
             grader_failed_names: check.grader_failed_names || [],
-            workflow_path: check.workflow ? ::App::WorkflowNavigation.path(check.workflow) : nil
+            workflow_path: check.workflow_id ? workflow_paths[check.workflow_id] : nil
           }
         end
 
@@ -1075,27 +1120,19 @@ module Api
         end
 
         def retryable_failed_jobs_count(repository)
-          open_job_ids = repository.jobs.open_threads.pluck(:id)
-          return 0 if open_job_ids.empty?
-
-          active_job_ids = Run.active.where(job_id: open_job_ids).distinct.pluck(:job_id)
-          inactive_job_ids = open_job_ids - active_job_ids
-          return 0 if inactive_job_ids.empty?
-
-          retryable_failed_jobs_scope(repository, inactive_job_ids: inactive_job_ids).count
+          retryable_failed_jobs_scope(repository).count
         end
 
         def retryable_failed_jobs_scope(repository, inactive_job_ids: nil)
-          open_job_ids = repository.jobs.open_threads.pluck(:id)
-          return repository.jobs.none if open_job_ids.empty?
+          base = repository.jobs.open_threads
+          base = if inactive_job_ids
+            return repository.jobs.none if inactive_job_ids.empty?
 
-          inactive_job_ids ||= begin
-            active_job_ids = Run.active.where(job_id: open_job_ids).distinct.pluck(:job_id)
-            open_job_ids - active_job_ids
+            base.where(id: inactive_job_ids)
+          else
+            base.where.not(id: Run.active.select(:job_id))
           end
-          return repository.jobs.none if inactive_job_ids.empty?
 
-          base = repository.jobs.where(id: inactive_job_ids)
           base.where(state: "failed").or(base.where.not(landing_failure_reason: nil))
         end
 
@@ -1148,7 +1185,13 @@ module Api
         def latest_runs_by_job_id(job_ids)
           return {} if job_ids.empty?
 
-          latest_ids = Run.where(job_id: job_ids).group(:job_id).maximum(:id).values
+          if defined?(@repository_detail_jobs_by_id)
+            latest_ids = @repository_detail_jobs_by_id.values.filter_map do |job|
+              job.latest_run_id if job_ids.include?(job.id)
+            end
+          else
+            latest_ids = Run.where(job_id: job_ids).group(:job_id).maximum(:id).values
+          end
           latest_ids.empty? ? {} : Run.where(id: latest_ids).index_by(&:job_id)
         end
 

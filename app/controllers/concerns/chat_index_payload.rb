@@ -29,7 +29,7 @@ module ChatIndexPayload
         .visible
         .ordinary_chats
         .where(id: chat_ids)
-        .preload(repository_attachments: :attachable)
+        .preload(:chat_participants, repository_attachments: :attachable)
         .to_a
         .sort_by { |chat_session| [ chat_activity_at(chat_session), chat_session.id ] }
         .reverse
@@ -89,7 +89,7 @@ module ChatIndexPayload
     return unless Feature.admin_supervisor_chat_enabled?
     return unless Current.user.admin?
 
-    chat_session = SupervisorChat.ensure_for!(Current.user)
+    chat_session = SupervisorChat.for_index(Current.user)
     chat_index_json(chat_session).merge(supervisor_unread_summary(chat_session))
   end
 
@@ -201,7 +201,7 @@ module ChatIndexPayload
   def paginated_chat_index_group(scope, before_chat: nil)
     PerformanceLogging.phase("chat_index.paginated_group", before_chat_id: before_chat&.id) do
       scope = chat_index_before(scope, before_chat) if before_chat
-      fetched = scope.preload(repository_attachments: :attachable).limit(CHAT_INDEX_GROUP_SIZE + 1).to_a
+      fetched = scope.preload(:chat_participants, repository_attachments: :attachable).limit(CHAT_INDEX_GROUP_SIZE + 1).to_a
       [ fetched.first(CHAT_INDEX_GROUP_SIZE), fetched.size > CHAT_INDEX_GROUP_SIZE ]
     end
   end
