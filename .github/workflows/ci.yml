@@ -21,6 +21,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install native image libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y libvips42t64 ||
+            sudo apt-get install --no-install-recommends -y libvips42 ||
+            sudo apt-get install --no-install-recommends -y libvips
+
       - uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true
