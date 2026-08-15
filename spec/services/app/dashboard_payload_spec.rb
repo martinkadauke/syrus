@@ -737,6 +737,7 @@ RSpec.describe App::DashboardPayload do
       fetch_keys = []
       computed_folder_ids = []
 
+      allow(SyrusVersion).to receive(:current).and_return("revision-that-must-not-enter-folder-count-cache")
       allow(Rails).to receive(:cache).and_return(cache_store)
       allow(cache_store).to receive(:fetch).and_wrap_original do |method, key, **options, &block|
         fetch_keys << key
@@ -767,6 +768,7 @@ RSpec.describe App::DashboardPayload do
         first[:smart_folders].map { |folder| [ folder[:id], folder[:count] ] }
       )
       expect(fetch_keys.select { |key| Array(key).first == "dashboard_smart_folder_counts" }.size).to eq(2)
+      expect(fetch_keys.flatten).not_to include("revision-that-must-not-enter-folder-count-cache")
       expect(fetch_keys).not_to include(a_collection_including("dashboard_smart_folder_count"))
       expect(computed_folder_ids.tally).to include(stable_counted_ids.index_with(1))
       expect(computed_folder_ids.tally).to include(volatile_ids.index_with(2))

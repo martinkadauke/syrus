@@ -108,7 +108,6 @@ module App
       def smart_folder_counts_cache_key(folders)
         [
           "dashboard_smart_folder_counts",
-          SyrusVersion.current,
           user.id,
           subject,
           ownership_scope,
