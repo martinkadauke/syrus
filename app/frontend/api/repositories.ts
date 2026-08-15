@@ -300,6 +300,11 @@ export type RepositoryHealthHistory = {
   main_branch_repair_auto_approve: boolean
   treat_grader_timeouts_as_failures: boolean
   last_health_checked_sha: string | null
+  ci_signal_current: boolean
+  grader_signal_current: boolean
+  current_health_pending: boolean
+  current_ci_failed_checks: Array<{ name: string; url: string }>
+  current_grader_failed_names: string[]
   main_branch_repair: RepositoryMainBranchRepairStatus
   records: RepositoryHealthCheckRecord[]
 }

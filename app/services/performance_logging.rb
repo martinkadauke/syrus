@@ -30,7 +30,7 @@ module PerformanceLogging
     end
 
     def recent(limit: MAX_EVENTS)
-      Observability::EventSink.recent(kind: :performance, limit: clamp_limit(limit))
+      PerformanceLogging.suppress { Observability::EventSink.recent(kind: :performance, limit: clamp_limit(limit)) }
     rescue StandardError
       []
     end

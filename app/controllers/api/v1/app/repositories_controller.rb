@@ -986,19 +986,54 @@ module Api
         def health_history_json(repository)
           checks = repository.main_branch_health_checks.recent.limit(30).to_a
           workflow_paths = health_check_workflow_paths(checks)
+          current_health = current_health_history_json(repository, checks)
           {
-            ci_health: repository.ci_health,
-            grader_health: repository.grader_health,
-            main_health: repository.main_health,
+            ci_health: current_health[:ci_health],
+            grader_health: current_health[:grader_health],
+            main_health: current_health[:main_health],
             landing_paused: repository.landing_paused?,
             main_branch_health_enabled: repository.main_branch_health_enabled?,
             main_branch_repair_enabled: repository.main_branch_repair_enabled?,
             main_branch_repair_auto_approve: repository.main_branch_repair_auto_approve?,
             treat_grader_timeouts_as_failures: repository.treat_grader_timeouts_as_failures?,
             last_health_checked_sha: repository.last_health_checked_sha,
+            ci_signal_current: current_health[:ci_signal_current],
+            grader_signal_current: current_health[:grader_signal_current],
+            current_health_pending: current_health[:current_health_pending],
+            current_ci_failed_checks: current_health[:current_ci_failed_checks],
+            current_grader_failed_names: current_health[:current_grader_failed_names],
             main_branch_repair: main_branch_repair_json(repository),
             records: checks.map { |check| health_check_json(check, repository, workflow_paths: workflow_paths) }
           }
+        end
+
+        def current_health_history_json(repository, checks)
+          sha = repository.last_health_checked_sha.to_s.presence
+          ci_signal_current = sha.present? && (repository.last_ci_evaluated_sha == sha || repository.ci_health_not_configured?)
+          grader_signal_current = sha.present? && repository.last_graded_sha == sha
+          ci_health = ci_signal_current ? repository.ci_health : "unknown"
+          grader_health = grader_signal_current ? repository.grader_health : "unknown"
+          current_checks = sha ? checks.select { |check| check.sha == sha } : []
+
+          {
+            ci_health: ci_health,
+            grader_health: grader_health,
+            main_health: display_main_health(repository, ci_health, grader_health),
+            ci_signal_current: ci_signal_current,
+            grader_signal_current: grader_signal_current,
+            current_health_pending: repository.main_branch_health_enabled? && (!ci_signal_current || !grader_signal_current),
+            current_ci_failed_checks: current_checks.flat_map { |check| check.ci_failed_checks || [] }.uniq,
+            current_grader_failed_names: current_checks.flat_map { |check| check.grader_failed_names || [] }.uniq
+          }
+        end
+
+        def display_main_health(repository, ci_health, grader_health)
+          return "unknown" unless repository.main_branch_health_enabled?
+          return "broken" if ci_health == "broken" || grader_health == "broken"
+          return "healthy" if grader_health == "healthy" && %w[ healthy not_configured ].include?(ci_health)
+          return "inconclusive" if ci_health == "inconclusive" || grader_health == "inconclusive"
+
+          "unknown"
         end
 
         def main_branch_repair_json(repository)

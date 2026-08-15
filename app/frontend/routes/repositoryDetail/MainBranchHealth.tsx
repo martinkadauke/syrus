@@ -151,6 +151,11 @@ export function MainBranchHealthSection({ history, payload, prefix, queryKey, on
             {t("repository.health_repair_waiting_for_signals")}
           </div>
         ) : null}
+        {history.current_health_pending ? (
+          <div className="rounded border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/40 p-3 text-sm text-blue-900 dark:text-blue-100">
+            {t("repository.health_current_validation_pending")}
+          </div>
+        ) : null}
         {canResume ? (
           <div className="flex flex-col gap-3 rounded border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-amber-900 dark:text-amber-100">
@@ -169,8 +174,11 @@ export function MainBranchHealthSection({ history, payload, prefix, queryKey, on
         {resumeWork.isError ? (
           <PanelMessage tone="error">{errorMessage(resumeWork.error, "Unable to resume work.")}</PanelMessage>
         ) : null}
-        {history.ci_health === "broken" && history.records.length > 0 ? (
-          <FailingChecks checks={history.records[0].ci_failed_checks} />
+        {history.ci_health === "broken" ? (
+          <FailingChecks checks={history.current_ci_failed_checks} />
+        ) : null}
+        {history.grader_health === "broken" && history.current_grader_failed_names.length > 0 ? (
+          <FailingGraders names={history.current_grader_failed_names} />
         ) : null}
         <HealthHistoryTable records={history.records} prefix={prefix} t={t} />
         {graders.isError ? <PanelMessage tone="error">{errorMessage(graders.error, "Run graders command failed.")}</PanelMessage> : null}
@@ -213,6 +221,20 @@ function FailingChecks({ checks }: { checks: Array<{ name: string; url: string }
           ) : (
             <span>{check.name}</span>
           )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function FailingGraders({ names }: { names: string[] }) {
+  if (names.length === 0) return null
+  return (
+    <ul className="space-y-1 text-sm">
+      {names.map((name) => (
+        <li key={name} className="flex items-center gap-1.5 text-red-700 dark:text-red-300">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
+          <span>{name}</span>
         </li>
       ))}
     </ul>

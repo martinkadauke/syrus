@@ -570,6 +570,48 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(unlinked["workflow_path"]).to be_nil
   end
 
+  it "scopes current main branch health to the tracked SHA while preserving older history" do
+    sign_in_as(user)
+    repository = Factories.repository(user: user)
+    old_sha = "old1234567890"
+    current_sha = "new1234567890"
+    MainBranchHealthCheck.record_ci_poll(
+      repository: repository,
+      sha: old_sha,
+      ci_health: "broken",
+      ci_failed_checks: [ { name: "rspec", url: "https://github.com/acme/widgets/actions/runs/1" } ]
+    )
+    repository.update!(
+      last_health_checked_sha: current_sha,
+      last_ci_evaluated_sha: old_sha,
+      last_graded_sha: old_sha,
+      ci_health: "broken",
+      grader_health: "broken",
+      landing_paused: true
+    )
+
+    get "/api/v1/app/repositories/#{repository.id}"
+
+    expect(response).to have_http_status(:ok)
+    health = parse_body.fetch("health_history")
+    expect(health).to include(
+      "ci_health" => "unknown",
+      "grader_health" => "unknown",
+      "main_health" => "unknown",
+      "last_health_checked_sha" => current_sha,
+      "ci_signal_current" => false,
+      "grader_signal_current" => false,
+      "current_health_pending" => true,
+      "current_ci_failed_checks" => [],
+      "current_grader_failed_names" => []
+    )
+    expect(health.fetch("records").first).to include(
+      "sha" => old_sha.first(7),
+      "ci_health" => "broken",
+      "ci_failed_checks" => [ { "name" => "rspec", "url" => "https://github.com/acme/widgets/actions/runs/1" } ]
+    )
+  end
+
   it "returns repository GitHub issues" do
     sign_in_as(user)
     repository = Factories.repository(user: user, owner: "acme", name: "widgets", trigger_label: "syrus")

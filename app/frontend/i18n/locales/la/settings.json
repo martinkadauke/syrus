@@ -335,6 +335,7 @@
     "health_repair_failed_cap": "Reparatio automatica suspensa est quia {{count}} officia reparationis deficientia adhuc aperta sunt. Unum post recognitionem claude ut aliud officium reparationis creari possit. Maximus numerus officiorum reparationis deficientium apertorum: {{max}}.",
     "health_repair_failed_jobs": "Reparationes defectae:",
     "health_repair_waiting_for_signals": "Reparatio automatica signa CI et examinatorum exspectat antequam opus reparationis creet.",
+    "health_current_validation_pending": "Commit hodiernum adhuc probatur. Signa vetera defecta infra in historia monstrantur, sed non sufficiunt ut reparatio automatica pro hoc commit incipiat.",
     "health_repair_start": "Incipe opus reparationis",
     "health_repair_starting": "Incipit...",
     "resume_landing_warning": "Opera suspensa sunt quia sanitas rami principalis non viridis est.",

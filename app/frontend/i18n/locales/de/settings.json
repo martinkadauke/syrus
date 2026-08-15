@@ -335,6 +335,7 @@
     "health_repair_failed_cap": "Auto-Fix ist pausiert, weil {{count}} fehlgeschlagene Reparatur-Aufgaben noch offen sind. Schließe eine nach der Prüfung, um eine weitere Reparatur-Aufgabe zu erlauben. Maximale offene fehlgeschlagene Reparatur-Aufgaben: {{max}}.",
     "health_repair_failed_jobs": "Fehlgeschlagene Reparaturen:",
     "health_repair_waiting_for_signals": "Auto-Fix wartet auf CI- und Grader-Signale, bevor eine Reparatur-Aufgabe erstellt wird.",
+    "health_current_validation_pending": "Der aktuelle Commit wird noch validiert. Ältere defekte Signale werden unten im Verlauf angezeigt, reichen aber nicht aus, um automatisch eine Reparatur für diesen Commit zu starten.",
     "health_repair_start": "Reparatur-Aufgabe starten",
     "health_repair_starting": "Startet...",
     "resume_landing_warning": "Arbeit ist pausiert, weil die Haupt-Branch-Gesundheit nicht grün ist.",

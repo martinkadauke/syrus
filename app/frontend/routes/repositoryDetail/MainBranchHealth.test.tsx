@@ -20,6 +20,11 @@ function buildHistory(records: RepositoryHealthCheckRecord[] = []): RepositoryHe
     main_branch_repair_auto_approve: false,
     treat_grader_timeouts_as_failures: false,
     last_health_checked_sha: null,
+    ci_signal_current: true,
+    grader_signal_current: true,
+    current_health_pending: false,
+    current_ci_failed_checks: [],
+    current_grader_failed_names: [],
     main_branch_repair: { enabled: false, failed_open_jobs_count: 0, max_open_failed_jobs: 3, blocked_reason: null, can_request: false, can_spawn: false, blocking_job: null, failed_jobs: [] },
     records
   }
@@ -226,5 +231,33 @@ describe("MainBranchHealthSection health history", () => {
     expect(badge).toBeInTheDocument()
     expect(badge).toHaveAttribute("data-source", "concern_quorum")
     expect(badge).toHaveClass("border-amber-200")
+  })
+
+  it("does not render stale historical failures as current commit failures", () => {
+    const history = buildHistory([
+      buildHealthRecord({
+        sha: "old1234",
+        ci_health: "broken",
+        ci_failed_checks: [ { name: "rspec", url: "https://github.com/acme/widgets/actions/runs/1" } ],
+        grader_health: "broken",
+        grader_failed_names: [ "rspec" ]
+      })
+    ])
+    history.ci_health = "unknown"
+    history.grader_health = "unknown"
+    history.main_health = "unknown"
+    history.last_health_checked_sha = "new1234567890"
+    history.ci_signal_current = false
+    history.grader_signal_current = false
+    history.current_health_pending = true
+    history.current_ci_failed_checks = []
+    history.current_grader_failed_names = []
+
+    renderSection(history)
+
+    expect(screen.getByText(/The current commit is still being validated/)).toBeInTheDocument()
+    expect(screen.getByText("new1234")).toBeInTheDocument()
+    expect(screen.getAllByText("Unknown")).toHaveLength(2)
+    expect(screen.getByText("rspec, rspec")).toBeInTheDocument()
   })
 })
