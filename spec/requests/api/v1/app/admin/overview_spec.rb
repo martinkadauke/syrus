@@ -46,21 +46,7 @@ RSpec.describe "API: /api/v1/app/admin/overview", type: :request do
     job = Factories.job(user: admin)
     run = job.initial_run
     run.update_columns(state: "running", started_at: 10.minutes.ago, last_heartbeat_at: 10.minutes.ago)
-    allow(Admin::StuckItemsCache).to receive(:read).and_return(cached_stuck_snapshot([
-      {
-        "kind" => "running_run_without_live_worker_evidence",
-        "severity" => "alarm",
-        "attention_state" => "auto_repairable",
-        "run_id" => run.id,
-        "workflow_id" => run.step.workflow.id,
-        "workflow_slug" => "WF-#{run.step.workflow.id}",
-        "workflow_path" => "/jobs/#{job.id}?tab=workflows#workflow-#{run.step.workflow.id}",
-        "job_id" => job.id,
-        "job_path" => "/jobs/#{job.id}",
-        "detail" => "Run has no live worker evidence.",
-        "age_label" => "10m"
-      }
-    ]))
+    allow(Admin::StuckItemsCache).to receive(:read).and_call_original
     sign_in_as(admin)
 
     get api_v1_app_admin_overview_path
@@ -76,34 +62,13 @@ RSpec.describe "API: /api/v1/app/admin/overview", type: :request do
       "agent_session_capture_rate",
       "worker_health",
       "workers",
-      "recurring",
-      "stuck",
-      "stuck_pagination",
-      "stuck_snapshot"
+      "recurring"
     )
     expect(body["active_runs"]["total"]).to eq(1)
     expect(body).not_to have_key("resource_admission")
     expect(body).not_to have_key("chat_scoped_events")
-    expect(body["stuck_pagination"]).to include(
-      "page" => 1,
-      "per_page" => 50,
-      "total" => 1,
-      "total_pages" => 1
-    )
-    expect(body["stuck_snapshot"]).to include(
-      "captured_at" => a_kind_of(String),
-      "stale" => false
-    )
-    expect(body["stuck"].first).to include(
-      "kind" => "running_run_without_live_worker_evidence",
-      "attention_state" => "auto_repairable",
-      "run_id" => run.id,
-      "workflow_id" => run.step.workflow.id,
-      "workflow_slug" => "WF-#{run.step.workflow.id}",
-      "workflow_path" => "/jobs/#{job.id}?tab=workflows#workflow-#{run.step.workflow.id}",
-      "job_id" => job.id,
-      "job_path" => "/jobs/#{job.id}"
-    )
+    expect(body).not_to include("stuck", "stuck_pagination", "stuck_snapshot")
+    expect(Admin::StuckItemsCache).not_to have_received(:read)
   end
 
   it "does not show stale false Codex model-list decode failures as provider usage circuits" do

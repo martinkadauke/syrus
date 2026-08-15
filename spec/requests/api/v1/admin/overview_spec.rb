@@ -8,10 +8,6 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
 
   before { Rails.cache.clear }
 
-  def cached_stuck_snapshot(items)
-    Admin::StuckItemsCache::Snapshot.new(items: items, captured_at: Time.current)
-  end
-
   describe "GET /api/v1/admin/overview" do
     it "401s without a token" do
       get "/api/v1/admin/overview"
@@ -36,7 +32,9 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
       expect(body).not_to have_key("provider_session_capture_rate")
       expect(body).to have_key("workers")
       expect(body).to have_key("recurring")
-      expect(body).to have_key("stuck")
+      expect(body).not_to have_key("stuck")
+      expect(body).not_to have_key("stuck_pagination")
+      expect(body).not_to have_key("stuck_snapshot")
     end
 
     it "reports Codex-backed captured sessions under the agent-neutral key" do
@@ -57,30 +55,19 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
       expect(parse_body).not_to have_key("provider_session_capture_rate")
     end
 
-    it "surfaces cached stuck Runs in the overview watchlist" do
+    it "does not read the stuck cache from the overview hot path" do
       job = Factories.job(user: admin)
       run = job.initial_run
       run.update_columns(state: "running",
                          started_at: 10.minutes.ago,
                          last_heartbeat_at: 10.minutes.ago)
-      allow(Admin::StuckItemsCache).to receive(:read).and_return(cached_stuck_snapshot([
-        {
-          "kind" => "running_run_without_live_worker_evidence",
-          "severity" => "alarm",
-          "attention_state" => "auto_repairable",
-          "run_id" => run.id,
-          "workflow_id" => run.step.workflow.id,
-          "job_id" => job.id,
-          "detail" => "Run has no live worker evidence.",
-          "age_label" => "10m"
-        }
-      ]))
+      allow(Admin::StuckItemsCache).to receive(:read).and_call_original
 
       get "/api/v1/admin/overview", headers: auth
-      stuck = parse_body["stuck"]
-      expect(stuck).not_to be_empty
-      expect(stuck.first["kind"]).to eq("running_run_without_live_worker_evidence")
-      expect(stuck.first["run_id"]).to eq(run.id)
+
+      expect(response).to be_successful
+      expect(parse_body).not_to include("stuck", "stuck_pagination", "stuck_snapshot")
+      expect(Admin::StuckItemsCache).not_to have_received(:read)
     end
 
     it "does not run a live stuck reconciliation from the overview hot path" do
@@ -91,11 +78,8 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
 
       expect(response).to be_successful
       body = parse_body
-      expect(body["stuck"]).to eq([])
-      expect(body["stuck_snapshot"]).to include(
-        "captured_at" => nil,
-        "stale" => true
-      )
+      expect(body).not_to include("stuck", "stuck_pagination", "stuck_snapshot")
+      expect(Admin::StuckItemsCache).not_to have_received(:read)
     end
 
     it "surfaces an old queued workflow whose first Run was never created" do

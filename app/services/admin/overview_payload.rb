@@ -32,10 +32,7 @@ module Admin
           agent_session_capture_rate: PerformanceLogging.phase("admin_overview.capture_rate") { capture_rate_payload },
           data_root_disk_usage: PerformanceLogging.phase("admin_overview.data_root_disk_usage") { data_root_disk_usage_payload },
           worker_data_root_usages: PerformanceLogging.phase("admin_overview.worker_data_root_usages") { InstanceVersion.worker_data_root_usages },
-          worker_health: PerformanceLogging.phase("admin_overview.worker_health") { worker_health_payload(sample_limit_per_host: 4) },
-          stuck: PerformanceLogging.phase("admin_overview.stuck_cache") { paginated_cached_stuck_items },
-          stuck_pagination: PerformanceLogging.phase("admin_overview.stuck_pagination") { cached_stuck_pagination },
-          stuck_snapshot: PerformanceLogging.phase("admin_overview.stuck_snapshot") { stuck_snapshot_payload }
+          worker_health: PerformanceLogging.phase("admin_overview.worker_health") { worker_health_payload(sample_limit_per_host: 4) }
         }
 
         payload[:resource_admission] = PerformanceLogging.phase("admin_overview.resource_admission") { resource_admission_payload } if resource_admission_page?
