@@ -191,10 +191,10 @@ class WorkflowWorkspace
     self.class.cleanup_for(@workflow)
   end
 
-  # The git ref for this Job's base branch inside the workspace. For fork→
-  # upstream Jobs it's the fetched upstream tip (`upstream/<default>`);
-  # otherwise the fork's own `origin/<default>`. Used for branch creation and
-  # for the three-dot diff base.
+  # The git ref for this Job's base branch inside the workspace. For stacked
+  # Jobs this is the parent branch, matching the PR base. For fork→upstream
+  # Jobs it's the fetched upstream tip (`upstream/<default>`). Used for branch
+  # creation and for the three-dot diff base.
   def base_ref
     self.class.base_ref_for(@job, workflow: @workflow)
   end
@@ -208,7 +208,7 @@ class WorkflowWorkspace
     if job.base_on_upstream_default?
       "upstream/#{job.base_default_branch}"
     else
-      "origin/#{job.repository.default_branch}"
+      "origin/#{job.effective_base_branch}"
     end
   end
 

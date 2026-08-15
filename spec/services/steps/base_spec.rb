@@ -547,6 +547,7 @@ RSpec.describe Steps::Base do
     let(:workspace_dir) { Pathname.new(Dir.mktmpdir("syrus-history-check")) }
     let(:bare_remote) { Pathname.new(Dir.mktmpdir("syrus-history-bare")) }
     let(:fake_ws) { instance_double(WorkflowWorkspace, path: workspace_dir, base_ref: "origin/master") }
+    let(:stacked_fake_ws) { instance_double(WorkflowWorkspace, path: workspace_dir, base_ref: "origin/syrus/issue-198-431") }
 
     before do
       # Seed a bare remote with one commit on master.
@@ -613,6 +614,15 @@ RSpec.describe Steps::Base do
       diff = handler.send(:diff_against_default)
 
       expect(diff).to include("feature.rb")
+    end
+
+    it "captures only child changes when a stacked-PR child is based on its parent branch" do
+      allow(handler).to receive(:workspace).and_return(stacked_fake_ws)
+
+      diff = handler.send(:diff_against_default)
+
+      expect(diff).to include("feature.rb")
+      expect(diff).not_to include("parent.rb")
     end
 
     it "still raises AgentBrokeGitState on a genuine orphan branch" do

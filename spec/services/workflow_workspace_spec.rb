@@ -675,6 +675,14 @@ RSpec.describe WorkflowWorkspace, :ci_only do
       expect(described_class.base_ref_for(job)).to eq("origin/main")
     end
 
+    it "uses origin/<effective_base_branch> for a stacked non-fork job" do
+      parent = Factories.job_record(repository: repository, state: "implemented", branch_name: "syrus/direct-parent", pr_number: 41)
+      child = Factories.job_record(repository: repository, parent_job: parent)
+
+      expect(child.effective_base_branch).to eq("syrus/direct-parent")
+      expect(described_class.base_ref_for(child)).to eq("origin/syrus/direct-parent")
+    end
+
     it "uses the fetched upstream ref for a fork job basing on its upstream" do
       upstream = Factories.repository(user: user, owner: "upstream-org", name: "widgets", default_branch: "main")
       fork_repo = Factories.repository(user: user, owner: "fork-user", name: "widgets", default_branch: "main", upstream_repository: upstream)
