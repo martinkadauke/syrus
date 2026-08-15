@@ -66,14 +66,13 @@ RSpec.describe Filters::Chips::Jobs::Attention do
       expect(fields).not_to include("triaging_reason")
     end
 
-    it "expands just_failed as failed state or landing failure" do
+    it "expands just_failed as failed state" do
       just_failed = described_class.expansion_for("just_failed")
 
       expect(just_failed).to eq(
-        "or" => [
-          { "field" => "state", "op" => "is", "value" => "failed" },
-          { "field" => "has_landing_failure", "op" => "is_true", "value" => nil }
-        ]
+        "field" => "state",
+        "op" => "is",
+        "value" => "failed"
       )
     end
 

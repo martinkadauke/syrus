@@ -317,7 +317,7 @@ RSpec.describe "Filters::Chips" do
       expect(run(field: "attention", op: "is", value: "blocked")).to contain_exactly(blocked_pr)
     end
 
-    it "just_failed: returns failed jobs and open jobs with landing failures" do
+    it "just_failed: returns failed jobs that require operator action" do
       failed = Factories.job(repository: repo, issue_number: 1)
       failed.update!(state: "failed")
       landing_failed = Factories.job_record(
@@ -346,12 +346,8 @@ RSpec.describe "Filters::Chips" do
       )
       Factories.job(repository: repo, issue_number: 2)
 
-      expect(run(field: "attention", op: "is", value: "just_failed")).to contain_exactly(
-        failed,
-        landing_failed,
-        merge_train_failed
-      )
-      expect(run(field: "attention", op: "is", value: "just_failed")).not_to include(landing_retrying)
+      expect(run(field: "attention", op: "is", value: "just_failed")).to contain_exactly(failed)
+      expect(run(field: "attention", op: "is", value: "just_failed")).not_to include(landing_failed, merge_train_failed, landing_retrying)
     end
 
     it "has_landing_failure: returns open jobs with a substantive landing failure reason" do

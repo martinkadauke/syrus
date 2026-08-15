@@ -67,10 +67,7 @@ module Filters
           },
           "awaiting_approval"  => -> { chip_node("state", "is", "implemented") },
           "just_failed"        => -> {
-            or_node(
-              chip_node("state", "is", "failed"),
-              chip_node("has_landing_failure", "is_true", nil)
-            )
+            chip_node("state", "is", "failed")
           },
           "stale"              => -> {
             and_node(
@@ -186,11 +183,10 @@ module Filters
         end
 
         def apply_just_failed
-          # Phase 4 simplification: a failed workflow now propagates
-          # to Job.state = :failed (Workflow#fail's after-callback),
-          # so we can read the Job state directly instead of joining
-          # workflows.
-          scope.where(state: "failed").or(scope.open_threads.where(id: landing_failure_ids))
+          # A Job in Just failed should be terminal enough to require
+          # operator action. Landing failures remain actionable through Inbox,
+          # but may still have active automatic repair workflows.
+          scope.where(state: "failed")
         end
 
         def apply_stale

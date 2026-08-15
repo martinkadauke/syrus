@@ -1117,6 +1117,13 @@ RSpec.describe "App API dashboard commands", type: :request do
         state: "implemented",
         landing_failure_reason: "auto_merge: required grader failed"
       )
+      Factories.job_record(
+        repository: repo,
+        owner_user: user,
+        issue_number: 3,
+        issue_title: "Failed job",
+        state: "failed"
+      )
       SmartFolder.create!(
         user: user,
         subject_type: "job",
@@ -1142,7 +1149,7 @@ RSpec.describe "App API dashboard commands", type: :request do
         "visibility" => "when_present",
         "count" => 1
       )
-      expect(folders_by_name.fetch("Inbox")).to include("count" => 1, "attention_preset" => "inbox")
+      expect(folders_by_name.fetch("Inbox")).to include("count" => 2, "attention_preset" => "inbox")
       expect(folders_by_name.fetch("Just failed")).to include(
         "kind" => "builtin",
         "visibility" => "when_present",
