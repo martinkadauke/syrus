@@ -19,7 +19,10 @@ class PollExternalPrJob < ApplicationJob
     return close_with("external_pr_merged") if @pr.merged
     return close_with("external_pr_closed") if @pr.state == "closed"
 
-    react_to_pr_reviews if @job.external_pr?
+    return unless @job.external_pr?
+
+    react_to_pr_reviews
+    ingest_pr_comments
   end
 
   private
@@ -86,5 +89,131 @@ class PollExternalPrJob < ApplicationJob
         reviewer_user: reviewer_user
       )
     end
+  end
+
+  # ----- comment ingestion -----------------------------------------------
+  # Attribution + actionable classification via the same PrCommentIngester
+  # pipeline PollPullRequestJob uses for Syrus-authored PRs. For fork Jobs
+  # (Syrus cannot push to the branch), qualifying feedback puts the Job
+  # into the same waiting state as a formal CHANGES_REQUESTED review. For
+  # same-repo Jobs (Syrus controls the head branch), qualifying feedback
+  # dispatches a Workflows::ExternalPrFeedback fix-and-push workflow instead.
+
+  def ingest_pr_comments
+    cutoff = @job.last_seen_comment_at
+    all_issue_comments = reject_syrus_bot_comments(@client.pr_issue_comments(@slug, @job.external_pr_number))
+    all_review_comments = reject_syrus_bot_comments(@client.pr_review_comments(@slug, @job.external_pr_number))
+    issue_comments = new_since(all_issue_comments, cutoff)
+    review_comments = new_since(all_review_comments, cutoff)
+    return if issue_comments.empty? && review_comments.empty?
+
+    user = @job.owner_user || @job.user
+    provider = @job.workflow_agent_provider
+
+    issue_result = PrCommentIngester.call(
+      job: @job, comments: issue_comments, pr_type: "external",
+      comment_kind: "issue", user: user, agent_provider: provider
+    )
+    review_result = PrCommentIngester.call(
+      job: @job, comments: review_comments, pr_type: "external",
+      comment_kind: "review", user: user, agent_provider: provider
+    )
+
+    react_to_qualifying_feedback(issue_result, review_result, all_comments: all_issue_comments + all_review_comments)
+
+    advance_comment_watermark(issue_comments + review_comments, cutoff)
+  end
+
+  def new_since(comments, cutoff)
+    comments.select { |comment| cutoff.nil? || (comment.created_at && comment.created_at > cutoff) }
+  end
+
+  # `qualifying_records` (per PrCommentIngester#qualifies_for_workflow?)
+  # already covers job_owner comments unconditionally, and member/external
+  # comments when the repository's feedback_policy is "auto" — so a
+  # qualifying record here is exactly the set the operator said should be
+  # treated like a formal CHANGES_REQUESTED review, no distinction. External
+  # comments that don't clear that bar (feedback_policy != "auto") aren't
+  # auto-acted on; they're surfaced to the job owner as a notification
+  # instead of pausing landing. Fork Jobs get a waiting state (Syrus can't
+  # push to someone else's fork); same-repo Jobs get the full
+  # fix-and-push treatment via dispatch_fix_and_push!.
+  def react_to_qualifying_feedback(issue_result, review_result, all_comments:)
+    qualifying = issue_result.qualifying_records + review_result.qualifying_records
+    non_qualifying = issue_result.non_qualifying_records + review_result.non_qualifying_records
+    external_notify_records = non_qualifying.select { |record| record.actionable? && record.external? }
+
+    return if qualifying.empty? && external_notify_records.empty?
+
+    if qualifying.any?
+      if @job.external_pr_fork?
+        @job.set_needs_attention!(reason: "upstream_pr_changes_requested")
+        unapprove_stale_approval!
+      else
+        dispatch_fix_and_push!(qualifying, all_comments)
+      end
+    end
+
+    external_notify_records.each { |record| notify_external_feedback(record) }
+  end
+
+  def unapprove_stale_approval!
+    return unless @job.may_unapprove?
+
+    Job::ApprovalUnapprover.call(job: @job, user: @job.user)
+  end
+
+  # Same-repo external PR (job.external_pr_fork? == false): Syrus already
+  # has push access to the branch (external_pr_ingest already pushes fixes
+  # here), so qualifying feedback gets the same treatment as feedback on a
+  # Syrus-authored PR — unapprove if approved, dispatch an agentic
+  # fix-and-push workflow. Mirrors
+  # PollPullRequestJob#enqueue_followup_run / #pending_followup?.
+  def dispatch_fix_and_push!(qualifying_records, all_comments)
+    return if pending_external_pr_feedback?
+
+    unapprove_stale_approval!
+
+    iteration = @job.workflows.where(trigger_kind: Workflow::TriggerKind.feedback_values).count + 1
+    source_handle = qualifying_records.first&.github_handle
+
+    artifacts = {
+      "pr_comments" => all_comments.map { |c| serialize_comment(c) },
+      "feedback_cutoff" => @job.last_seen_comment_at&.iso8601,
+      "pr_feedback_iteration" => iteration,
+      "pr_feedback_auto" => true,
+      "pr_feedback_source_handle" => source_handle,
+      "pr_review_comment_ids" => qualifying_records.map(&:id)
+    }
+    workflow = Workflows::ExternalPrFeedback.instantiate(job: @job, artifacts: artifacts, agent_provider: @job.workflow_agent_provider)
+    StepDispatcher.start_workflow(workflow)
+
+    qualifying_records.each { |r| r.mark_handling_started!(workflow: workflow, by: "auto_poll") }
+  end
+
+  def pending_external_pr_feedback?
+    @job.workflows.active.where(trigger_kind: "external_pr_feedback").exists?
+  end
+
+  def notify_external_feedback(record)
+    recipient = @job.owner_user || @job.user
+    from = record.github_handle.present? ? "@#{record.github_handle}" : "an external contributor"
+    body = "New feedback on #{@job.slug}'s external PR ##{@job.external_pr_number} from #{from}: " \
+           "#{record.body.to_s.truncate(160)}"
+
+    NotificationService.create_for(
+      user: recipient,
+      kind: "external_pr_feedback",
+      job: @job,
+      pr_url: App::Presentation.external_pr_url(@job),
+      body: body
+    )
+  rescue => e
+    Rails.logger.warn("[PollExternalPrJob] #{@job.slug}: could not send external_pr_feedback notification — #{e.message}")
+  end
+
+  def advance_comment_watermark(comments, cutoff)
+    latest = comments.map(&:created_at).compact.max
+    @job.update!(last_seen_comment_at: latest) if latest && (cutoff.nil? || latest > cutoff)
   end
 end

@@ -68,6 +68,38 @@ External PR Jobs start in the `implemented` state, bypassing the agent workflow.
 - Auto-merge lands it if enabled on the repository
 - If the external PR closes or merges on GitHub, `PollExternalPrJob` closes the Syrus Job accordingly (`external_pr_merged` or `external_pr_closed`)
 
+## PR feedback comments
+
+`PollExternalPrJob` also records issue and review comments left on an `external_pr` Job's PR, using the same pipeline Syrus uses for its own PRs (`PollPullRequestJob`):
+
+- Each new comment is attributed via `PrCommentAttributor` (`job_owner`, `member`, or `external`) and classified as actionable or not via `PrCommentClassifier`.
+- Records are stored as `PrReviewComment` rows with `pr_type: "external"`.
+- Comments authored by the configured Syrus GitHub App bot (e.g. its own grader-failure review comments) are excluded.
+- A `last_seen_comment_at` watermark — the same column `PollPullRequestJob` uses — keeps already-seen comments from being reprocessed on later polls.
+
+This poller never dispatches a follow-up workflow on its own — recording is one effect, the waiting-state reaction below is the other. Actionable comments still surface to the operator through the Job Detail page's pending-feedback panel (Apply/Replace/Ignore), same as for any other Job.
+
+### Fork PR waiting state
+
+For fork PRs (`external_pr_fork: true` — Syrus cannot push to the branch), qualifying comment feedback puts the Job into the same waiting state as a formal GitHub `CHANGES_REQUESTED` review: `needs_attention_reason` is set to `"upstream_pr_changes_requested"`. There is no distinction between a formal review and a plain qualifying comment — per operator decision, only a collaborator can leave either on GitHub, so the nuance doesn't matter in practice.
+
+A comment "qualifies" using the same rule `PollPullRequestJob` uses for Syrus-authored PRs (`PrCommentIngester#qualifies_for_workflow?`): actionable comments from the job owner always qualify; actionable comments from a repository member or an unrelated (`external`) commenter qualify only when the repository's `feedback_policy` is `"auto"`.
+
+Actionable comments from an `external` commenter (no relationship to the repository) that don't clear that bar are not auto-acted on. Instead, Syrus sends the job owner a `external_pr_feedback` notification asking them to review the feedback themselves; the Job's `needs_attention` state is left untouched.
+
+If the fork Job is already `approved` when qualifying feedback arrives, Syrus unapproves it (mirroring `PollPullRequestJob#clear_stale_approval!` for Syrus-authored PRs) so it doesn't land out from under a fresh objection.
+
+### Same-repo PR fix-and-push
+
+For same-repo PRs (`external_pr_fork: false` — e.g. a dependabot branch, or a collaborator's branch on the tracked repository itself), Syrus already has push access to the branch (the same-repo `external_pr_ingest` chain above already pushes fixes to it), so qualifying feedback is treated exactly like feedback on a Syrus-authored PR instead of the fork waiting state:
+
+- If the Job is `approved`, Syrus unapproves it first (same as the fork path), so it doesn't land out from under fresh feedback.
+- Syrus dispatches a `Workflows::ExternalPrFeedback` workflow: `prepare → [loop(respond → adversarial_review)] → retry_until(respond → graders) → summarize_amend → try(push)`. It reuses the same `respond`/`adversarial_review`/`summarize_amend`/`push` step handlers as `Workflows::PrFeedback` (Syrus-authored PR feedback), sourced from `job.external_pr_number`/`job.branch_name` instead of `job.pr_number`. It skips `coverage_analyze`/`coverage_pr_comment`/`refresh_job_metadata` — those steps key off `job.pr_number`, which external PR Jobs never set.
+- `push` (and workspace checkout) work off `job.branch_name` generically, so this pushes cleanly to any branch name — not just the `syrus/...` convention used by Syrus-authored branches (e.g. a `dependabot/bundler/...` branch).
+- If a `external_pr_feedback` Workflow is already `queued`/`running` on the Job, Syrus does not dispatch a second one for a newer qualifying comment — the active workflow's `respond` step sees the full comment thread and addresses everything outstanding.
+- Comment qualification and the `external`-attributed non-auto-action + notify rule work identically to the fork path above (same `PrCommentIngester#qualifies_for_workflow?` rule, same `external_pr_feedback` notification for non-qualifying `external` comments under `feedback_policy != "auto"`).
+- Unlike the fork path, `needs_attention_reason` is not set — dispatching the fix-and-push workflow (and the resulting unapproval) is itself the signal that landing is paused, matching how `PollPullRequestJob#react_to_pr_comments` behaves for Syrus-authored PRs.
+
 ## Dashboard display
 
 Dashboard job lists (table, mobile rows, kanban cards, and landing-queue blocker
